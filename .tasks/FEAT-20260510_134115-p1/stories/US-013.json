@@ -2,14 +2,14 @@
   "id": "US-013",
   "featureId": "FEAT-20260510_134115-p1",
   "title": "UserPromptSubmit hook for memory injection",
-  "userStory": "As Steve, I want my prompts in personal/ pre-augmented with relevant graph hits so that I do not have to mention Notion or the brain explicitly.",
+  "userStory": "As a user, I want my Claude Code prompts pre-augmented with relevant brain hits so that I do not have to mention the brain or its sources explicitly.",
   "acceptanceCriteria": [
-    "New file ~/Repositories/personal/.claude/hooks/inject_memory.py",
-    "Reads prompt from stdin; exits 0 if cwd is not under personal/",
-    "Calls Graphiti search_nodes(query=prompt, limit=5) with 800ms timeout",
-    "On hits, prepends a <relevant-memory> block to the prompt with the top 5 entries",
-    "On timeout or error, logs to .claude/logs/inject_memory.log and exits 0 (silent degrade)",
-    ".claude/settings.json adds hooks.UserPromptSubmit entry pointing at the script"
+    "inject_memory.py reads the prompt from stdin (Claude Code hook input JSON)",
+    "Optional scoping: if BRAIN_INJECT_SCOPE is set, the hook no-ops when cwd is not under that path; if unset, the hook always runs",
+    "Calls Graphiti search_nodes(query=prompt, limit=5) with an 800ms timeout",
+    "On hits, emits hookSpecificOutput.additionalContext with a <relevant-memory> block listing the top 5 entries",
+    "On timeout or error, logs to .claude/logs/inject_memory.log under cwd and exits 0 (silent degrade)",
+    "Client repo's .claude/settings.json adds a UserPromptSubmit hook entry pointing at the script"
   ],
   "dependencies": [
     "US-012"

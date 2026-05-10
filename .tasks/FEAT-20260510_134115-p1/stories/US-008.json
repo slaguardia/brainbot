@@ -1,14 +1,15 @@
 {
   "id": "US-008",
   "featureId": "FEAT-20260510_134115-p1",
-  "title": "Migrate Application Tracker from Notion",
-  "userStory": "As Steve, I want my Application Tracker rows in the graph so that 'status of my Acme application' returns a real answer.",
+  "title": "Generic Notion database migration",
+  "userStory": "As an operator, I want to point the migrator at any Notion database id and have each row become an episode so that the brain can ingest any structured Notion source without hand-coded shapes.",
   "acceptanceCriteria": [
-    "migrate_application_tracker uses the Notion DB ID stored in the user's Notion reference memory",
-    "Each row produces an episode named 'Application: {company} - {role} ({status})'",
-    "Episode body is a structured paragraph mentioning company, role, source, date applied, current status, last touchpoint, notes",
-    "entity_hints set to {company, role, status}",
-    "Verify: search_nodes('recent applications') returns expected companies; search_facts('applied to FDE roles in May') returns the right subset"
+    "migrate_database(database_id) pages every row with the existing notion_client and emits one PlannedEpisode per row",
+    "Episode name uses the row's title property when present; falls back to '{database_label or database_id} row {created_time}'",
+    "Episode body flattens every property as 'Property Name: value' lines, in the order Notion returns them",
+    "reference_time = row.created_time; notion_page_id and notion_last_edited carry through for idempotency",
+    "entity_hints empty by default; opt-in shaping happens through the recipes hook (US-010)",
+    "Verify: --target <db-id> --kind database --dry-run prints planned episodes for at least one row, with no domain assumptions about property names"
   ],
   "dependencies": [
     "US-007"

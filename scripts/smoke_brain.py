@@ -28,9 +28,9 @@ import requests
 
 EPISODE_FIRST = {
     "name": "Meeting: Alice at Acme",
-    "body": "Met Alice at Acme on May 9 to discuss the FDE role.",
+    "body": "Met Alice at Acme on May 9 to discuss the engineering role.",
     "source_description": "smoke-test",
-    "entity_hints": {"company": "Acme", "person": "Alice", "role": "FDE"},
+    "entity_hints": {"company": "Acme", "person": "Alice", "role": "engineering"},
 }
 
 EPISODE_SECOND = {

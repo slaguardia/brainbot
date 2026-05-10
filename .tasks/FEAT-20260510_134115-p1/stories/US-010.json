@@ -1,12 +1,15 @@
 {
   "id": "US-010",
   "featureId": "FEAT-20260510_134115-p1",
-  "title": "Migrate Writing Samples + My Story + Outreach Philosophy + voice rules",
-  "userStory": "As Steve, I want my voice/style references in the graph so that the agent can retrieve them when drafting.",
+  "title": "Recipes scaffold for opt-in domain-specific shapes",
+  "userStory": "As a contributor, I want a clear extension point for crafting episodes from Notion content with domain knowledge, so that I can override the generic ingestion when my data has structure worth preserving (e.g., a tracker DB, a notes folder).",
   "acceptanceCriteria": [
-    "One episode per Notion page (or per top-level section if pages are long)",
-    "entity_hints flag these episodes as voice/style references for retrieval at draft time",
-    "Verify: search_nodes('voice rules for outreach') returns the expected pages"
+    "migrate/recipes/ exists with __init__.py and a README explaining the contract",
+    "Recipe contract: a callable recipe(item, context) -> PlannedEpisode | list[PlannedEpisode] | None, where item is the Notion row or page dict and context exposes notion_client + database_id/page_id + dry_run",
+    "CLI flag --recipe <module:function> overrides the generic shape; the migrator imports the dotted target and invokes it per item",
+    "If recipe returns None, fall back to the generic shape from US-008/US-009",
+    "No built-in personal recipes ship; only example shapes that demonstrate the contract (e.g., a 'plain page as one episode' recipe)",
+    "Verify: drop a sample recipe in recipes/, point --recipe at it, see the custom shape applied in --dry-run output"
   ],
   "dependencies": [
     "US-007"

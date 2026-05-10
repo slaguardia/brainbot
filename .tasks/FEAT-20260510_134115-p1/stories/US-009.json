@@ -1,14 +1,15 @@
 {
   "id": "US-009",
   "featureId": "FEAT-20260510_134115-p1",
-  "title": "Migrate Outreach Samples from Notion",
-  "userStory": "As Steve, I want past outreach messages in the graph so that recall_similar_outreach has real material to draw from.",
+  "title": "Generic Notion page migration",
+  "userStory": "As an operator, I want to point the migrator at any Notion page id and have its content become episodes so that long-form pages contribute to the brain.",
   "acceptanceCriteria": [
-    "migrate_outreach_samples reads the per-message Outreach Samples DB under Writing Samples",
-    "Each row produces an episode named 'Outreach: {persona} at {company} - {channel}'",
-    "Episode body contains the full message text + context (why sent, what hooked them, response if any)",
-    "entity_hints set to {company, person, persona, channel in [linkedin, email, twitter]}",
-    "Verify: search_nodes('outreach to AI startup founders') returns at least one expected message; channel filter behaves correctly"
+    "migrate_page(page_id) fetches the page and its blocks via the notion_client",
+    "If the page has heading_2 blocks, emit one PlannedEpisode per H2 section, named '{page title} - {section heading}'",
+    "If the page has no heading_2 blocks, emit one PlannedEpisode for the whole page, named with the page title",
+    "Body is the plain-text concatenation of the contained blocks (paragraphs, headings, lists, quotes)",
+    "reference_time = page.created_time; notion_page_id = page.id; notion_last_edited carries through",
+    "Verify: --target <page-id> --kind page --dry-run prints planned episodes split on H2 when present, single episode otherwise"
   ],
   "dependencies": [
     "US-007"

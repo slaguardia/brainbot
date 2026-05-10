@@ -29,7 +29,7 @@
     },
     {
       "id": "US-006",
-      "title": "Migration script skeleton for Notion -> Graphiti",
+      "title": "Migration script skeleton: generic Notion -> Graphiti",
       "status": "todo"
     },
     {
@@ -39,27 +39,27 @@
     },
     {
       "id": "US-008",
-      "title": "Migrate Application Tracker from Notion",
+      "title": "Generic Notion database migration",
       "status": "todo"
     },
     {
       "id": "US-009",
-      "title": "Migrate Outreach Samples from Notion",
+      "title": "Generic Notion page migration",
       "status": "todo"
     },
     {
       "id": "US-010",
-      "title": "Migrate Writing Samples + My Story + Outreach Philosophy + voice rules",
+      "title": "Recipes scaffold for opt-in domain-specific shapes",
       "status": "todo"
     },
     {
       "id": "US-011",
-      "title": "Run full migration and audit results",
+      "title": "Run a migration end-to-end and audit results",
       "status": "todo"
     },
     {
       "id": "US-012",
-      "title": "Add Graphiti MCP server to Claude Code settings in personal repo",
+      "title": "Wire Graphiti MCP server into a client repo",
       "status": "todo"
     },
     {
@@ -69,7 +69,7 @@
     },
     {
       "id": "US-014",
-      "title": "End-to-end smoke: Claude Code reads the brain without naming Notion",
+      "title": "End-to-end smoke: Claude Code reads the brain without naming the source",
       "status": "todo"
     }
   ]

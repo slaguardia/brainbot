@@ -12,8 +12,8 @@
   "dependencies": [
     "US-006"
   ],
-  "status": "todo",
+  "status": "in_review",
   "createdAt": "2026-05-10T13:41:15Z",
-  "completedAt": null,
+  "completedAt": "2026-05-10T00:00:00Z",
   "iteration": null
 }

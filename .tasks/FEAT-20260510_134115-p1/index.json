@@ -5,72 +5,72 @@
     {
       "id": "US-001",
       "title": "Add FalkorDB service to docker-compose",
-      "status": "todo"
+      "status": "in_review"
     },
     {
       "id": "US-002",
       "title": "Add Graphiti core + MCP server services to compose",
-      "status": "todo"
+      "status": "in_review"
     },
     {
       "id": "US-003",
       "title": "Add Caddy route for brain.{domain} with bearer auth",
-      "status": "todo"
+      "status": "in_review"
     },
     {
       "id": "US-004",
       "title": "UFW + DNS sanity check for brain subdomain",
-      "status": "todo"
+      "status": "manual_verify"
     },
     {
       "id": "US-005",
       "title": "End-to-end smoke: add_episode and search from laptop",
-      "status": "todo"
+      "status": "in_review"
     },
     {
       "id": "US-006",
       "title": "Migration script skeleton: generic Notion -> Graphiti",
-      "status": "todo"
+      "status": "in_review"
     },
     {
       "id": "US-007",
       "title": "Idempotency: track migrated rows in Postgres brain.migration_log",
-      "status": "todo"
+      "status": "in_review"
     },
     {
       "id": "US-008",
       "title": "Generic Notion database migration",
-      "status": "todo"
+      "status": "in_review"
     },
     {
       "id": "US-009",
       "title": "Generic Notion page migration",
-      "status": "todo"
+      "status": "in_review"
     },
     {
       "id": "US-010",
       "title": "Recipes scaffold for opt-in domain-specific shapes",
-      "status": "todo"
+      "status": "in_review"
     },
     {
       "id": "US-011",
       "title": "Run a migration end-to-end and audit results",
-      "status": "todo"
+      "status": "manual_verify"
     },
     {
       "id": "US-012",
       "title": "Wire Graphiti MCP server into a client repo",
-      "status": "todo"
+      "status": "blocked"
     },
     {
       "id": "US-013",
       "title": "UserPromptSubmit hook for memory injection",
-      "status": "todo"
+      "status": "blocked"
     },
     {
       "id": "US-014",
       "title": "End-to-end smoke: Claude Code reads the brain without naming the source",
-      "status": "todo"
+      "status": "manual_verify"
     }
   ]
 }

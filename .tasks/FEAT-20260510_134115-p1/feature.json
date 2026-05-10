@@ -2,7 +2,7 @@
   "id": "FEAT-20260510_134115-p1",
   "title": "Phase 1: Bring the brain online and let Claude Code read it",
   "summary": "Stand up Graphiti + FalkorDB on the VPS, migrate Notion content into the graph, and wire Claude Code in the personal repo to query it via an injection hook + MCP.",
-  "status": "planning",
+  "status": "in_review",
   "createdAt": "2026-05-10T13:41:15Z",
   "outOfScope": [
     "PWA or mobile surfaces (Phase 2)",
@@ -13,8 +13,9 @@
   "technicalConsiderations": [
     "Adds two new compose services (falkordb, graphiti) and one Caddy vhost (brain.{domain})",
     "Introduces a Postgres table brain.migration_log for idempotent re-runs",
-    "Introduces ~/Repositories/personal/.claude/hooks/inject_memory.py and an mcpServers entry in that repo's .claude/settings.json",
-    "Bearer token + env var BRAIN_BEARER_TOKEN required in shell before launching claude",
+    "Migrator is domain-agnostic: --target <notion-id> --kind {database,page,auto}; recipes layer is opt-in for domain-specific shapes",
+    "Client wiring lives in a kit (templates/claude-code-client/) the user copies into any project repo: .mcp.json + inject_memory.py + UserPromptSubmit hook entry",
+    "Bearer token + env vars BRAIN_DOMAIN and BRAIN_BEARER_TOKEN required in shell before launching claude",
     "Risks: Anthropic extraction cost during bulk migration, MCP transport flakiness (REST fallback exists), entity dedup tuning"
   ],
   "storiesCount": 14,

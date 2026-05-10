@@ -1,0 +1,33 @@
+# Env / secrets
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+
+# Node / SvelteKit (Phase 2+)
+node_modules/
+.svelte-kit/
+build/
+.vercel/
+dist/
+*.log
+
+# Python (migration scripts, hooks)
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp
+
+# Local backups / test dumps
+*.rdb
+*.sql.gz

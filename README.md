@@ -46,3 +46,14 @@ brainbot/
 ```
 
 Code lands in subsequent phases — `compose/`, `migrate/`, `pwa/`, `harness/` directories will be added as Phases 1–2 ship.
+
+## Smoke testing the brain
+
+After Phase 1 infra is up (`compose/docker-compose.yml`, Caddy vhost, `.env`):
+
+```sh
+export BRAIN_URL=https://brain.your-domain.com
+export BRAIN_BEARER_TOKEN=...
+python scripts/smoke_brain.py            # post first episode + verify Acme node
+python scripts/smoke_brain.py --second   # post follow-up + assert no dup nodes
+```

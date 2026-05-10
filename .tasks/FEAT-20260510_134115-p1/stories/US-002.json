@@ -5,7 +5,7 @@
   "userStory": "As an operator, I want the Graphiti MCP server running on the docker network so that other services can issue episodes and search calls.",
   "acceptanceCriteria": [
     "compose/docker-compose.yml has a graphiti service using zepai/graphiti-mcp:latest (tag verified against upstream MCP repo)",
-    "Env vars set: FALKORDB_URI=falkor://falkordb:6379, OPENAI_API_KEY or ANTHROPIC_API_KEY, MODEL_NAME (e.g. claude-haiku-4-5)",
+    "Env vars set: FALKORDB_URI=falkor://falkordb:6379, OPENAI_API_KEY, OPENAI_BASE_URL (default OpenRouter), MODEL_NAME (e.g. anthropic/claude-haiku-4.5); provider-neutral via OpenAI-compatible API so downstream users can plug in OpenAI direct, OpenRouter, Together, Groq, local Ollama, etc. without code changes",
     "Internal port 8000 reachable on docker network as graphiti:8000; no host port mapping",
     "depends_on: falkordb with condition: service_healthy",
     "Verify: docker compose exec graphiti curl -s http://localhost:8000/healthz returns 200"

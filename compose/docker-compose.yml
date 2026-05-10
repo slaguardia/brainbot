@@ -23,8 +23,13 @@ services:
       - brainnet
     environment:
       FALKORDB_URI: falkor://falkordb:6379
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
-      MODEL_NAME: ${GRAPHITI_MODEL_NAME:-claude-haiku-4-5}
+      # Provider-neutral via OpenAI-compatible API. Defaults to OpenRouter
+      # so you can pick any model with one signup; swap OPENAI_BASE_URL +
+      # OPENAI_API_KEY + MODEL_NAME to use OpenAI direct, Together, Groq,
+      # local Ollama, vLLM, or anything else that speaks the OpenAI shape.
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://openrouter.ai/api/v1}
+      MODEL_NAME: ${GRAPHITI_MODEL_NAME:-anthropic/claude-haiku-4.5}
     depends_on:
       falkordb:
         condition: service_healthy

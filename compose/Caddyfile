@@ -1,0 +1,11 @@
+brain.{$BRAIN_DOMAIN} {
+    @authorized header Authorization "Bearer {$BRAIN_BEARER_TOKEN}"
+
+    handle @authorized {
+        reverse_proxy graphiti:8000
+    }
+
+    handle {
+        respond 401
+    }
+}

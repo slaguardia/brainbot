@@ -11,8 +11,9 @@
   "dependencies": [
     "US-005"
   ],
-  "status": "todo",
+  "status": "blocked",
   "createdAt": "2026-05-10T13:41:15Z",
   "completedAt": null,
-  "iteration": null
+  "iteration": null,
+  "blockedReason": "Cannot write into a different repo's .claude/ from this session (harness denies as out-of-scope self-modification). Install kit lives at templates/claude-code-client/INSTALL.md; user copies the snippets into their client repo manually."
 }

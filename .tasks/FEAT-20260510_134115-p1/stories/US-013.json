@@ -14,8 +14,9 @@
   "dependencies": [
     "US-012"
   ],
-  "status": "todo",
+  "status": "blocked",
   "createdAt": "2026-05-10T13:41:15Z",
   "completedAt": null,
-  "iteration": null
+  "iteration": null,
+  "blockedReason": "Same scope denial as US-012. Hook script lives at templates/claude-code-client/inject_memory.py; install steps in templates/claude-code-client/INSTALL.md (step 3)."
 }

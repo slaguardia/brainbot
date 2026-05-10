@@ -12,8 +12,7 @@
   ],
   "dependencies": [
     "US-008",
-    "US-009",
-    "US-010"
+    "US-009"
   ],
   "status": "todo",
   "createdAt": "2026-05-10T13:41:15Z",

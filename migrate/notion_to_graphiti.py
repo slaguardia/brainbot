@@ -1,20 +1,27 @@
 #!/usr/bin/env python3
 """Migrate Notion content into Graphiti.
 
-The migrator is intentionally domain-agnostic: point it at any Notion
-database id or page id and it produces episodes from the content.
-Graphiti's per-write entity extraction handles routing/dedup, so the
-default path needs no hand-coded shapes for any specific source.
+Point it at any Notion database id or page id and it produces episodes.
+Graphiti's per-write entity extraction handles routing/dedup, so this
+script never needs to know the shape of your data.
 
-If you have structured data and want to override the default shape
-(e.g., emit one episode per row of a tracker DB with custom entity
-hints), write a recipe under migrate/recipes/ and pass it via --recipe.
+Default behavior:
+- Database mode: one episode per row. Episode name = row's title
+  property (or '<db label> row <created date>' fallback). Body = every
+  row property flattened as 'Property: value' lines.
+- Page mode: split on heading_2 blocks (one episode per H2 section,
+  named 'page title - section'); if the page has no H2s, emit one
+  whole-page episode. Body = plain-text concatenation of paragraphs,
+  headings, lists, quotes.
+- Auto mode: probe the Notion object to choose database vs page.
+
+If your Notion data has structure worth preserving differently, fork
+this file and edit migrate_database / migrate_page directly. The
+extension point IS the source.
 
 Usage:
     python migrate/notion_to_graphiti.py --target <notion-id> --kind auto --dry-run
     python migrate/notion_to_graphiti.py --target <notion-id> --kind database
-    python migrate/notion_to_graphiti.py --target <notion-id> --kind page \\
-        --recipe my_recipes.tracker:rows_to_episodes
 
 Required env:
     NOTION_TOKEN              integration token, read access to the target
@@ -26,14 +33,13 @@ Required env:
 from __future__ import annotations
 
 import argparse
-import importlib
 import json
 import logging
 import os
 import sys
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any, Callable, Iterable
+from typing import Any, Iterable
 
 logger = logging.getLogger("notion_to_graphiti")
 
@@ -58,17 +64,6 @@ class PlannedEpisode:
             "reference_time": self.reference_time.isoformat(),
             "entity_hints": self.entity_hints,
         }
-
-
-@dataclass
-class RecipeContext:
-    notion_client: Any
-    target_id: str
-    kind: str
-    dry_run: bool
-
-
-Recipe = Callable[[dict[str, Any], RecipeContext], "PlannedEpisode | list[PlannedEpisode] | None"]
 
 
 class MigrationLog:
@@ -139,14 +134,12 @@ class NotionMigrator:
         log: "MigrationLog | None" = None,
         dry_run: bool = False,
         since: datetime | None = None,
-        recipe: "Recipe | None" = None,
     ) -> None:
         self.notion = notion_client
         self.graphiti = graphiti_client
         self.log = log
         self.dry_run = dry_run
         self.since = since
-        self.recipe = recipe
         self.counts = {"migrated": 0, "skipped": 0, "remigrated": 0}
 
     def migrate(self, target_id: str, kind: str = "auto") -> list[PlannedEpisode]:
@@ -173,15 +166,8 @@ class NotionMigrator:
         db_title = "".join(
             part.get("plain_text", "") for part in (db.get("title") or [])
         ) or database_id
-        ctx = RecipeContext(self.notion, database_id, "database", self.dry_run)
 
         for row in self.notion.query_database(database_id, since=self.since):
-            if self.recipe is not None:
-                produced = self.recipe(row, ctx)
-                if produced is not None:
-                    yield from _as_list(produced)
-                    continue
-
             row_id = row.get("id", "")
             created = _parse_iso(row.get("created_time")) or datetime.now(timezone.utc)
             last_edited = _parse_iso(row.get("last_edited_time"))
@@ -213,13 +199,6 @@ class NotionMigrator:
 
         page = self.notion.fetch_page(page_id)
         blocks = self.notion.fetch_page_blocks(page_id)
-        ctx = RecipeContext(self.notion, page_id, "page", self.dry_run)
-
-        if self.recipe is not None:
-            produced = self.recipe(page, ctx)
-            if produced is not None:
-                yield from _as_list(produced)
-                return
 
         title = page_title(page).strip() or f"Notion page {page_id}"
         last_edited = _parse_iso(page.get("last_edited_time"))
@@ -281,12 +260,6 @@ class NotionMigrator:
             logger.info("posted %s -> %s", episode.name, episode_id)
 
 
-def _as_list(value) -> list[PlannedEpisode]:
-    if isinstance(value, PlannedEpisode):
-        return [value]
-    return list(value)
-
-
 def _split_blocks_by_h2(
     blocks: list[dict[str, Any]],
 ) -> list[tuple[str, list[dict[str, Any]]]]:
@@ -341,19 +314,6 @@ def parse_since(value: str | None) -> datetime | None:
         sys.exit(f"--since must be ISO date (YYYY-MM-DD): {e}")
 
 
-def load_recipe(spec: str | None) -> "Recipe | None":
-    if not spec:
-        return None
-    if ":" not in spec:
-        sys.exit(f"--recipe expects module:function, got: {spec}")
-    module_name, func_name = spec.split(":", 1)
-    module = importlib.import_module(module_name)
-    func = getattr(module, func_name, None)
-    if not callable(func):
-        sys.exit(f"recipe {spec} is not callable")
-    return func
-
-
 def build_clients(dry_run: bool):
     from notion_clients import NotionClient  # type: ignore[import-not-found]
     from graphiti_clients import GraphitiClient  # type: ignore[import-not-found]
@@ -390,17 +350,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--kind", choices=KINDS, default="auto")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--since", help="ISO date; only migrate items edited on/after")
-    parser.add_argument(
-        "--recipe",
-        help="dotted module:function path to a recipe that overrides the default shape",
-    )
     parser.add_argument("--log-level", default="INFO")
     args = parser.parse_args(argv)
 
     logging.basicConfig(level=args.log_level, format="%(message)s")
 
     since = parse_since(args.since)
-    recipe = load_recipe(args.recipe)
     notion, graphiti, log = build_clients(dry_run=args.dry_run)
     migrator = NotionMigrator(
         notion,
@@ -408,7 +363,6 @@ def main(argv: list[str] | None = None) -> int:
         log=log,
         dry_run=args.dry_run,
         since=since,
-        recipe=recipe,
     )
 
     episodes = migrator.migrate(args.target, kind=args.kind)

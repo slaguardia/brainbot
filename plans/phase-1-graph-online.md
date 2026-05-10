@@ -86,7 +86,7 @@ Write a one-off Python or curl script that:
 
 ## Workstream B — Notion → Graphiti migration
 
-The migrator is intentionally domain-agnostic: point it at any Notion database or page id and it produces episodes. Graphiti's per-write entity extraction handles routing/dedup, so the headline path doesn't need hand-coded shapes for any specific source. Domain shaping is opt-in through the recipes hook.
+The migrator is intentionally domain-agnostic: point it at any Notion database or page id and it produces episodes. Graphiti's per-write entity extraction handles routing/dedup, so the script never needs to know the shape of your data. If your data has structure worth preserving differently, fork `migrate_database` / `migrate_page` directly — the extension point is the source.
 
 ### Task B.1 — Generic migration skeleton
 
@@ -101,7 +101,7 @@ class NotionMigrator:
     def migrate(self, target_id, kind="auto"): ...   # dispatches by kind
 
 if __name__ == "__main__":
-    # CLI: --target <notion-id>  --kind {database,page,auto}  --dry-run  --since <date>  [--recipe <module:function>]
+    # CLI: --target <notion-id>  --kind {database,page,auto}  --dry-run  --since <date>
 ```
 
 Each `migrate_*` method:
@@ -137,7 +137,7 @@ This makes the script safe to re-run after Notion edits.
 - `name`: the row's title property if present, otherwise `"{database label or id} row {created_time}"`
 - `body`: every property flattened as `Property Name: value` lines, in the order Notion returns them
 - `reference_time`: `row.created_time`
-- `entity_hints`: empty (recipes layer adds them when the operator opts in)
+- `entity_hints`: empty
 
 **Verify:** `--target <db-id> --kind database --dry-run` prints planned episodes for every row in the database.
 
@@ -151,19 +151,7 @@ This makes the script safe to re-run after Notion edits.
 
 **Verify:** `--target <page-id> --kind page --dry-run` prints one or many episodes depending on whether the page has H2s.
 
-### Task B.5 — Recipes hook for opt-in domain shapes
-
-Domain-aware ingestion lives outside the headline API:
-
-- `migrate/recipes/` ships with a `__init__.py`, a `README.md` explaining the contract, and at least one example recipe
-- Recipe contract: `recipe(item, context) -> PlannedEpisode | list[PlannedEpisode] | None`
-  - `item` is the Notion row dict (database mode) or page dict (page mode)
-  - `context` exposes `notion_client`, `target_id`, `kind`, `dry_run`
-  - Return `None` to fall back to the generic shape
-- CLI flag `--recipe <module:function>` lets the operator override per run; without it, the generic shape is used
-- No domain-specific recipes ship in the repo. Operators with structured Notion data can write a private recipe in their own fork.
-
-### Task B.6 — Run a migration, audit results
+### Task B.5 — Run a migration, audit results
 
 Run with `--dry-run` first, eyeball the log, then live run.
 

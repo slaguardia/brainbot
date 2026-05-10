@@ -48,11 +48,6 @@
       "status": "in_review"
     },
     {
-      "id": "US-010",
-      "title": "Recipes scaffold for opt-in domain-specific shapes",
-      "status": "in_review"
-    },
-    {
       "id": "US-011",
       "title": "Run a migration end-to-end and audit results",
       "status": "manual_verify"

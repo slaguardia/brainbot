@@ -1,0 +1,19 @@
+{
+  "id": "US-005",
+  "featureId": "FEAT-20260510_134115-p2",
+  "title": "Tool: get_company (one-hop neighborhood)",
+  "userStory": "As the agent, I want a get_company tool so that draft_outreach has full context on a target.",
+  "acceptanceCriteria": [
+    "New file pwa/src/lib/server/tools/get-company.ts",
+    "Calls Graphiti get_node for a Company entity by name; traverses one hop",
+    "Returns related people, applications, outreach, and notes",
+    "Verify: get_company('Acme') returns expected related entities from the migrated graph"
+  ],
+  "dependencies": [
+    "US-003"
+  ],
+  "status": "todo",
+  "createdAt": "2026-05-10T13:41:15Z",
+  "completedAt": null,
+  "iteration": null
+}

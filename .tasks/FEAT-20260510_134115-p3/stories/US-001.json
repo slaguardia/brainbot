@@ -1,0 +1,19 @@
+{
+  "id": "US-001",
+  "featureId": "FEAT-20260510_134115-p3",
+  "title": "SessionEnd hook that writes a session summary episode",
+  "userStory": "As Steve, I want every Claude Code session in personal/ summarised into the graph so that 'what did I work on yesterday' has a real answer.",
+  "acceptanceCriteria": [
+    "New file ~/Repositories/personal/.claude/hooks/write_session_episode.py registered on SessionEnd",
+    "Hook reads the session transcript via Claude Code env var",
+    "Calls Claude Haiku with prompt: 'summarize this session in 3-5 sentences focused on what was decided, what was built, what is still open'",
+    "POSTs the summary to Graphiti as an episode named 'Session: {first 40 chars of first user prompt} - {date}', body=summary, entity_hints={surface: claude_code, repo: <cwd basename>}",
+    "Logs cost + duration to .claude/logs/write_session_episode.log",
+    "Verify: open a session in personal/, do something, close; in a new session ask 'what did I work on yesterday in this repo?' returns the summary"
+  ],
+  "dependencies": [],
+  "status": "todo",
+  "createdAt": "2026-05-10T13:41:15Z",
+  "completedAt": null,
+  "iteration": null
+}

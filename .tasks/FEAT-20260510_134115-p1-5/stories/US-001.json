@@ -1,0 +1,18 @@
+{
+  "id": "US-001",
+  "featureId": "FEAT-20260510_134115-p1-5",
+  "title": "Add bin/deploy.sh idempotent update script",
+  "userStory": "As an operator, I want a single deploy command on the VPS so that updating brainbot is one keystroke and not a multi-line copy-paste from memory.",
+  "acceptanceCriteria": [
+    "New file bin/deploy.sh, executable",
+    "Behaviour: cd to repo root, git fetch + reset --hard origin/main (or git pull --ff-only \u2014 pick one and document why), docker compose pull, docker compose up -d --remove-orphans, docker image prune -f",
+    "Exits non-zero on any failed step (set -euo pipefail)",
+    "Prints a one-line summary at the end: 'deployed <short-sha> at <ts>, services: <count>'",
+    "Verify: SSH to VPS, run bin/deploy.sh after pushing a no-op commit; output shows the new sha and all services healthy"
+  ],
+  "dependencies": [],
+  "status": "todo",
+  "createdAt": "2026-05-10T13:41:15Z",
+  "completedAt": null,
+  "iteration": null
+}

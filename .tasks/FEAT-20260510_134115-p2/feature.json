@@ -1,0 +1,22 @@
+{
+  "id": "FEAT-20260510_134115-p2",
+  "title": "Phase 2: Build the PWA + custom harness with /admin observability",
+  "summary": "Ship a SvelteKit PWA powered by a custom @anthropic-ai/sdk harness with brain-aware tools (search, draft, capture), backed by an /admin route that surfaces per-tool latency and cost.",
+  "status": "planning",
+  "createdAt": "2026-05-10T13:41:15Z",
+  "outOfScope": [
+    "Claude Code -> brain write-back (Phase 3)",
+    "PWA quick-capture screen and iOS Shortcut (Phase 3)",
+    "OpenClaw decommission (Phase 3)",
+    "Backups, dedup audit, fallback memory layer (Phase 4)"
+  ],
+  "technicalConsiderations": [
+    "Pre-phase decision pinned: SvelteKit (lighter footprint, single Node process for UI + API). Switch to Next.js only if a specific component/auth library forces it",
+    "New top-level pwa/ project; new compose service pwa; new Caddy vhost app.{domain}",
+    "New Postgres tables: brain.drafts, brain.tool_calls, brain.pending_episodes",
+    "Cookie auth path on app.{domain} for phone UX (bearer retained for API)",
+    "Risks: streaming + tool-call buffering, schema drift (use a migration tool from day one), cost-per-call attribution convention"
+  ],
+  "storiesCount": 16,
+  "sourcePlan": "plans/phase-2-pwa-harness.md"
+}

@@ -1,0 +1,18 @@
+{
+  "id": "US-012",
+  "featureId": "FEAT-20260510_134115-p1",
+  "title": "Add Graphiti MCP server to Claude Code settings in personal repo",
+  "userStory": "As Steve, I want Claude Code wired to the brain via MCP so that agents can call mcp__graphiti__* tools.",
+  "acceptanceCriteria": [
+    "~/Repositories/personal/.claude/settings.json adds an mcpServers.graphiti entry pointing at https://brain.{domain}/mcp with Authorization: Bearer ${BRAIN_BEARER_TOKEN}",
+    "personal/CLAUDE.md documents that BRAIN_BEARER_TOKEN must be set in the shell before launching claude (env interpolation requirement)",
+    "Verify: in a new Claude Code session in personal/, prompt 'list the available MCP tools' returns mcp__graphiti__search_nodes, mcp__graphiti__search_facts, mcp__graphiti__add_episode"
+  ],
+  "dependencies": [
+    "US-005"
+  ],
+  "status": "todo",
+  "createdAt": "2026-05-10T13:41:15Z",
+  "completedAt": null,
+  "iteration": null
+}

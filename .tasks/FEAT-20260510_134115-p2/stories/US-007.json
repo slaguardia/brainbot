@@ -1,0 +1,21 @@
+{
+  "id": "US-007",
+  "featureId": "FEAT-20260510_134115-p2",
+  "title": "Tool: draft_outreach (compound)",
+  "userStory": "As Steve, I want a single tool that orchestrates the lookups for a draft so that the agent does not need to chain three calls.",
+  "acceptanceCriteria": [
+    "New file pwa/src/lib/server/tools/draft-outreach.ts",
+    "Internally calls search_brain (similar past outreach), get_company (target context), and loads voice rules from a boot-time cache of voice-rule episodes",
+    "Returns structured { subject, body, channel, target_persona } the LLM uses to compose the actual message",
+    "Verify: invoking draft_outreach for a known company returns a structured draft referencing real past outreach"
+  ],
+  "dependencies": [
+    "US-003",
+    "US-004",
+    "US-005"
+  ],
+  "status": "todo",
+  "createdAt": "2026-05-10T13:41:15Z",
+  "completedAt": null,
+  "iteration": null
+}

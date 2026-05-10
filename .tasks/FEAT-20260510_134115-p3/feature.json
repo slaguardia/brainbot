@@ -1,0 +1,21 @@
+{
+  "id": "FEAT-20260510_134115-p3",
+  "title": "Phase 3: Close the write-back loop and decommission OpenClaw",
+  "summary": "Make Claude Code sessions feed the brain, give the PWA a notes-app-feeling quick-capture, expose the same path as an iOS voice Shortcut, and retire OpenClaw.",
+  "status": "planning",
+  "createdAt": "2026-05-10T13:41:15Z",
+  "outOfScope": [
+    "Backups, dedup audit, observability rollups (Phase 4)",
+    "New entity types beyond what migration produced (Phase 4 Track D, demand-driven)",
+    "Apple Watch complication and PWA dark mode polish (Phase 4 Track F)"
+  ],
+  "technicalConsiderations": [
+    "New ~/Repositories/personal/.claude/hooks/write_session_episode.py registered on SessionEnd",
+    "New PWA route /capture and POST /api/capture endpoint sharing the brain.pending_episodes queue from Phase 2",
+    "iOS Shortcut config doc lives in pwa/docs/ios-shortcut.md",
+    "Tagged commit before OpenClaw removal so revert is git-one-command",
+    "Risks: background worker is a single point of failure (mitigation: startup drain + queue depth on /admin), iOS Shortcut bearer-at-rest, summary verbosity tuning"
+  ],
+  "storiesCount": 10,
+  "sourcePlan": "plans/phase-3-writeback.md"
+}

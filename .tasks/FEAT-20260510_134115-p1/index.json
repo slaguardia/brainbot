@@ -1,0 +1,76 @@
+{
+  "featureId": "FEAT-20260510_134115-p1",
+  "title": "Phase 1: Bring the brain online and let Claude Code read it",
+  "stories": [
+    {
+      "id": "US-001",
+      "title": "Add FalkorDB service to docker-compose",
+      "status": "todo"
+    },
+    {
+      "id": "US-002",
+      "title": "Add Graphiti core + MCP server services to compose",
+      "status": "todo"
+    },
+    {
+      "id": "US-003",
+      "title": "Add Caddy route for brain.{domain} with bearer auth",
+      "status": "todo"
+    },
+    {
+      "id": "US-004",
+      "title": "UFW + DNS sanity check for brain subdomain",
+      "status": "todo"
+    },
+    {
+      "id": "US-005",
+      "title": "End-to-end smoke: add_episode and search from laptop",
+      "status": "todo"
+    },
+    {
+      "id": "US-006",
+      "title": "Migration script skeleton for Notion -> Graphiti",
+      "status": "todo"
+    },
+    {
+      "id": "US-007",
+      "title": "Idempotency: track migrated rows in Postgres brain.migration_log",
+      "status": "todo"
+    },
+    {
+      "id": "US-008",
+      "title": "Migrate Application Tracker from Notion",
+      "status": "todo"
+    },
+    {
+      "id": "US-009",
+      "title": "Migrate Outreach Samples from Notion",
+      "status": "todo"
+    },
+    {
+      "id": "US-010",
+      "title": "Migrate Writing Samples + My Story + Outreach Philosophy + voice rules",
+      "status": "todo"
+    },
+    {
+      "id": "US-011",
+      "title": "Run full migration and audit results",
+      "status": "todo"
+    },
+    {
+      "id": "US-012",
+      "title": "Add Graphiti MCP server to Claude Code settings in personal repo",
+      "status": "todo"
+    },
+    {
+      "id": "US-013",
+      "title": "UserPromptSubmit hook for memory injection",
+      "status": "todo"
+    },
+    {
+      "id": "US-014",
+      "title": "End-to-end smoke: Claude Code reads the brain without naming Notion",
+      "status": "todo"
+    }
+  ]
+}

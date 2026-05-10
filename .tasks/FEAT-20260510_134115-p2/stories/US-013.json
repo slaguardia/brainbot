@@ -1,0 +1,22 @@
+{
+  "id": "US-013",
+  "featureId": "FEAT-20260510_134115-p2",
+  "title": "/admin route with summary cards, cost chart, and recent activity",
+  "userStory": "As Steve, I want an /admin view so that the system is observable and the portfolio has a screenshot worth showing.",
+  "acceptanceCriteria": [
+    "New files pwa/src/routes/admin/+page.svelte and +page.server.ts",
+    "Server queries: 7-day tool calls grouped by name (count, p50, p99, error count); 30-day cost per day broken out by model; latest 50 tool calls in last 24h",
+    "Page renders summary cards (total calls, total cost, error rate), bar chart of cost per day (chart.js or hand-rolled SVG), recent activity table with input/output drill-down",
+    "Authn: same bearer-cookie as the rest of the app (no public access)",
+    "Document the cost-attribution convention on the page",
+    "Verify: /admin loads behind auth and shows non-zero numbers after a few chat turns"
+  ],
+  "dependencies": [
+    "US-011",
+    "US-012"
+  ],
+  "status": "todo",
+  "createdAt": "2026-05-10T13:41:15Z",
+  "completedAt": null,
+  "iteration": null
+}

@@ -1,0 +1,20 @@
+{
+  "id": "US-002",
+  "featureId": "FEAT-20260510_134115-p1",
+  "title": "Add Graphiti core + MCP server services to compose",
+  "userStory": "As an operator, I want the Graphiti MCP server running on the docker network so that other services can issue episodes and search calls.",
+  "acceptanceCriteria": [
+    "compose/docker-compose.yml has a graphiti service using zepai/graphiti-mcp:latest (tag verified against upstream MCP repo)",
+    "Env vars set: FALKORDB_URI=falkor://falkordb:6379, OPENAI_API_KEY or ANTHROPIC_API_KEY, MODEL_NAME (e.g. claude-haiku-4-5)",
+    "Internal port 8000 reachable on docker network as graphiti:8000; no host port mapping",
+    "depends_on: falkordb with condition: service_healthy",
+    "Verify: docker compose exec graphiti curl -s http://localhost:8000/healthz returns 200"
+  ],
+  "dependencies": [
+    "US-001"
+  ],
+  "status": "todo",
+  "createdAt": "2026-05-10T13:41:15Z",
+  "completedAt": null,
+  "iteration": null
+}

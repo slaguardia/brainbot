@@ -1,0 +1,17 @@
+{
+  "id": "US-010",
+  "featureId": "FEAT-20260510_134115-p3",
+  "title": "Archive OpenClaw-related docs",
+  "userStory": "As an operator, I want OpenClaw docs archived (not deleted) so that the postmortem narrative survives.",
+  "acceptanceCriteria": [
+    "Move agent-hosting/openclaw-*.md (in personal repo) to agent-hosting/archive/ with a top note: 'OpenClaw was decommissioned 2026-XX-XX in favor of brainbot's PWA + iOS capture. Kept for reference.'",
+    "Free up VPS disk: docker volume rm openclaw-data after confirming no salvageable state"
+  ],
+  "dependencies": [
+    "US-009"
+  ],
+  "status": "todo",
+  "createdAt": "2026-05-10T13:41:15Z",
+  "completedAt": null,
+  "iteration": null
+}

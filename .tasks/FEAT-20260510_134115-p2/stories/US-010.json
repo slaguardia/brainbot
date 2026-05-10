@@ -1,0 +1,23 @@
+{
+  "id": "US-010",
+  "featureId": "FEAT-20260510_134115-p2",
+  "title": "Outreach workflow form at /draft",
+  "userStory": "As Steve, I want a focused draft flow so that the smoke-test workflow for Phase 2 has a dedicated screen.",
+  "acceptanceCriteria": [
+    "New file pwa/src/routes/draft/+page.svelte",
+    "Input accepts company URL OR LinkedIn URL OR plain company name",
+    "Submit kicks off a chat-style flow with draft_outreach as the first tool call",
+    "Inline-editable draft shown in a textarea",
+    "Save draft button calls save_draft tool",
+    "Mark as sent button promotes the draft to a Graphiti Outreach episode",
+    "Verify: end-to-end on phone over train wifi: input -> draft -> edit -> save -> send -> episode visible via search_brain"
+  ],
+  "dependencies": [
+    "US-007",
+    "US-008"
+  ],
+  "status": "todo",
+  "createdAt": "2026-05-10T13:41:15Z",
+  "completedAt": null,
+  "iteration": null
+}

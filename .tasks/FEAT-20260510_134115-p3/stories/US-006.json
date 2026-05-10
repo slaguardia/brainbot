@@ -1,0 +1,22 @@
+{
+  "id": "US-006",
+  "featureId": "FEAT-20260510_134115-p3",
+  "title": "iOS Shortcut for voice capture",
+  "userStory": "As Steve, I want 'Hey Siri, capture brain' to record a thought from anywhere so that capture latency is near zero.",
+  "acceptanceCriteria": [
+    "Shortcut config documented in pwa/docs/ios-shortcut.md",
+    "Trigger phrase: 'Hey Siri, capture brain'",
+    "Step 1: Dictate text",
+    "Step 2: HTTP POST to https://app.{domain}/api/capture with { text: <dictation>, source: 'ios-voice' } and the bearer header",
+    "Step 3: Show notification 'Captured' or 'Failed'",
+    "Added to iCloud Shortcuts so it is available on iPhone + Apple Watch",
+    "Verify: 'Hey Siri, capture brain. I had coffee with Alice from Acme today, she mentioned they are hiring an FDE.' -> episode + entities visible in Graphiti within minutes"
+  ],
+  "dependencies": [
+    "US-005"
+  ],
+  "status": "todo",
+  "createdAt": "2026-05-10T13:41:15Z",
+  "completedAt": null,
+  "iteration": null
+}

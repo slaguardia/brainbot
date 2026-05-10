@@ -1,0 +1,22 @@
+{
+  "id": "US-011",
+  "featureId": "FEAT-20260510_134115-p1",
+  "title": "Run full migration and audit results",
+  "userStory": "As an operator, I want a controlled bulk migration so that entity dedup and cost are verified before declaring data done.",
+  "acceptanceCriteria": [
+    "Run migrate ... --source all --dry-run first; eyeball the planned-episode log",
+    "Live run completed; per-source episode counts match Notion row counts",
+    "Spot-check 5 entities: Acme references from tracker / outreach / journal collapse to a single node",
+    "Spot-check 5 facts: valid_from timestamps match the source row's created_at",
+    "Total Anthropic spend recorded; under $5 expected; actual recorded in plan or commit message"
+  ],
+  "dependencies": [
+    "US-008",
+    "US-009",
+    "US-010"
+  ],
+  "status": "todo",
+  "createdAt": "2026-05-10T13:41:15Z",
+  "completedAt": null,
+  "iteration": null
+}

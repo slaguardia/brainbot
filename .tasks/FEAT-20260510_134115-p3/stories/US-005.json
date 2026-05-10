@@ -1,0 +1,19 @@
+{
+  "id": "US-005",
+  "featureId": "FEAT-20260510_134115-p3",
+  "title": "Capture API endpoint POST /api/capture",
+  "userStory": "As Steve, I want a thin auth'd capture endpoint so that the PWA screen and the iOS Shortcut share one path.",
+  "acceptanceCriteria": [
+    "New file pwa/src/routes/api/capture/+server.ts",
+    "POST accepts { text: string, tags?: string[], source?: string }",
+    "Auth: bearer token OR signed cookie",
+    "Returns 202 with { episode_id, queued_at }",
+    "Internally enqueues to brain.pending_episodes (same queue as Phase 2 Task 2.6)",
+    "Verify: curl -H 'Authorization: Bearer ...' POST /api/capture returns 202; row appears in pending_episodes; worker drains it"
+  ],
+  "dependencies": [],
+  "status": "todo",
+  "createdAt": "2026-05-10T13:41:15Z",
+  "completedAt": null,
+  "iteration": null
+}

@@ -1,0 +1,22 @@
+{
+  "id": "FEAT-20260510_134115-p1-5",
+  "title": "Phase 1.5: Make VPS install + update a one-liner",
+  "summary": "Wrap the existing docker-compose deploy in a curl-pipe-bash bootstrap script and a tiny update script so that standing up brainbot on a fresh VPS or applying a new commit is a single copy-pasted command.",
+  "status": "planning",
+  "createdAt": "2026-05-10T13:41:15Z",
+  "outOfScope": [
+    "GitHub Actions push-to-deploy (defer until manual deploys feel slow)",
+    "Building + pushing images to GHCR (Phase 2+ if registry-based deploy becomes worthwhile)",
+    "Self-hosted PaaS layer (Coolify, Dokploy)",
+    "Multi-host or HA orchestration"
+  ],
+  "technicalConsiderations": [
+    "Install script must be safe under curl-pipe-bash: no interactive prompts that break under a pipe (accept env vars as primary input, prompt only if stdin is a tty), set -euo pipefail",
+    "Never overwrite an existing /opt/brainbot/compose/.env (secrets live there)",
+    "Default install path /opt/brainbot is overridable via BRAINBOT_DIR env",
+    "Deploy strategy choice: git pull --ff-only vs git fetch + reset --hard origin/main \u2014 pick one (reset is more predictable for a deploy host that should never have local edits) and document",
+    "Auto-update via systemd timer is opt-in, not default"
+  ],
+  "storiesCount": 3,
+  "sourcePlan": "user request 2026-05-10 (no markdown plan file)"
+}

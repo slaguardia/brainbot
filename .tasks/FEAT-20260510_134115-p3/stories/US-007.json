@@ -1,0 +1,22 @@
+{
+  "id": "US-007",
+  "featureId": "FEAT-20260510_134115-p3",
+  "title": "Multi-surface integration test",
+  "userStory": "As an operator, I want a scripted manual test so that Phase 3 is provably done before declaring it.",
+  "acceptanceCriteria": [
+    "On phone: 'Hey Siri, capture brain' with a unique codeword (e.g. 'tested phase 3 with codeword zorbax')",
+    "Wait 30s",
+    "On laptop: open Claude Code in personal/, ask 'what is the latest captured note?' - codeword returned",
+    "Failure debug order documented: shortcut HTTP failed? PWA capture endpoint returned non-202? pending_episodes row stuck? Worker not draining? Graphiti error?"
+  ],
+  "dependencies": [
+    "US-001",
+    "US-004",
+    "US-005",
+    "US-006"
+  ],
+  "status": "todo",
+  "createdAt": "2026-05-10T13:41:15Z",
+  "completedAt": null,
+  "iteration": null
+}

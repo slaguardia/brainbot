@@ -1,0 +1,21 @@
+{
+  "id": "US-008",
+  "featureId": "FEAT-20260510_134115-p2",
+  "title": "Tools: save_draft + list_drafts (and brain.drafts table)",
+  "userStory": "As Steve, I want drafts persisted as app state (not graph state) so that I can revisit and send later.",
+  "acceptanceCriteria": [
+    "New file pwa/src/lib/server/tools/drafts.ts exporting save_draft and list_drafts",
+    "Postgres table brain.drafts created with columns id, created_at, target_persona, target_company, channel, subject, body, sent_at, episode_id",
+    "save_draft writes to brain.drafts (not Graphiti)",
+    "list_drafts queries unsent drafts with optional company filter",
+    "Sending a draft (separate UI flow) promotes it to a Graphiti Outreach episode and stamps episode_id + sent_at",
+    "Verify: save then list round-trips a draft; promotion path creates the episode and updates the row"
+  ],
+  "dependencies": [
+    "US-006"
+  ],
+  "status": "todo",
+  "createdAt": "2026-05-10T13:41:15Z",
+  "completedAt": null,
+  "iteration": null
+}

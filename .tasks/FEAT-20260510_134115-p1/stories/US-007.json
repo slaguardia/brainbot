@@ -1,0 +1,19 @@
+{
+  "id": "US-007",
+  "featureId": "FEAT-20260510_134115-p1",
+  "title": "Idempotency: track migrated rows in Postgres brain.migration_log",
+  "userStory": "As an operator, I want migrated rows tracked so that re-running after Notion edits updates only what changed.",
+  "acceptanceCriteria": [
+    "Migration creates table brain.migration_log with PRIMARY KEY (source, notion_page_id) and columns: notion_last_edited, graphiti_episode_id, migrated_at",
+    "On re-run: unseen page_id -> migrate + insert; seen page_id with newer notion_last_edited -> re-migrate (relying on Graphiti bi-temporal invalidation) + update row; otherwise skip",
+    "Skipped rows are logged with reason",
+    "Verify: run twice with no Notion changes -> second run reports 0 migrated, N skipped; edit one row in Notion, re-run -> exactly that row re-migrated"
+  ],
+  "dependencies": [
+    "US-006"
+  ],
+  "status": "todo",
+  "createdAt": "2026-05-10T13:41:15Z",
+  "completedAt": null,
+  "iteration": null
+}

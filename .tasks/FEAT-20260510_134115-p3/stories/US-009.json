@@ -1,0 +1,21 @@
+{
+  "id": "US-009",
+  "featureId": "FEAT-20260510_134115-p3",
+  "title": "Stop and remove OpenClaw service",
+  "userStory": "As an operator, I want OpenClaw stopped and its compose definition removed so that the VPS surface area shrinks.",
+  "acceptanceCriteria": [
+    "Tagged commit immediately before the destructive change so revert is one git command",
+    "docker compose stop openclaw; docker compose rm openclaw",
+    "openclaw service block deleted from compose/docker-compose.yml",
+    "Caddyfile: any routes pointing to OpenClaw deleted",
+    "docker compose up -d applies the new state",
+    "Verify: docker compose ps shows no openclaw; no Caddy 502s; brainbot services healthy"
+  ],
+  "dependencies": [
+    "US-008"
+  ],
+  "status": "todo",
+  "createdAt": "2026-05-10T13:41:15Z",
+  "completedAt": null,
+  "iteration": null
+}

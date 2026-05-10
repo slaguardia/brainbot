@@ -1,0 +1,20 @@
+{
+  "id": "US-006",
+  "featureId": "FEAT-20260510_134115-p1",
+  "title": "Migration script skeleton for Notion -> Graphiti",
+  "userStory": "As an operator, I want a NotionMigrator class scaffolded so that per-source migration logic has a consistent home.",
+  "acceptanceCriteria": [
+    "New file migrate/notion_to_graphiti.py defines class NotionMigrator with methods: migrate_application_tracker, migrate_outreach_samples, migrate_writing_samples, migrate_my_story, migrate_outreach_philosophy, migrate_voice_rules",
+    "CLI entrypoint: --source <name>|all, --dry-run, --since <date>",
+    "Each migrate_* function pages through the source, builds episode body + entity_hints, calls graphiti.add_episode(name, body, source_description, reference_time, entity_hints)",
+    "--dry-run logs the would-be calls without invoking Graphiti",
+    "Verify: python migrate/notion_to_graphiti.py --source application_tracker --dry-run prints planned episodes for at least one row"
+  ],
+  "dependencies": [
+    "US-005"
+  ],
+  "status": "todo",
+  "createdAt": "2026-05-10T13:41:15Z",
+  "completedAt": null,
+  "iteration": null
+}

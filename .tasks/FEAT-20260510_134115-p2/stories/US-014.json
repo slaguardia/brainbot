@@ -1,0 +1,16 @@
+{
+  "id": "US-014",
+  "featureId": "FEAT-20260510_134115-p2",
+  "title": "Anthropic spend pricing table",
+  "userStory": "As an operator, I want a static model->price map so that cost_usd is computed correctly.",
+  "acceptanceCriteria": [
+    "New file pwa/src/lib/server/pricing.ts exports a static map model -> { input_per_mtok, output_per_mtok }",
+    "Used by the instrument wrapper to compute cost_usd for each tool call's parent chat turn",
+    "Documented update process when new models drop"
+  ],
+  "dependencies": [],
+  "status": "todo",
+  "createdAt": "2026-05-10T13:41:15Z",
+  "completedAt": null,
+  "iteration": null
+}

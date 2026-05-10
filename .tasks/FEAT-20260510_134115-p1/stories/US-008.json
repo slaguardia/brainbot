@@ -1,0 +1,20 @@
+{
+  "id": "US-008",
+  "featureId": "FEAT-20260510_134115-p1",
+  "title": "Migrate Application Tracker from Notion",
+  "userStory": "As Steve, I want my Application Tracker rows in the graph so that 'status of my Acme application' returns a real answer.",
+  "acceptanceCriteria": [
+    "migrate_application_tracker uses the Notion DB ID stored in the user's Notion reference memory",
+    "Each row produces an episode named 'Application: {company} - {role} ({status})'",
+    "Episode body is a structured paragraph mentioning company, role, source, date applied, current status, last touchpoint, notes",
+    "entity_hints set to {company, role, status}",
+    "Verify: search_nodes('recent applications') returns expected companies; search_facts('applied to FDE roles in May') returns the right subset"
+  ],
+  "dependencies": [
+    "US-007"
+  ],
+  "status": "todo",
+  "createdAt": "2026-05-10T13:41:15Z",
+  "completedAt": null,
+  "iteration": null
+}

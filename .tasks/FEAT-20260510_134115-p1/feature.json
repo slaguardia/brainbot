@@ -1,0 +1,22 @@
+{
+  "id": "FEAT-20260510_134115-p1",
+  "title": "Phase 1: Bring the brain online and let Claude Code read it",
+  "summary": "Stand up Graphiti + FalkorDB on the VPS, migrate Notion content into the graph, and wire Claude Code in the personal repo to query it via an injection hook + MCP.",
+  "status": "planning",
+  "createdAt": "2026-05-10T13:41:15Z",
+  "outOfScope": [
+    "PWA or mobile surfaces (Phase 2)",
+    "Write-back from Claude Code sessions into the graph (Phase 3)",
+    "Backups and observability beyond minimal smoke (Phase 4)",
+    "Replacing or decommissioning OpenClaw (Phase 3)"
+  ],
+  "technicalConsiderations": [
+    "Adds two new compose services (falkordb, graphiti) and one Caddy vhost (brain.{domain})",
+    "Introduces a Postgres table brain.migration_log for idempotent re-runs",
+    "Introduces ~/Repositories/personal/.claude/hooks/inject_memory.py and an mcpServers entry in that repo's .claude/settings.json",
+    "Bearer token + env var BRAIN_BEARER_TOKEN required in shell before launching claude",
+    "Risks: Anthropic extraction cost during bulk migration, MCP transport flakiness (REST fallback exists), entity dedup tuning"
+  ],
+  "storiesCount": 14,
+  "sourcePlan": "plans/phase-1-graph-online.md"
+}

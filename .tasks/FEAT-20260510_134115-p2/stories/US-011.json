@@ -1,0 +1,16 @@
+{
+  "id": "US-011",
+  "featureId": "FEAT-20260510_134115-p2",
+  "title": "Postgres brain.tool_calls table for observability",
+  "userStory": "As an operator, I want every tool call recorded so that /admin can show real numbers.",
+  "acceptanceCriteria": [
+    "Postgres table brain.tool_calls created with columns: id BIGSERIAL, occurred_at, session_id UUID, tool_name, input_json JSONB, output_json JSONB, status, latency_ms, model, input_tokens, output_tokens, cost_usd",
+    "Indexes on (occurred_at DESC) and (tool_name, occurred_at DESC)",
+    "Migration committed via the chosen migration tool"
+  ],
+  "dependencies": [],
+  "status": "todo",
+  "createdAt": "2026-05-10T13:41:15Z",
+  "completedAt": null,
+  "iteration": null
+}

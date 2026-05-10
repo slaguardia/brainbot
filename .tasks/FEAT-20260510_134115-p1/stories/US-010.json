@@ -1,0 +1,18 @@
+{
+  "id": "US-010",
+  "featureId": "FEAT-20260510_134115-p1",
+  "title": "Migrate Writing Samples + My Story + Outreach Philosophy + voice rules",
+  "userStory": "As Steve, I want my voice/style references in the graph so that the agent can retrieve them when drafting.",
+  "acceptanceCriteria": [
+    "One episode per Notion page (or per top-level section if pages are long)",
+    "entity_hints flag these episodes as voice/style references for retrieval at draft time",
+    "Verify: search_nodes('voice rules for outreach') returns the expected pages"
+  ],
+  "dependencies": [
+    "US-007"
+  ],
+  "status": "todo",
+  "createdAt": "2026-05-10T13:41:15Z",
+  "completedAt": null,
+  "iteration": null
+}

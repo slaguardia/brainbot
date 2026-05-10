@@ -1,0 +1,20 @@
+{
+  "id": "US-006",
+  "featureId": "FEAT-20260510_134115-p2",
+  "title": "Tool: add_episode (fire-and-forget queue)",
+  "userStory": "As Steve, I want add_episode to enqueue work so that chat responses do not freeze on extraction latency.",
+  "acceptanceCriteria": [
+    "New file pwa/src/lib/server/tools/add-episode.ts",
+    "Handler validates input synchronously, inserts a 'pending' row into brain.pending_episodes, returns { status: 'queued', episode_id } in <100ms",
+    "Background worker (separate Node process or in-process queue) drains pending_episodes by calling Graphiti add_episode and marks rows done or failed",
+    "brain.pending_episodes table created with status, attempts, last_error columns",
+    "Verify: invoking add_episode returns within 100ms; row in pending_episodes transitions to done within ~3s; failure path marks status=failed with error captured"
+  ],
+  "dependencies": [
+    "US-003"
+  ],
+  "status": "todo",
+  "createdAt": "2026-05-10T13:41:15Z",
+  "completedAt": null,
+  "iteration": null
+}

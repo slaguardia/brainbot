@@ -1,0 +1,19 @@
+{
+  "id": "US-004",
+  "featureId": "FEAT-20260510_134115-p2",
+  "title": "Tool: recall_similar_outreach",
+  "userStory": "As the agent, I want a recall tool scoped to past Outreach so that drafts can lean on what worked.",
+  "acceptanceCriteria": [
+    "New file pwa/src/lib/server/tools/recall-outreach.ts",
+    "Calls Graphiti search_nodes filtered to Outreach-typed nodes ordered by vector similarity",
+    "Returns message body + outcome (responded? hired?) per hit",
+    "Verify: tool invocation returns at least one historical outreach when queried about a known persona"
+  ],
+  "dependencies": [
+    "US-003"
+  ],
+  "status": "todo",
+  "createdAt": "2026-05-10T13:41:15Z",
+  "completedAt": null,
+  "iteration": null
+}

@@ -1,0 +1,21 @@
+{
+  "featureId": "FEAT-20260510_134115-p2-5",
+  "title": "Phase 2.5: In-PWA upgrade button on /admin",
+  "stories": [
+    {
+      "id": "US-001",
+      "title": "Backend: POST /api/admin/deploy that shells out to bin/deploy.sh",
+      "status": "todo"
+    },
+    {
+      "id": "US-002",
+      "title": "Backend: GET /api/admin/deploy/runs and /api/admin/deploy/runs/:id/stream",
+      "status": "todo"
+    },
+    {
+      "id": "US-003",
+      "title": "/admin UI: Upgrade panel with current sha, latest sha, button, and live log",
+      "status": "todo"
+    }
+  ]
+}

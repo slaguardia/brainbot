@@ -1,0 +1,20 @@
+{
+  "id": "US-004",
+  "featureId": "FEAT-20260510_134115-p3",
+  "title": "PWA quick-capture screen at /capture",
+  "userStory": "As Steve, I want a notes-app-feeling capture screen so that recording a thought is one tap and one paragraph.",
+  "acceptanceCriteria": [
+    "New file pwa/src/routes/capture/+page.svelte",
+    "Single big textarea takes most of the screen with a Capture button at the bottom",
+    "Optional tags input (chips) lets the user hint entity types (e.g. 'met:Alice company:Acme')",
+    "Submit calls add_episode directly (not via the chat agent)",
+    "Optimistic success returned in <100ms; actual Graphiti write queued",
+    "PWA manifest 'shortcuts' array adds 'Quick Capture' so iOS long-press on the home-screen icon shows it as a direct entry",
+    "Verify: open /capture from the home-screen long-press; type a note; success toast in <100ms; episode visible via search_brain seconds later"
+  ],
+  "dependencies": [],
+  "status": "todo",
+  "createdAt": "2026-05-10T13:41:15Z",
+  "completedAt": null,
+  "iteration": null
+}

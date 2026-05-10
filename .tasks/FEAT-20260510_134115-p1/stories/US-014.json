@@ -1,0 +1,19 @@
+{
+  "id": "US-014",
+  "featureId": "FEAT-20260510_134115-p1",
+  "title": "End-to-end smoke: Claude Code reads the brain without naming Notion",
+  "userStory": "As Steve, I want three real questions answered from the graph so that Phase 1 can be declared done.",
+  "acceptanceCriteria": [
+    "In personal/, prompt 'what is the latest status on my Acme application?' returns a relevant answer sourced from the graph",
+    "Prompt 'who did I last DM that responded?' returns a relevant answer",
+    "Prompt 'show me the voice rules for outreach' returns the expected episodes",
+    ".claude/logs/inject_memory.log shows the hook fired and returned hits for each prompt"
+  ],
+  "dependencies": [
+    "US-013"
+  ],
+  "status": "todo",
+  "createdAt": "2026-05-10T13:41:15Z",
+  "completedAt": null,
+  "iteration": null
+}

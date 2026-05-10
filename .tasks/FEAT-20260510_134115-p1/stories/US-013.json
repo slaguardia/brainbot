@@ -1,0 +1,21 @@
+{
+  "id": "US-013",
+  "featureId": "FEAT-20260510_134115-p1",
+  "title": "UserPromptSubmit hook for memory injection",
+  "userStory": "As Steve, I want my prompts in personal/ pre-augmented with relevant graph hits so that I do not have to mention Notion or the brain explicitly.",
+  "acceptanceCriteria": [
+    "New file ~/Repositories/personal/.claude/hooks/inject_memory.py",
+    "Reads prompt from stdin; exits 0 if cwd is not under personal/",
+    "Calls Graphiti search_nodes(query=prompt, limit=5) with 800ms timeout",
+    "On hits, prepends a <relevant-memory> block to the prompt with the top 5 entries",
+    "On timeout or error, logs to .claude/logs/inject_memory.log and exits 0 (silent degrade)",
+    ".claude/settings.json adds hooks.UserPromptSubmit entry pointing at the script"
+  ],
+  "dependencies": [
+    "US-012"
+  ],
+  "status": "todo",
+  "createdAt": "2026-05-10T13:41:15Z",
+  "completedAt": null,
+  "iteration": null
+}

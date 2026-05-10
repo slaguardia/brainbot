@@ -1,0 +1,24 @@
+{
+  "id": "US-002",
+  "featureId": "FEAT-20260510_134115-p1-5",
+  "title": "Add bin/install.sh bootstrap script for fresh Ubuntu 24.04",
+  "userStory": "As an operator, I want one curl-pipe command to take a brand-new VPS to a running brainbot so that re-provisioning is not a day-long re-discovery exercise.",
+  "acceptanceCriteria": [
+    "New file bin/install.sh, designed to be safe under `curl ... | bash`",
+    "Idempotent: re-running on an already-installed box is a no-op (or a deploy)",
+    "Steps: install docker + docker compose plugin if missing, install git + rclone if missing, prompt for or accept env vars (BRAIN_DOMAIN, BRAIN_BEARER_TOKEN, ANTHROPIC_API_KEY, etc.) \u2014 accepts via stdin or pre-set env, never echoed",
+    "Clones brainbot to /opt/brainbot if absent, otherwise pulls",
+    "Writes /opt/brainbot/compose/.env from prompted values if .env does not exist; never overwrites an existing .env",
+    "Calls bin/deploy.sh at the end",
+    "Sets up a systemd unit or cron entry to run bin/deploy.sh on a schedule only if user opts in (e.g. `BRAINBOT_AUTO_UPDATE=1`); default is manual",
+    "Verify: on a fresh Hostinger Ubuntu 24.04 VPS, `curl -fsSL https://raw.githubusercontent.com/<user>/brainbot/main/bin/install.sh | bash` produces a healthy brainbot stack with no further commands",
+    "Verify: re-running the same curl on the same box does not duplicate state and ends in a successful deploy"
+  ],
+  "dependencies": [
+    "US-001"
+  ],
+  "status": "todo",
+  "createdAt": "2026-05-10T13:41:15Z",
+  "completedAt": null,
+  "iteration": null
+}

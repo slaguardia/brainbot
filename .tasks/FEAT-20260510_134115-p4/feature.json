@@ -1,0 +1,18 @@
+{
+  "id": "FEAT-20260510_134115-p4",
+  "title": "Phase 4 (Track A): Make backups real before anything else",
+  "summary": "Ship the only Phase 4 work that's non-negotiable: nightly FalkorDB + Postgres backups to off-VPS storage, a proven restore procedure, and a visible freshness indicator on /admin.",
+  "status": "planning",
+  "createdAt": "2026-05-10T13:41:15Z",
+  "outOfScope": [
+    "Tracks B-F (observability rollups, dedup audits, new entity types, fallback memory layer, surface polish) - tracked in backlog.json, picked by current pain"
+  ],
+  "technicalConsiderations": [
+    "Storage default: Cloudflare R2 via rclone (free egress)",
+    "New shell script compose/backup/falkordb-backup.sh on a cron / systemd timer",
+    "New Postgres table brain.backup_runs for the freshness card",
+    "Restore procedure documented in compose/backup/RESTORE.md (a backup that does not restore is worthless)"
+  ],
+  "storiesCount": 4,
+  "sourcePlan": "plans/phase-4-hardening.md"
+}

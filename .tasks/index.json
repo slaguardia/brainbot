@@ -1,0 +1,42 @@
+{
+  "createdAt": "2026-05-10T13:41:15Z",
+  "features": [
+    {
+      "id": "FEAT-20260510_134115-p1",
+      "title": "Phase 1: Bring the brain online and let Claude Code read it",
+      "stories": 14,
+      "sourcePlan": "plans/phase-1-graph-online.md"
+    },
+    {
+      "id": "FEAT-20260510_134115-p1-5",
+      "title": "Phase 1.5: Make VPS install + update a one-liner",
+      "stories": 3,
+      "sourcePlan": "user request 2026-05-10 (no markdown plan file)"
+    },
+    {
+      "id": "FEAT-20260510_134115-p2",
+      "title": "Phase 2: Build the PWA + custom harness with /admin observability",
+      "stories": 16,
+      "sourcePlan": "plans/phase-2-pwa-harness.md"
+    },
+    {
+      "id": "FEAT-20260510_134115-p2-5",
+      "title": "Phase 2.5: In-PWA upgrade button on /admin",
+      "stories": 3,
+      "sourcePlan": "user request 2026-05-10 (no markdown plan file)"
+    },
+    {
+      "id": "FEAT-20260510_134115-p3",
+      "title": "Phase 3: Close the write-back loop and decommission OpenClaw",
+      "stories": 10,
+      "sourcePlan": "plans/phase-3-writeback.md"
+    },
+    {
+      "id": "FEAT-20260510_134115-p4",
+      "title": "Phase 4 (Track A): Make backups real before anything else",
+      "stories": 4,
+      "sourcePlan": "plans/phase-4-hardening.md",
+      "backlog": "backlog.json"
+    }
+  ]
+}

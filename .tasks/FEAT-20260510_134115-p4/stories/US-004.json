@@ -1,0 +1,18 @@
+{
+  "id": "US-004",
+  "featureId": "FEAT-20260510_134115-p4",
+  "title": "Backup monitoring card on /admin",
+  "userStory": "As Steve, I want a visible 'last successful backup' indicator so that a silent failure becomes loud within 36h.",
+  "acceptanceCriteria": [
+    "Backup script writes a row to brain.backup_runs on success",
+    "/admin renders a card 'last successful backup: X hours ago' with a red flag if >36h",
+    "Verify: simulate a failed backup (skip the success row write); /admin card turns red within 36h"
+  ],
+  "dependencies": [
+    "US-001"
+  ],
+  "status": "todo",
+  "createdAt": "2026-05-10T13:41:15Z",
+  "completedAt": null,
+  "iteration": null
+}

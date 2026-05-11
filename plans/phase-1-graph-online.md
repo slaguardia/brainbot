@@ -15,18 +15,20 @@ The third workstream depends on the first two. The first two can be parallelized
 
 ---
 
-## Workstream A — Provision Graphiti + FalkorDB on the VPS
+## Workstream A — Provision the brain stack
+
+The compose stack is self-contained: FalkorDB, Postgres, and Graphiti. Caddy is VPS-only (TLS + bearer) and sits in front of Graphiti. A `docker-compose.local.yml` overlay exposes the right ports on `127.0.0.1` for laptop development.
 
 ### Task A.1 — Add FalkorDB service to docker-compose
 
-**File:** `compose/docker-compose.yml` (existing)
+**File:** `compose/docker-compose.yml`
 
 Add service with:
 - Image: `falkordb/falkordb:latest`
 - Internal-only: no `ports:` mapping. Other services reach it on the docker network at `falkordb:6379`.
 - Named volume `falkordb-data` mounted at `/data` for persistence
 - Healthcheck: `redis-cli ping`
-- Resource limit: `mem_limit: 2g` (FalkorDB is in-memory; cap to leave room for Postgres + PWA)
+- Resource limit: `mem_limit: 2g` (FalkorDB is in-memory; cap to leave room for Postgres + the PWA in Phase 2)
 
 **Verify:** `docker compose up -d falkordb && docker compose exec falkordb redis-cli GRAPH.LIST`. Should return empty list, not error.
 
@@ -36,11 +38,24 @@ Add service with:
 
 Single service using the official Graphiti MCP server image (which embeds the core + REST API):
 - Image: `zepai/graphiti-mcp:latest` (verify exact tag against [Graphiti MCP repo](https://github.com/getzep/graphiti/tree/main/mcp_server))
-- Env vars: `FALKORDB_URI=falkor://falkordb:6379`, `OPENAI_API_KEY` *or* `ANTHROPIC_API_KEY` (depending on extraction model), `MODEL_NAME` (e.g. `claude-haiku-4-5`)
-- Internal port `8000` exposed only on the docker network as `graphiti:8000`
+- Env vars: `FALKORDB_URI=falkor://falkordb:6379`, `OPENAI_API_KEY`, `OPENAI_BASE_URL` (default OpenRouter), `MODEL_NAME` (e.g. `anthropic/claude-haiku-4.5`). Provider-neutral via the OpenAI-compatible API so downstream users can plug in OpenAI direct, Together, Groq, local Ollama, etc.
+- Internal port `8000` exposed only on the docker network as `graphiti:8000` (the local overlay maps it to `127.0.0.1:8000` for laptop dev)
 - Depends on `falkordb` (with healthcheck condition)
 
 **Verify:** `docker compose exec graphiti curl -s http://localhost:8000/healthz`. Should return 200.
+
+### Task A.2.5 — Add Postgres service to docker-compose
+
+**File:** `compose/docker-compose.yml`
+
+Compose-managed Postgres backs `brain.migration_log` (US-007) and any future Phase 2/3 state that wants a relational store.
+- Image: `postgres:18-alpine`
+- Env vars: `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` (defaults to `brainbot`/`brainbot`)
+- Named volume `postgres-data` mounted at `/var/lib/postgresql/data`
+- Healthcheck: `pg_isready -U $POSTGRES_USER -d $POSTGRES_DB`
+- Internal-only on the VPS; the local overlay maps `5432:5432` to `127.0.0.1` for laptop dev
+
+**Verify:** `docker compose up -d postgres && docker compose exec postgres pg_isready -U brainbot`. Should return `accepting connections`.
 
 ### Task A.3 — Add Caddy route for `brain.{domain}`
 

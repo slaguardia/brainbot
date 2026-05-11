@@ -1,0 +1,22 @@
+# Local-development overlay. Layer this on top of docker-compose.yml when
+# running on your laptop:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.local.yml up -d
+#
+# Differences vs the VPS path:
+#   - Exposes graphiti (8000) and postgres (5432) on 127.0.0.1 so the
+#     migrator + smoke_brain.py can reach them from the host.
+#   - No Caddy / TLS / bearer. The bearer header is enforced by Caddy on
+#     the VPS; locally you talk to graphiti directly over plain HTTP.
+#
+# Do NOT layer this on the VPS — exposing postgres or graphiti to the
+# host firewall there defeats the "only Caddy is public" posture.
+
+services:
+  postgres:
+    ports:
+      - "127.0.0.1:5432:5432"
+
+  graphiti:
+    ports:
+      - "127.0.0.1:8000:8000"

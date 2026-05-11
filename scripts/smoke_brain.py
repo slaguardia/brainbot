@@ -42,10 +42,11 @@ EPISODE_SECOND = {
 
 
 def auth_headers() -> dict[str, str]:
+    headers = {"Content-Type": "application/json"}
     token = os.environ.get("BRAIN_BEARER_TOKEN")
-    if not token:
-        sys.exit("BRAIN_BEARER_TOKEN not set in environment")
-    return {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    return headers
 
 
 def base_url() -> str:

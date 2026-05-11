@@ -27,7 +27,7 @@ Required env:
     NOTION_TOKEN              integration token, read access to the target
     BRAIN_URL                 e.g. https://brain.example.com
     BRAIN_BEARER_TOKEN        bearer for Caddy
-    PERSONAL_DATABASE_URL     Postgres URL for brain.migration_log (idempotency)
+    BRAIN_DATABASE_URL        Postgres URL for brain.migration_log (idempotency)
 """
 
 from __future__ import annotations
@@ -324,11 +324,11 @@ def build_clients(dry_run: bool):
 
     graphiti = GraphitiClient(
         base_url=_require_env("BRAIN_URL"),
-        bearer=_require_env("BRAIN_BEARER_TOKEN"),
+        bearer=os.environ.get("BRAIN_BEARER_TOKEN"),
     )
     import psycopg2  # type: ignore[import-not-found]
 
-    conn = psycopg2.connect(_require_env("PERSONAL_DATABASE_URL"))
+    conn = psycopg2.connect(_require_env("BRAIN_DATABASE_URL"))
     return notion, graphiti, MigrationLog(conn)
 
 

@@ -8,16 +8,13 @@ import requests
 
 
 class GraphitiClient:
-    def __init__(self, base_url: str, bearer: str, timeout: int = 60) -> None:
+    def __init__(self, base_url: str, bearer: str | None = None, timeout: int = 60) -> None:
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
         self.session = requests.Session()
-        self.session.headers.update(
-            {
-                "Authorization": f"Bearer {bearer}",
-                "Content-Type": "application/json",
-            }
-        )
+        self.session.headers.update({"Content-Type": "application/json"})
+        if bearer:
+            self.session.headers["Authorization"] = f"Bearer {bearer}"
 
     def add_episode(self, payload: dict[str, Any]) -> str:
         r = self.session.post(

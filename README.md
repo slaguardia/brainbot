@@ -47,13 +47,67 @@ brainbot/
 
 Code lands in subsequent phases — `compose/`, `migrate/`, `pwa/`, `harness/` directories will be added as Phases 1–2 ship.
 
-## Smoke testing the brain
+## Running it (fresh install)
 
-After Phase 1 infra is up (`compose/docker-compose.yml`, Caddy vhost, `.env`):
+The Phase 1 stack is three compose services: `falkordb` (graph store),
+`postgres` (idempotency log), and `graphiti` (the MCP+REST server that
+does entity extraction on every write). Caddy is VPS-only and sits in
+front of `graphiti` with TLS + bearer auth.
+
+### 1. Configure env
 
 ```sh
-export BRAIN_URL=https://brain.your-domain.com
-export BRAIN_BEARER_TOKEN=...
-python scripts/smoke_brain.py            # post first episode + verify Acme node
+cd compose
+cp .env.example .env
+# edit .env: pick an OPENAI_API_KEY (OpenRouter is the default provider),
+# pick a Postgres password, set NOTION_TOKEN if you'll run the migrator
+```
+
+### 2. Bring the stack up
+
+**Local laptop (no Caddy, no TLS, ports exposed on 127.0.0.1):**
+```sh
+docker compose -f docker-compose.yml -f docker-compose.local.yml up -d
+docker compose ps                       # all three healthy?
+```
+
+`graphiti` is at `http://127.0.0.1:8000`, `postgres` at `127.0.0.1:5432`.
+`.env`'s `BRAIN_URL` should be `http://127.0.0.1:8000` for local runs.
+
+**VPS (with the Caddy vhost from `compose/Caddyfile` already serving
+`brain.{your-domain}`):**
+```sh
+docker compose up -d
+docker compose ps
+```
+
+`.env`'s `BRAIN_URL` should be `https://brain.your-domain.com`.
+
+### 3. Smoke test
+
+```sh
+python scripts/smoke_brain.py            # post first episode + verify node
 python scripts/smoke_brain.py --second   # post follow-up + assert no dup nodes
 ```
+
+If the first run round-trips, Graphiti is wired correctly and the
+extraction model is reachable.
+
+### 4. Migrate Notion content (optional)
+
+The migrator is domain-agnostic — point it at any Notion database or page id:
+
+```sh
+python migrate/notion_to_graphiti.py --target <notion-id> --kind auto --dry-run
+python migrate/notion_to_graphiti.py --target <notion-id> --kind auto
+```
+
+`--dry-run` prints the planned episodes without writing. The live run
+records each migrated item in `brain.migration_log` (Postgres), so
+re-runs only touch items that changed in Notion.
+
+### 5. Wire Claude Code (optional)
+
+See [`templates/claude-code-client/INSTALL.md`](templates/claude-code-client/INSTALL.md)
+for how to drop the MCP server entry and the `UserPromptSubmit` memory
+injection hook into any of your project repos.

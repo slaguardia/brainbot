@@ -2,10 +2,13 @@
 # /app/config/config.yaml (overrides the upstream default which hardcodes
 # gpt-4o-mini + OpenAI for both LLM and embedder).
 #
-# Defaults below: Anthropic for the LLM, Voyage for the embedder.
-# To switch to OpenAI-compatible providers (OpenRouter, OpenAI direct,
-# Groq, local Ollama, etc.), change llm.provider + embedder.provider
-# and set the matching env vars in .env. See .env.example for recipes.
+# Defaults below: Anthropic for the LLM, local Ollama for the embedder.
+# This gives you "one key, fully self-hosted embeddings" — Anthropic
+# doesn't sell an embeddings API, so the embedder either calls a cloud
+# provider (Voyage, OpenAI) or runs locally. We pick local.
+#
+# To switch providers, change llm.provider or embedder.provider here
+# and the matching env vars in .env. See .env.example for recipes.
 
 server:
   transport: "http"
@@ -28,19 +31,21 @@ llm:
       api_url: ${OPENAI_API_URL:https://api.openai.com/v1}
 
 embedder:
-  provider: "voyage"
-  model: "voyage-3-lite"
-  dimensions: 512
+  # Ollama is OpenAI-compatible for /v1/embeddings, so we route through
+  # the openai provider with api_url pointed at the local ollama service.
+  provider: "openai"
+  model: "nomic-embed-text"
+  dimensions: 768
 
   providers:
+    openai:
+      api_key: ${OPENAI_API_KEY:ollama}
+      api_url: ${OPENAI_API_URL:http://ollama:11434/v1}
+
     voyage:
-      api_key: ${VOYAGE_API_KEY}
+      api_key: ${VOYAGE_API_KEY:}
       api_url: ${VOYAGE_API_URL:https://api.voyageai.com/v1}
       model: "voyage-3-lite"
-
-    openai:
-      api_key: ${OPENAI_API_KEY:}
-      api_url: ${OPENAI_API_URL:https://api.openai.com/v1}
 
 database:
   provider: "falkordb"

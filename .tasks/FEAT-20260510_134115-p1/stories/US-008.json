@@ -7,12 +7,12 @@
     "migrate_database(database_id) pages every row with the existing notion_client and emits one PlannedEpisode per row",
     "Episode name uses the row's title property when present; falls back to '{database_label or database_id} row {created_time}'",
     "Episode body flattens every property as 'Property Name: value' lines, in the order Notion returns them",
-    "reference_time = row.created_time; notion_page_id and notion_last_edited carry through for idempotency",
-    "entity_hints empty by default; opt-in shaping happens through the recipes hook (US-010)",
+    "reference_time = row.created_time",
+    "entity_hints empty by default",
     "Verify: --target <db-id> --kind database --dry-run prints planned episodes for at least one row, with no domain assumptions about property names"
   ],
   "dependencies": [
-    "US-007"
+    "US-006"
   ],
   "status": "in_review",
   "createdAt": "2026-05-10T13:41:15Z",

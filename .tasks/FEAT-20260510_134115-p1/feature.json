@@ -1,23 +1,23 @@
 {
   "id": "FEAT-20260510_134115-p1",
   "title": "Phase 1: Bring the brain online and let Claude Code read it",
-  "summary": "Stand up Graphiti + FalkorDB on the VPS, migrate Notion content into the graph, and wire Claude Code in the personal repo to query it via an injection hook + MCP.",
+  "summary": "Stand up Graphiti + FalkorDB in compose, seed it from any Notion target via a generic one-shot migrator, and wire Claude Code in any client repo to query the brain via an injection hook + MCP.",
   "status": "in_review",
   "createdAt": "2026-05-10T13:41:15Z",
   "outOfScope": [
     "PWA or mobile surfaces (Phase 2)",
     "Write-back from Claude Code sessions into the graph (Phase 3)",
     "Backups and observability beyond minimal smoke (Phase 4)",
-    "Replacing or decommissioning OpenClaw (Phase 3)"
+    "Per-item migration tracking / resume semantics (no migration log in Phase 1; add only if incremental re-runs become a real pain point)"
   ],
   "technicalConsiderations": [
-    "Adds two new compose services (falkordb, graphiti) and one Caddy vhost (brain.{domain})",
-    "Introduces a Postgres table brain.migration_log for idempotent re-runs",
-    "Migrator is domain-agnostic: --target <notion-id> --kind {database,page,auto}; the script never knows the shape of the data, Graphiti's per-write extraction handles routing/dedup",
+    "Two compose services (falkordb, graphiti) plus a Caddy vhost (brain.{domain}); no second store. docker-compose.local.yml overlay exposes graphiti on 127.0.0.1:8000 for laptop dev",
+    "Migrator is domain-agnostic and stateless: --target <notion-id> --kind {database,page,auto}; the script never knows the shape of the data, Graphiti's per-write extraction handles routing/dedup. Re-running re-posts everything",
+    "Provider-neutral LLM via OpenAI-compatible API (OPENAI_API_KEY + OPENAI_BASE_URL + MODEL_NAME); defaults to OpenRouter so downstream users avoid SDK lock-in",
     "Client wiring lives in a kit (templates/claude-code-client/) the user copies into any project repo: .mcp.json + inject_memory.py + UserPromptSubmit hook entry",
-    "Bearer token + env vars BRAIN_DOMAIN and BRAIN_BEARER_TOKEN required in shell before launching claude",
-    "Risks: Anthropic extraction cost during bulk migration, MCP transport flakiness (REST fallback exists), entity dedup tuning"
+    "Bearer token + env vars BRAIN_DOMAIN and BRAIN_BEARER_TOKEN required in shell before launching claude; locally the bearer is unused since Caddy is VPS-only",
+    "Risks: extraction-LLM cost during bulk migration, MCP transport flakiness (REST fallback exists), entity dedup tuning"
   ],
-  "storiesCount": 13,
+  "storiesCount": 12,
   "sourcePlan": "plans/phase-1-graph-online.md"
 }

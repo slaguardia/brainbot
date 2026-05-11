@@ -29,12 +29,7 @@
     },
     {
       "id": "US-006",
-      "title": "Migration script skeleton: generic Notion -> Graphiti",
-      "status": "in_review"
-    },
-    {
-      "id": "US-007",
-      "title": "Idempotency: track migrated rows in Postgres brain.migration_log",
+      "title": "Migration script skeleton: generic Notion -> Graphiti (one-shot, no log)",
       "status": "in_review"
     },
     {

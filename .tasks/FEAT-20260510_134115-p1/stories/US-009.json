@@ -8,11 +8,11 @@
     "If the page has heading_2 blocks, emit one PlannedEpisode per H2 section, named '{page title} - {section heading}'",
     "If the page has no heading_2 blocks, emit one PlannedEpisode for the whole page, named with the page title",
     "Body is the plain-text concatenation of the contained blocks (paragraphs, headings, lists, quotes)",
-    "reference_time = page.created_time; notion_page_id = page.id; notion_last_edited carries through",
+    "reference_time = page.created_time",
     "Verify: --target <page-id> --kind page --dry-run prints planned episodes split on H2 when present, single episode otherwise"
   ],
   "dependencies": [
-    "US-007"
+    "US-006"
   ],
   "status": "in_review",
   "createdAt": "2026-05-10T13:41:15Z",

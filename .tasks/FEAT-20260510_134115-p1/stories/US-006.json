@@ -7,8 +7,9 @@
     "New file migrate/notion_to_graphiti.py defines class NotionMigrator with methods: migrate_database(database_id), migrate_page(page_id), and migrate(target_id, kind) that dispatches by kind",
     "CLI entrypoint: --target <notion-id>, --kind {database,page,auto}, --dry-run, --since <date>",
     "kind=auto inspects the Notion object to choose database vs page automatically",
-    "Each migrate_* method pages through content, builds an episode (name + body + reference_time + notion_page_id + notion_last_edited), and calls graphiti.add_episode through a shared dispatcher",
+    "Each migrate_* method pages through content, builds an episode (name + body + reference_time), and calls graphiti.add_episode through a shared dispatcher",
     "--dry-run logs the would-be calls without invoking Graphiti",
+    "Migrator is a one-shot seed: no per-item tracking, no migration log, no resume semantics. Re-running posts everything again; Graphiti's bi-temporal extraction is responsible for linking entities rather than fragmenting on re-run",
     "Verify: python migrate/notion_to_graphiti.py --target <known-db-id> --kind database --dry-run prints planned episodes for at least one row"
   ],
   "dependencies": [

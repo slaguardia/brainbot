@@ -8,7 +8,7 @@
     "Live run completed; episode count matches Notion item count for that target",
     "Spot-check entity dedup: the same entity referenced in 3+ episodes collapses to one node in Graphiti",
     "Spot-check fact timestamps: valid_from on extracted facts matches the source item's created_time",
-    "Total Anthropic spend recorded for this run; surface the actual figure in the commit message or audit note"
+    "Total extraction-LLM spend recorded for this run; surface the actual figure in the commit message or audit note"
   ],
   "dependencies": [
     "US-008",

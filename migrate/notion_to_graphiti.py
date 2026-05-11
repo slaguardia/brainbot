@@ -15,6 +15,13 @@ Default behavior:
   headings, lists, quotes.
 - Auto mode: probe the Notion object to choose database vs page.
 
+This is a one-shot seed migrator. It does not track what's already
+been written and there is no migration log. Re-running posts every
+item again — Graphiti's bi-temporal extraction means re-runs link
+to existing entities rather than silently fragmenting, but each run
+still pays the per-episode extraction cost. Add tracking later if
+incremental re-runs become important.
+
 If your Notion data has structure worth preserving differently, fork
 this file and edit migrate_database / migrate_page directly. The
 extension point IS the source.
@@ -27,7 +34,6 @@ Required env:
     NOTION_TOKEN              integration token, read access to the target
     BRAIN_URL                 e.g. https://brain.example.com
     BRAIN_BEARER_TOKEN        bearer for Caddy
-    BRAIN_DATABASE_URL        Postgres URL for brain.migration_log (idempotency)
 """
 
 from __future__ import annotations
@@ -53,8 +59,6 @@ class PlannedEpisode:
     source_description: str
     reference_time: datetime
     entity_hints: dict[str, Any] = field(default_factory=dict)
-    notion_page_id: str = ""
-    notion_last_edited: datetime | None = None
 
     def to_payload(self) -> dict[str, Any]:
         return {
@@ -66,81 +70,19 @@ class PlannedEpisode:
         }
 
 
-class MigrationLog:
-    """Tracks which Notion items have been migrated and at what edit time.
-
-    Backed by Postgres table brain.migration_log (PK: notion_page_id).
-    Use status() to decide whether an item should be migrated, skipped,
-    or re-migrated. record() persists the result of a successful add_episode.
-    """
-
-    SCHEMA_FILE = os.path.join(os.path.dirname(__file__), "sql", "001_migration_log.sql")
-
-    def __init__(self, conn) -> None:
-        self.conn = conn
-        self._ensure_schema()
-
-    def _ensure_schema(self) -> None:
-        with open(self.SCHEMA_FILE) as f:
-            ddl = f.read()
-        with self.conn.cursor() as cur:
-            cur.execute(ddl)
-        self.conn.commit()
-
-    def status(self, page_id: str, last_edited: datetime) -> str:
-        """Return 'new', 'changed', or 'unchanged'."""
-        with self.conn.cursor() as cur:
-            cur.execute(
-                "SELECT notion_last_edited FROM brain.migration_log "
-                "WHERE notion_page_id=%s",
-                (page_id,),
-            )
-            row = cur.fetchone()
-        if row is None:
-            return "new"
-        stored = row[0]
-        return "changed" if last_edited > stored else "unchanged"
-
-    def record(
-        self,
-        target_id: str,
-        page_id: str,
-        last_edited: datetime,
-        episode_id: str,
-    ) -> None:
-        with self.conn.cursor() as cur:
-            cur.execute(
-                """
-                INSERT INTO brain.migration_log
-                    (notion_page_id, target_id, notion_last_edited, graphiti_episode_id)
-                VALUES (%s, %s, %s, %s)
-                ON CONFLICT (notion_page_id)
-                DO UPDATE SET
-                    target_id = EXCLUDED.target_id,
-                    notion_last_edited = EXCLUDED.notion_last_edited,
-                    graphiti_episode_id = EXCLUDED.graphiti_episode_id,
-                    migrated_at = now()
-                """,
-                (page_id, target_id, last_edited, episode_id),
-            )
-        self.conn.commit()
-
-
 class NotionMigrator:
     def __init__(
         self,
         notion_client,
         graphiti_client,
-        log: "MigrationLog | None" = None,
         dry_run: bool = False,
         since: datetime | None = None,
     ) -> None:
         self.notion = notion_client
         self.graphiti = graphiti_client
-        self.log = log
         self.dry_run = dry_run
         self.since = since
-        self.counts = {"migrated": 0, "skipped": 0, "remigrated": 0}
+        self.counts = {"migrated": 0}
 
     def migrate(self, target_id: str, kind: str = "auto") -> list[PlannedEpisode]:
         if kind == "auto":
@@ -156,7 +98,7 @@ class NotionMigrator:
             raise ValueError(f"unknown kind: {kind}")
 
         for ep in episodes:
-            self._dispatch(target_id, ep)
+            self._dispatch(ep)
         return episodes
 
     def migrate_database(self, database_id: str) -> Iterable[PlannedEpisode]:
@@ -168,9 +110,7 @@ class NotionMigrator:
         ) or database_id
 
         for row in self.notion.query_database(database_id, since=self.since):
-            row_id = row.get("id", "")
             created = _parse_iso(row.get("created_time")) or datetime.now(timezone.utc)
-            last_edited = _parse_iso(row.get("last_edited_time"))
 
             title = page_title(row).strip()
             if not title:
@@ -190,8 +130,6 @@ class NotionMigrator:
                 source_description=f"notion-database:{database_id}",
                 reference_time=created,
                 entity_hints={},
-                notion_page_id=row_id,
-                notion_last_edited=last_edited,
             )
 
     def migrate_page(self, page_id: str) -> Iterable[PlannedEpisode]:
@@ -201,7 +139,6 @@ class NotionMigrator:
         blocks = self.notion.fetch_page_blocks(page_id)
 
         title = page_title(page).strip() or f"Notion page {page_id}"
-        last_edited = _parse_iso(page.get("last_edited_time"))
         ref_time = _parse_iso(page.get("created_time")) or datetime.now(timezone.utc)
 
         sections = _split_blocks_by_h2(blocks)
@@ -214,8 +151,6 @@ class NotionMigrator:
                     source_description=f"notion-page:{page_id}",
                     reference_time=ref_time,
                     entity_hints={},
-                    notion_page_id=page_id,
-                    notion_last_edited=last_edited,
                 )
             return
 
@@ -229,35 +164,15 @@ class NotionMigrator:
                 source_description=f"notion-page:{page_id}",
                 reference_time=ref_time,
                 entity_hints={"section": heading},
-                notion_page_id=page_id,
-                notion_last_edited=last_edited,
             )
 
-    def _dispatch(self, target_id: str, episode: PlannedEpisode) -> None:
+    def _dispatch(self, episode: PlannedEpisode) -> None:
         if self.dry_run:
             logger.info("[dry-run] %s", json.dumps(episode.to_payload(), default=str))
             return
-
-        page_id = episode.notion_page_id
-        last_edited = episode.notion_last_edited
-        if self.log is not None and page_id and last_edited is not None:
-            state = self.log.status(page_id, last_edited)
-            if state == "unchanged":
-                self.counts["skipped"] += 1
-                logger.info("skip %s (%s): unchanged since last migration", episode.name, page_id)
-                return
-            episode_id = self.graphiti.add_episode(episode.to_payload())
-            self.log.record(target_id, page_id, last_edited, episode_id)
-            if state == "changed":
-                self.counts["remigrated"] += 1
-                logger.info("re-migrated %s (%s) -> %s", episode.name, page_id, episode_id)
-            else:
-                self.counts["migrated"] += 1
-                logger.info("migrated %s (%s) -> %s", episode.name, page_id, episode_id)
-        else:
-            episode_id = self.graphiti.add_episode(episode.to_payload())
-            self.counts["migrated"] += 1
-            logger.info("posted %s -> %s", episode.name, episode_id)
+        episode_id = self.graphiti.add_episode(episode.to_payload())
+        self.counts["migrated"] += 1
+        logger.info("posted %s -> %s", episode.name, episode_id)
 
 
 def _split_blocks_by_h2(
@@ -320,16 +235,13 @@ def build_clients(dry_run: bool):
 
     notion = NotionClient(token=_require_env("NOTION_TOKEN"))
     if dry_run:
-        return notion, _NoOpGraphiti(), None
+        return notion, _NoOpGraphiti()
 
     graphiti = GraphitiClient(
         base_url=_require_env("BRAIN_URL"),
         bearer=os.environ.get("BRAIN_BEARER_TOKEN"),
     )
-    import psycopg2  # type: ignore[import-not-found]
-
-    conn = psycopg2.connect(_require_env("BRAIN_DATABASE_URL"))
-    return notion, graphiti, MigrationLog(conn)
+    return notion, graphiti
 
 
 def _require_env(key: str) -> str:
@@ -356,23 +268,17 @@ def main(argv: list[str] | None = None) -> int:
     logging.basicConfig(level=args.log_level, format="%(message)s")
 
     since = parse_since(args.since)
-    notion, graphiti, log = build_clients(dry_run=args.dry_run)
+    notion, graphiti = build_clients(dry_run=args.dry_run)
     migrator = NotionMigrator(
         notion,
         graphiti,
-        log=log,
         dry_run=args.dry_run,
         since=since,
     )
 
     episodes = migrator.migrate(args.target, kind=args.kind)
     logger.info("%s: %d episodes planned", args.target, len(episodes))
-    logger.info(
-        "summary: migrated=%d remigrated=%d skipped=%d",
-        migrator.counts["migrated"],
-        migrator.counts["remigrated"],
-        migrator.counts["skipped"],
-    )
+    logger.info("summary: migrated=%d", migrator.counts["migrated"])
     return 0
 
 

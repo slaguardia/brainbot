@@ -38,8 +38,8 @@ Add service with:
 
 Single service using the official Graphiti MCP server image (which embeds the core + REST API):
 - Image: `zepai/graphiti-mcp:latest` (verify exact tag against [Graphiti MCP repo](https://github.com/getzep/graphiti/tree/main/mcp_server))
-- Env vars: `FALKORDB_URI=falkor://falkordb:6379`, `ANTHROPIC_API_KEY` (LLM), `OPENAI_API_URL=http://ollama:11434/v1` (embedder endpoint), `GRAPHITI_GROUP_ID` (defaults to `brain`)
-- Bind-mount `compose/graphiti-config.yaml` at `/app/config/config.yaml` — upstream defaults hardcode `gpt-4o-mini` + OpenAI, so we ship our own to pin `llm.provider=anthropic`/`model=claude-haiku-4-5` and route the embedder through a co-hosted Ollama service (`embedder.provider=openai` + `model=nomic-embed-text`, since Ollama exposes an OpenAI-compatible `/v1/embeddings` endpoint). Voyage / OpenAI direct / OpenRouter remain documented swaps in `.env.example`
+- Env vars: `FALKORDB_URI=falkor://falkordb:6379`, `ANTHROPIC_API_KEY` (LLM), `VOYAGE_API_KEY` (embedder), `GRAPHITI_GROUP_ID` (defaults to `brain`)
+- Bind-mount `compose/graphiti-config.yaml` at `/app/config/config.yaml` — upstream defaults hardcode `gpt-4o-mini` + OpenAI, so we ship our own to pin `llm.provider=anthropic`/`model=claude-haiku-4-5` and `embedder.provider=voyage`/`model=voyage-3-lite`. Other providers (OpenAI direct, OpenRouter, Ollama) are documented swaps in `.env.example`
 - Internal port `8000` exposed only on the docker network as `graphiti:8000` (the local overlay maps it to `127.0.0.1:8000` for laptop dev)
 - Depends on `falkordb` (with healthcheck condition)
 

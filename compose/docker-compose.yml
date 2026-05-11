@@ -1,34 +1,4 @@
 services:
-  ollama:
-    # Embeddings service. nomic-embed-text is small (~270MB on disk,
-    # ~500MB-1GB RAM at runtime), runs on CPU, no GPU required.
-    # OpenAI-compatible API at /v1/embeddings; Graphiti points at it
-    # via embedder.provider=openai + api_url=http://ollama:11434/v1.
-    image: ollama/ollama:latest
-    container_name: ollama
-    restart: unless-stopped
-    networks:
-      - brainnet
-    volumes:
-      - ollama-data:/root/.ollama
-    # Pull the embedding model on first start; serve forever after.
-    # `ollama serve` is the default entrypoint; we wrap to ensure pull.
-    entrypoint: ["/bin/sh", "-c"]
-    command:
-      - |
-        ollama serve &
-        SERVER_PID=$$!
-        until ollama list >/dev/null 2>&1; do sleep 1; done
-        ollama pull nomic-embed-text
-        wait $$SERVER_PID
-    healthcheck:
-      test: ["CMD", "ollama", "list"]
-      interval: 15s
-      timeout: 5s
-      retries: 10
-      start_period: 60s
-    mem_limit: 2g
-
   falkordb:
     image: falkordb/falkordb:latest
     container_name: falkordb
@@ -56,20 +26,17 @@ services:
       FALKORDB_URI: falkor://falkordb:6379
       # LLM (Anthropic by default). Switch providers in graphiti-config.yaml.
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
-      # Embedder runs locally via Ollama (no key needed). The OPENAI_* vars
-      # below are how Graphiti's openai-compatible embedder client picks
-      # up the local endpoint; the API key value is irrelevant to Ollama
-      # but the SDK requires *something* non-empty.
-      OPENAI_API_KEY: ${OPENAI_API_KEY:-ollama}
-      OPENAI_API_URL: ${OPENAI_API_URL:-http://ollama:11434/v1}
+      # Embedder (Voyage by default; same parent as Anthropic, free tier)
+      VOYAGE_API_KEY: ${VOYAGE_API_KEY}
+      # Optional swaps — populate if your config.yaml points at them
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_API_URL: ${OPENAI_API_URL:-}
       # Namespacing: single global group; see design-history.md
       GRAPHITI_GROUP_ID: ${GRAPHITI_GROUP_ID:-brain}
     volumes:
       - ./graphiti-config.yaml:/app/config/config.yaml:ro
     depends_on:
       falkordb:
-        condition: service_healthy
-      ollama:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:8000/health"]
@@ -84,4 +51,3 @@ networks:
 
 volumes:
   falkordb-data:
-  ollama-data:

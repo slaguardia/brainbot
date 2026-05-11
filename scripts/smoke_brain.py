@@ -1,19 +1,18 @@
 #!/usr/bin/env python3
 """End-to-end smoke test for the brain.
 
-Posts an episode to Graphiti via the bearer-protected Caddy vhost,
-polls until extraction completes, then queries search_nodes to confirm
-the entity is reachable. Re-running with a second episode that mentions
-the same entities should link to the existing nodes (no duplicates).
+Calls add_memory via the MCP server, then polls search_nodes until the
+Acme entity appears (entity extraction is queued, not synchronous).
+A second invocation with --second posts a follow-up episode that
+mentions the same entities and verifies node counts didn't increase
+(dedup smoke).
 
 Usage:
+    BRAIN_URL=http://127.0.0.1:8000 python scripts/smoke_brain.py
     BRAIN_URL=https://brain.example.com BRAIN_BEARER_TOKEN=... \\
         python scripts/smoke_brain.py [--second]
 
-Without --second the first episode ("met Alice at Acme on May 9 to
-discuss the FDE role") is sent. With --second the follow-up episode
-("had coffee with Alice from Acme") is sent and the script asserts
-that node counts for Alice and Acme did not increase.
+Default talks to Graphiti's MCP JSON-RPC transport at /mcp/.
 """
 
 from __future__ import annotations
@@ -22,81 +21,48 @@ import argparse
 import os
 import sys
 import time
-from datetime import datetime, timezone
 
-import requests
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(ROOT, "migrate"))
+
+from graphiti_clients import GraphitiClient  # noqa: E402
 
 EPISODE_FIRST = {
     "name": "Meeting: Alice at Acme",
-    "body": "Met Alice at Acme on May 9 to discuss the engineering role.",
+    "episode_body": "Met Alice at Acme on May 9 to discuss the engineering role.",
     "source_description": "smoke-test",
-    "entity_hints": {"company": "Acme", "person": "Alice", "role": "engineering"},
 }
 
 EPISODE_SECOND = {
     "name": "Coffee: Alice at Acme",
-    "body": "Had coffee with Alice from Acme.",
+    "episode_body": "Had coffee with Alice from Acme.",
     "source_description": "smoke-test",
-    "entity_hints": {"company": "Acme", "person": "Alice"},
 }
 
-
-def auth_headers() -> dict[str, str]:
-    headers = {"Content-Type": "application/json"}
-    token = os.environ.get("BRAIN_BEARER_TOKEN")
-    if token:
-        headers["Authorization"] = f"Bearer {token}"
-    return headers
+EXTRACTION_TIMEOUT_S = 90
+POLL_INTERVAL_S = 3
 
 
-def base_url() -> str:
-    url = os.environ.get("BRAIN_URL")
-    if not url:
-        sys.exit("BRAIN_URL not set in environment (e.g. https://brain.example.com)")
-    return url.rstrip("/")
-
-
-def add_episode(payload: dict) -> str:
-    body = {
-        **payload,
-        "reference_time": datetime.now(timezone.utc).isoformat(),
-    }
-    r = requests.post(
-        f"{base_url()}/add_episode",
-        headers=auth_headers(),
-        json=body,
-        timeout=30,
+def make_client() -> GraphitiClient:
+    base_url = os.environ.get("BRAIN_URL")
+    if not base_url:
+        sys.exit("BRAIN_URL not set (e.g. http://127.0.0.1:8000)")
+    return GraphitiClient(
+        base_url=base_url,
+        bearer=os.environ.get("BRAIN_BEARER_TOKEN"),
+        group_id=os.environ.get("GRAPHITI_GROUP_ID", "brain"),
     )
-    r.raise_for_status()
-    episode_id = r.json().get("episode_id") or r.json().get("id")
-    if not episode_id:
-        sys.exit(f"add_episode returned no episode id: {r.text}")
-    return episode_id
 
 
-def wait_for_extraction(episode_id: str, timeout_s: int = 90) -> None:
+def wait_for_node(client: GraphitiClient, query: str, timeout_s: int) -> list[dict]:
+    """Poll search_nodes until at least one match returns or timeout."""
     deadline = time.time() + timeout_s
     while time.time() < deadline:
-        r = requests.get(
-            f"{base_url()}/episode/{episode_id}",
-            headers=auth_headers(),
-            timeout=10,
-        )
-        if r.ok and r.json().get("status") == "completed":
-            return
-        time.sleep(2)
-    sys.exit(f"extraction did not complete within {timeout_s}s for {episode_id}")
-
-
-def search_nodes(query: str) -> list[dict]:
-    r = requests.post(
-        f"{base_url()}/search_nodes",
-        headers=auth_headers(),
-        json={"query": query, "limit": 10},
-        timeout=15,
-    )
-    r.raise_for_status()
-    return r.json().get("nodes", [])
+        nodes = client.search_nodes(query=query, max_nodes=10)
+        if nodes:
+            return nodes
+        time.sleep(POLL_INTERVAL_S)
+    return []
 
 
 def main() -> int:
@@ -108,22 +74,32 @@ def main() -> int:
     )
     args = parser.parse_args()
 
+    client = make_client()
     payload = EPISODE_SECOND if args.second else EPISODE_FIRST
 
-    nodes_before = {n.get("name") for n in search_nodes("Acme")} if args.second else set()
+    nodes_before: set[str] = set()
+    if args.second:
+        nodes_before = {
+            n.get("name", "") for n in client.search_nodes(query="Acme", max_nodes=20)
+        }
+        print(f"nodes_before('Acme') = {sorted(nodes_before)}")
 
-    episode_id = add_episode(payload)
-    print(f"posted episode {episode_id}")
-    wait_for_extraction(episode_id)
-    print("extraction completed")
+    client.add_memory(
+        name=payload["name"],
+        episode_body=payload["episode_body"],
+        source="text",
+        source_description=payload["source_description"],
+    )
+    print(f"queued: {payload['name']}")
 
-    nodes_after = {n.get("name") for n in search_nodes("Acme")}
-    if not any("Acme" in (n or "") for n in nodes_after):
-        sys.exit(f"Acme not found in search_nodes results: {nodes_after}")
-    print(f"search_nodes('Acme') -> {sorted(nodes_after)}")
+    nodes_after = wait_for_node(client, "Acme", EXTRACTION_TIMEOUT_S)
+    if not nodes_after:
+        sys.exit(f"no Acme node within {EXTRACTION_TIMEOUT_S}s — extraction may have failed")
+    names_after = {n.get("name", "") for n in nodes_after}
+    print(f"search_nodes('Acme') -> {sorted(names_after)}")
 
     if args.second:
-        new_nodes = nodes_after - nodes_before
+        new_nodes = names_after - nodes_before
         if new_nodes:
             sys.exit(f"dedup failed: new nodes appeared on second run: {new_nodes}")
         print("dedup OK: no new Acme/Alice nodes after follow-up episode")

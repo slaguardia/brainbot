@@ -38,11 +38,12 @@ Add service with:
 
 Single service using the official Graphiti MCP server image (which embeds the core + REST API):
 - Image: `zepai/graphiti-mcp:latest` (verify exact tag against [Graphiti MCP repo](https://github.com/getzep/graphiti/tree/main/mcp_server))
-- Env vars: `FALKORDB_URI=falkor://falkordb:6379`, `OPENAI_API_KEY`, `OPENAI_BASE_URL` (default OpenRouter), `MODEL_NAME` (e.g. `anthropic/claude-haiku-4.5`). Provider-neutral via the OpenAI-compatible API so downstream users can plug in OpenAI direct, Together, Groq, local Ollama, etc.
+- Env vars: `FALKORDB_URI=falkor://falkordb:6379`, `ANTHROPIC_API_KEY` (LLM), `VOYAGE_API_KEY` (embedder), `GRAPHITI_GROUP_ID` (defaults to `brain`)
+- Bind-mount `compose/graphiti-config.yaml` at `/app/config/config.yaml` — upstream defaults hardcode `gpt-4o-mini` + OpenAI, so we ship our own to pin `llm.provider=anthropic`/`model=claude-haiku-4-5` and `embedder.provider=voyage`/`model=voyage-3-lite`. Other providers (OpenAI direct, OpenRouter, Ollama) are documented swaps in `.env.example`
 - Internal port `8000` exposed only on the docker network as `graphiti:8000` (the local overlay maps it to `127.0.0.1:8000` for laptop dev)
 - Depends on `falkordb` (with healthcheck condition)
 
-**Verify:** `docker compose exec graphiti curl -s http://localhost:8000/healthz`. Should return 200.
+**Verify:** `docker compose exec graphiti curl -s http://localhost:8000/health`. Should return `{"status":"healthy",...}`.
 
 ### Task A.3 — Add Caddy route for `brain.{domain}`
 
@@ -65,7 +66,7 @@ brain.{$BRAIN_DOMAIN} {
 - Bearer token via env (long random, set in `.env`, never committed)
 - `BRAIN_DOMAIN` and `BRAIN_BEARER_TOKEN` go into `compose/.env.example` with placeholder values
 
-**Verify:** from laptop, `curl -H "Authorization: Bearer $TOKEN" https://brain.{domain}/healthz` → 200. Without the header → 401.
+**Verify:** from laptop, `curl -H "Authorization: Bearer $TOKEN" https://brain.{domain}/health` → 200. Without the header → 401.
 
 ### Task A.4 — UFW + DNS sanity check
 
@@ -78,9 +79,9 @@ brain.{$BRAIN_DOMAIN} {
 ### Task A.5 — End-to-end smoke from laptop
 
 `scripts/smoke_brain.py`:
-1. POSTs an `add_episode` to the Graphiti REST endpoint with sample text
-2. Polls until extraction completes
-3. GETs `search_nodes` with a query covering one of the extracted entities and verifies the entity exists
+1. Calls `add_memory` via MCP JSON-RPC (`POST /mcp/`, method `tools/call`) with sample text. The Graphiti MCP image is FastMCP, not REST — every operation is a tools/call invocation.
+2. Polls `search_nodes` for the expected entity (`add_memory` is fire-and-forget; episodes are server-queued and extraction completes asynchronously). 90s timeout.
+3. Asserts the entity is reachable in search results.
 
 **Verify:** entity dedup behaves as expected — a second episode that mentions the same entities (`--second`) links to existing nodes instead of duplicating them.
 
@@ -90,7 +91,7 @@ brain.{$BRAIN_DOMAIN} {
 
 The migrator is intentionally domain-agnostic: point it at any Notion database or page id and it produces episodes. Graphiti's per-write entity extraction handles routing/dedup, so the script never needs to know the shape of your data. If your data has structure worth preserving differently, fork `migrate_database` / `migrate_page` directly — the extension point is the source.
 
-Notion is the first source we ship a migrator for because it's the most common seed corpus, but the migrator's contract is generic: anything that can produce `{ name, body, reference_time }` payloads can become a Graphiti episode.
+Notion is the first source we ship a migrator for because it's the most common seed corpus, but the migrator's contract is generic: anything that can produce `{ name, body, source_description }` payloads can become an `add_memory` call. (No `reference_time` — Graphiti's `add_memory` is server-timestamped at queue insertion.)
 
 ### Task B.1 — Generic migration skeleton
 
@@ -110,8 +111,10 @@ if __name__ == "__main__":
 
 Each `migrate_*` method:
 - Pages through Notion content via the shared `NotionClient`
-- For each item, builds an `add_episode` payload (`name`, `body`, `reference_time`)
-- Hands the payload to the shared dispatcher
+- For each item, builds a `PlannedEpisode` (`name`, `body`, `source_description`)
+- Hands it to the shared dispatcher, which calls `graphiti.add_memory(...)` over MCP JSON-RPC
+
+All episodes land in a single global Graphiti group (`brain` by default; override with `--group-id` or `GRAPHITI_GROUP_ID` env). One group means cross-source entity dedup — your Alice from Notion and your Alice from a Claude session are the same node. The `source_description` field still carries provenance ("notion-database:&lt;id&gt;", "notion-page:&lt;id&gt;").
 
 `kind="auto"` peeks at the Notion object to pick `database` or `page` automatically.
 
@@ -122,8 +125,7 @@ The migrator is a one-shot seed. It does not track what's already been written, 
 **Default shape per row:**
 - `name`: the row's title property if present, otherwise `"{database label or id} row {created_time}"`
 - `body`: every property flattened as `Property Name: value` lines, in the order Notion returns them
-- `reference_time`: `row.created_time`
-- `entity_hints`: empty
+- `source_description`: `"notion-database:{database_id}"`
 
 **Verify:** `--target <db-id> --kind database --dry-run` prints planned episodes for every row in the database.
 
@@ -133,7 +135,7 @@ The migrator is a one-shot seed. It does not track what's already been written, 
 - If the page has `heading_2` blocks → emit one episode per H2 section, named `"{page title} - {section heading}"`
 - Else → emit one episode for the whole page, named with the page title
 - `body`: plain-text concatenation of paragraphs, headings, lists, quotes
-- `reference_time`: `page.created_time`
+- `source_description`: `"notion-page:{page_id}"`
 
 **Verify:** `--target <page-id> --kind page --dry-run` prints one or many episodes depending on whether the page has H2s.
 
@@ -172,7 +174,7 @@ Add:
 
 The `${...}` env var interpolation requires both vars be set in the shell before launching `claude`. Document this in the client repo's `CLAUDE.md`.
 
-**Verify:** new Claude Code session in the client repo, ask "list the available MCP tools" — `mcp__graphiti__search_nodes`, `mcp__graphiti__search_facts`, `mcp__graphiti__add_episode` should appear.
+**Verify:** new Claude Code session in the client repo, ask "list the available MCP tools" — `mcp__graphiti__search_nodes`, `mcp__graphiti__search_facts`, `mcp__graphiti__add_memory` (and the rest of Graphiti's MCP surface) should appear.
 
 ### Task C.2 — `UserPromptSubmit` hook for memory injection
 

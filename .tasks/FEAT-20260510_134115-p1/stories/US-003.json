@@ -8,7 +8,7 @@
     "Requests without the bearer header receive 401 from Caddy",
     "TLS auto-issued by Let's Encrypt (default Caddy behavior)",
     "compose/.env.example contains BRAIN_DOMAIN and BRAIN_BEARER_TOKEN with placeholder values; real values only in untracked .env",
-    "Verify: from laptop, curl -H 'Authorization: Bearer $TOKEN' https://brain.{domain}/healthz returns 200; without header returns 401"
+    "Verify: from laptop, curl -H 'Authorization: Bearer $TOKEN' https://brain.{domain}/health returns 200; without header returns 401"
   ],
   "dependencies": [
     "US-002"

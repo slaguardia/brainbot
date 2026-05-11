@@ -22,6 +22,10 @@ to existing entities rather than silently fragmenting, but each run
 still pays the per-episode extraction cost. Add tracking later if
 incremental re-runs become important.
 
+All episodes land in a single global Graphiti group (default 'brain';
+override with --group-id). One group = cross-source dedup; the whole
+point of the shared brain.
+
 If your Notion data has structure worth preserving differently, fork
 this file and edit migrate_database / migrate_page directly. The
 extension point IS the source.
@@ -32,8 +36,9 @@ Usage:
 
 Required env:
     NOTION_TOKEN              integration token, read access to the target
-    BRAIN_URL                 e.g. https://brain.example.com
-    BRAIN_BEARER_TOKEN        bearer for Caddy
+    BRAIN_URL                 e.g. http://127.0.0.1:8000 (local) or
+                              https://brain.example.com (VPS)
+    BRAIN_BEARER_TOKEN        bearer for Caddy (only on the VPS path)
 """
 
 from __future__ import annotations
@@ -43,13 +48,14 @@ import json
 import logging
 import os
 import sys
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Iterable
 
 logger = logging.getLogger("notion_to_graphiti")
 
 KINDS = ("database", "page", "auto")
+DEFAULT_GROUP_ID = "brain"
 
 
 @dataclass
@@ -57,16 +63,14 @@ class PlannedEpisode:
     name: str
     body: str
     source_description: str
-    reference_time: datetime
-    entity_hints: dict[str, Any] = field(default_factory=dict)
 
-    def to_payload(self) -> dict[str, Any]:
+    def to_arguments(self, group_id: str) -> dict[str, Any]:
         return {
             "name": self.name,
-            "body": self.body,
+            "episode_body": self.body,
+            "group_id": group_id,
+            "source": "text",
             "source_description": self.source_description,
-            "reference_time": self.reference_time.isoformat(),
-            "entity_hints": self.entity_hints,
         }
 
 
@@ -111,7 +115,6 @@ class NotionMigrator:
 
         for row in self.notion.query_database(database_id, since=self.since):
             created = _parse_iso(row.get("created_time")) or datetime.now(timezone.utc)
-
             title = page_title(row).strip()
             if not title:
                 title = f"{db_title} row {created.date().isoformat()}"
@@ -128,8 +131,6 @@ class NotionMigrator:
                 name=title,
                 body=body,
                 source_description=f"notion-database:{database_id}",
-                reference_time=created,
-                entity_hints={},
             )
 
     def migrate_page(self, page_id: str) -> Iterable[PlannedEpisode]:
@@ -139,7 +140,6 @@ class NotionMigrator:
         blocks = self.notion.fetch_page_blocks(page_id)
 
         title = page_title(page).strip() or f"Notion page {page_id}"
-        ref_time = _parse_iso(page.get("created_time")) or datetime.now(timezone.utc)
 
         sections = _split_blocks_by_h2(blocks)
         if not sections:
@@ -149,8 +149,6 @@ class NotionMigrator:
                     name=title,
                     body=text,
                     source_description=f"notion-page:{page_id}",
-                    reference_time=ref_time,
-                    entity_hints={},
                 )
             return
 
@@ -162,17 +160,23 @@ class NotionMigrator:
                 name=f"{title} - {heading}",
                 body=text,
                 source_description=f"notion-page:{page_id}",
-                reference_time=ref_time,
-                entity_hints={"section": heading},
             )
 
     def _dispatch(self, episode: PlannedEpisode) -> None:
         if self.dry_run:
-            logger.info("[dry-run] %s", json.dumps(episode.to_payload(), default=str))
+            logger.info(
+                "[dry-run] %s",
+                json.dumps(episode.to_arguments(self.graphiti.group_id), default=str),
+            )
             return
-        episode_id = self.graphiti.add_episode(episode.to_payload())
+        self.graphiti.add_memory(
+            name=episode.name,
+            episode_body=episode.body,
+            source="text",
+            source_description=episode.source_description,
+        )
         self.counts["migrated"] += 1
-        logger.info("posted %s -> %s", episode.name, episode_id)
+        logger.info("queued %s", episode.name)
 
 
 def _split_blocks_by_h2(
@@ -229,17 +233,18 @@ def parse_since(value: str | None) -> datetime | None:
         sys.exit(f"--since must be ISO date (YYYY-MM-DD): {e}")
 
 
-def build_clients(dry_run: bool):
+def build_clients(dry_run: bool, group_id: str):
     from notion_clients import NotionClient  # type: ignore[import-not-found]
     from graphiti_clients import GraphitiClient  # type: ignore[import-not-found]
 
     notion = NotionClient(token=_require_env("NOTION_TOKEN"))
     if dry_run:
-        return notion, _NoOpGraphiti()
+        return notion, _NoOpGraphiti(group_id)
 
     graphiti = GraphitiClient(
         base_url=_require_env("BRAIN_URL"),
         bearer=os.environ.get("BRAIN_BEARER_TOKEN"),
+        group_id=group_id,
     )
     return notion, graphiti
 
@@ -252,8 +257,11 @@ def _require_env(key: str) -> str:
 
 
 class _NoOpGraphiti:
-    def add_episode(self, payload: dict[str, Any]) -> str:
-        return "dry-run"
+    def __init__(self, group_id: str) -> None:
+        self.group_id = group_id
+
+    def add_memory(self, **_: Any) -> dict[str, Any]:
+        return {"message": "dry-run"}
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -262,13 +270,18 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--kind", choices=KINDS, default="auto")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--since", help="ISO date; only migrate items edited on/after")
+    parser.add_argument(
+        "--group-id",
+        default=os.environ.get("GRAPHITI_GROUP_ID", DEFAULT_GROUP_ID),
+        help="Graphiti namespace (default: brain, or GRAPHITI_GROUP_ID env)",
+    )
     parser.add_argument("--log-level", default="INFO")
     args = parser.parse_args(argv)
 
     logging.basicConfig(level=args.log_level, format="%(message)s")
 
     since = parse_since(args.since)
-    notion, graphiti = build_clients(dry_run=args.dry_run)
+    notion, graphiti = build_clients(dry_run=args.dry_run, group_id=args.group_id)
     migrator = NotionMigrator(
         notion,
         graphiti,
@@ -277,8 +290,8 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     episodes = migrator.migrate(args.target, kind=args.kind)
-    logger.info("%s: %d episodes planned", args.target, len(episodes))
-    logger.info("summary: migrated=%d", migrator.counts["migrated"])
+    logger.info("%s: %d episodes planned (group_id=%s)", args.target, len(episodes), args.group_id)
+    logger.info("summary: queued=%d", migrator.counts["migrated"])
     return 0
 
 

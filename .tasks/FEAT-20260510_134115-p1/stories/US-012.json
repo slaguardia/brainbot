@@ -6,7 +6,7 @@
   "acceptanceCriteria": [
     "Client repo's .mcp.json adds an entry for graphiti pointing at https://brain.${BRAIN_DOMAIN}/mcp with Authorization: Bearer ${BRAIN_BEARER_TOKEN}",
     "Client repo's CLAUDE.md (or equivalent doc) notes that BRAIN_DOMAIN and BRAIN_BEARER_TOKEN must be exported in the shell before launching claude (env interpolation requirement)",
-    "Verify: in a fresh Claude Code session in that repo, prompt 'list the available MCP tools' returns mcp__graphiti__search_nodes, mcp__graphiti__search_facts, mcp__graphiti__add_episode"
+    "Verify: in a fresh Claude Code session in that repo, prompt 'list the available MCP tools' returns mcp__graphiti__search_nodes, mcp__graphiti__search_facts, mcp__graphiti__add_memory (and the rest of Graphiti's MCP tool surface)"
   ],
   "dependencies": [
     "US-005"

@@ -1,0 +1,68 @@
+# Graphiti MCP server config. Mounted into the graphiti container at
+# /app/config/config.yaml (overrides the upstream default which hardcodes
+# gpt-4o-mini + OpenAI for both LLM and embedder).
+#
+# Defaults below: Anthropic for the LLM, Voyage for the embedder.
+# To switch to OpenAI-compatible providers (OpenRouter, OpenAI direct,
+# Groq, local Ollama, etc.), change llm.provider + embedder.provider
+# and set the matching env vars in .env. See .env.example for recipes.
+
+server:
+  transport: "http"
+  host: "0.0.0.0"
+  port: 8000
+
+llm:
+  provider: "anthropic"
+  model: "claude-haiku-4-5"
+  max_tokens: 4096
+
+  providers:
+    anthropic:
+      api_key: ${ANTHROPIC_API_KEY}
+      api_url: ${ANTHROPIC_API_URL:https://api.anthropic.com}
+      max_retries: 3
+
+    openai:
+      api_key: ${OPENAI_API_KEY:}
+      api_url: ${OPENAI_API_URL:https://api.openai.com/v1}
+
+embedder:
+  provider: "voyage"
+  model: "voyage-3-lite"
+  dimensions: 512
+
+  providers:
+    voyage:
+      api_key: ${VOYAGE_API_KEY}
+      api_url: ${VOYAGE_API_URL:https://api.voyageai.com/v1}
+      model: "voyage-3-lite"
+
+    openai:
+      api_key: ${OPENAI_API_KEY:}
+      api_url: ${OPENAI_API_URL:https://api.openai.com/v1}
+
+database:
+  provider: "falkordb"
+  providers:
+    falkordb:
+      uri: ${FALKORDB_URI:falkor://falkordb:6379}
+      password: ${FALKORDB_PASSWORD:}
+      database: ${FALKORDB_DATABASE:default_db}
+
+graphiti:
+  group_id: ${GRAPHITI_GROUP_ID:brain}
+  user_id: ${USER_ID:brainbot}
+  entity_types:
+    - name: "Person"
+      description: "Individual humans referenced by name"
+    - name: "Organization"
+      description: "Companies, teams, institutions, formal groups"
+    - name: "Location"
+      description: "Physical or virtual places"
+    - name: "Event"
+      description: "Time-bound occurrences, meetings, milestones"
+    - name: "Document"
+      description: "Articles, books, papers, threads, recorded content"
+    - name: "Topic"
+      description: "Subject of conversation or knowledge domain (use as last resort)"

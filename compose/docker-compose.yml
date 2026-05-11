@@ -22,14 +22,19 @@ services:
     networks:
       - brainnet
     environment:
+      # FalkorDB connection
       FALKORDB_URI: falkor://falkordb:6379
-      # Provider-neutral via OpenAI-compatible API. Defaults to OpenRouter
-      # so you can pick any model with one signup; swap OPENAI_BASE_URL +
-      # OPENAI_API_KEY + MODEL_NAME to use OpenAI direct, Together, Groq,
-      # local Ollama, vLLM, or anything else that speaks the OpenAI shape.
-      OPENAI_API_KEY: ${OPENAI_API_KEY}
-      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://openrouter.ai/api/v1}
-      MODEL_NAME: ${GRAPHITI_MODEL_NAME:-anthropic/claude-haiku-4.5}
+      # LLM (Anthropic by default). Switch providers in graphiti-config.yaml.
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      # Embedder (Voyage by default; same parent as Anthropic, free tier)
+      VOYAGE_API_KEY: ${VOYAGE_API_KEY}
+      # Optional swaps — populate if your config.yaml points at them
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_API_URL: ${OPENAI_API_URL:-}
+      # Namespacing: single global group; see design-history.md
+      GRAPHITI_GROUP_ID: ${GRAPHITI_GROUP_ID:-brain}
+    volumes:
+      - ./graphiti-config.yaml:/app/config/config.yaml:ro
     depends_on:
       falkordb:
         condition: service_healthy

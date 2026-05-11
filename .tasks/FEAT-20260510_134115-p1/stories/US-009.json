@@ -8,7 +8,7 @@
     "If the page has heading_2 blocks, emit one PlannedEpisode per H2 section, named '{page title} - {section heading}'",
     "If the page has no heading_2 blocks, emit one PlannedEpisode for the whole page, named with the page title",
     "Body is the plain-text concatenation of the contained blocks (paragraphs, headings, lists, quotes)",
-    "reference_time = page.created_time",
+    "(reference_time is not on the surface — add_memory is server-timestamped at queue insertion)",
     "Verify: --target <page-id> --kind page --dry-run prints planned episodes split on H2 when present, single episode otherwise"
   ],
   "dependencies": [

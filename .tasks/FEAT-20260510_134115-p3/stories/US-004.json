@@ -1,16 +1,15 @@
 {
   "id": "US-004",
   "featureId": "FEAT-20260510_134115-p3",
-  "title": "PWA quick-capture screen at /capture",
-  "userStory": "As Steve, I want a notes-app-feeling capture screen so that recording a thought is one tap and one paragraph.",
+  "title": "In-process async write queue in the PWA backend",
+  "userStory": "As an operator, I want a small write queue inside the PWA so that the capture endpoint can return in <100ms even when extraction takes seconds.",
   "acceptanceCriteria": [
-    "New file pwa/src/routes/capture/+page.svelte",
-    "Single big textarea takes most of the screen with a Capture button at the bottom",
-    "Optional tags input (chips) lets the user hint entity types (e.g. 'met:Alice company:Acme')",
-    "Submit calls add_episode directly (not via the chat agent)",
-    "Optimistic success returned in <100ms; actual Graphiti write queued",
-    "PWA manifest 'shortcuts' array adds 'Quick Capture' so iOS long-press on the home-screen icon shows it as a direct entry",
-    "Verify: open /capture from the home-screen long-press; type a note; success toast in <100ms; episode visible via search_brain seconds later"
+    "New file pwa/src/lib/server/queue.ts: in-memory FIFO with enqueue(payload) returning a synthetic queue_id immediately",
+    "Worker loop (default 1s tick, configurable) drains the queue by calling graphiti add_episode per payload",
+    "On worker error: log to stderr (per Phase 2 US-006 pattern); retry once or drop (decided by operational experience)",
+    "On graceful shutdown (SIGTERM): drain remaining items before exit",
+    "No persistent spool. Acceptable failure mode: a PWA crash loses in-flight items. If/when this becomes a real complaint, add a JSON-lines spool file at that point — not before",
+    "Verify: enqueue a payload; queue_id returned in <10ms; episode visible via search_brain within ~3s"
   ],
   "dependencies": [],
   "status": "todo",

@@ -1,18 +1,17 @@
 {
   "id": "US-009",
   "featureId": "FEAT-20260510_134115-p2",
-  "title": "Chat UI: streaming markdown with inline tool-call cards",
-  "userStory": "As Steve, I want a usable mobile-first chat UI so that the PWA actually feels like an app.",
+  "title": "Graph browser read APIs",
+  "userStory": "As a brainbot user, I want read APIs over the graph so that the browse/edit UI has the data it needs.",
   "acceptanceCriteria": [
-    "pwa/src/routes/+page.svelte renders an auto-grow textarea and Send button (Enter to send)",
-    "Streaming markdown rendered with marked + a code highlighter",
-    "Tool calls shown inline as collapsed cards (e.g. 'search_brain(\"...\")') with results dropdown",
-    "Mobile-first: respects safe-area insets and virtual keyboard handling",
-    "Verify: a streamed response with a tool call renders the card and reveals results on tap"
+    "New file pwa/src/routes/api/graph/search/+server.ts: GET ?q=... returns hybrid search results (passes through to search_brain shape)",
+    "New file pwa/src/routes/api/graph/entity/[id]/+server.ts: GET returns entity attributes + one-hop neighbors + linked episodes",
+    "New file pwa/src/routes/api/graph/episode/[id]/+server.ts: GET returns full episode body + extracted entities + extraction status",
+    "New file pwa/src/routes/api/graph/recent/+server.ts: GET ?since=... returns chronological episode list (the feed view)",
+    "All four endpoints are read-only thin wrappers over Graphiti REST",
+    "Verify: each endpoint round-trips against the seeded graph and returns a non-empty response when given a known input"
   ],
-  "dependencies": [
-    "US-002"
-  ],
+  "dependencies": ["US-001"],
   "status": "todo",
   "createdAt": "2026-05-10T13:41:15Z",
   "completedAt": null,

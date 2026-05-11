@@ -1,16 +1,16 @@
 {
   "id": "US-002",
   "featureId": "FEAT-20260510_134115-p4",
-  "title": "Backup of Postgres brain schema",
-  "userStory": "As an operator, I want the brain schema backed up alongside FalkorDB so that drafts, tool_calls, and migration_log survive too.",
+  "title": "Restore-from-backup test (mandatory, one-time)",
+  "userStory": "As an operator, I want a proven restore procedure so that the backups are not theoretical.",
   "acceptanceCriteria": [
-    "If Postgres is not already covered by Phase 0 backups, the nightly cron runs: pg_dump --schema=brain personal | gzip | rclone rcat r2:brainbot-backups/postgres/brain-${TS}.sql.gz",
-    "If Phase 0 backups exist, document that they cover the brain schema and skip duplication",
-    "Verify: latest dump downloads; gunzip + psql --dry-parse confirms it is a valid SQL stream"
+    "Spin up a fresh FalkorDB container locally",
+    "rclone copy the latest dump from R2 to local",
+    "Mount the dump into the container's /data/dump.rdb and start it",
+    "Verify graph contents match production: entity counts and 3+ sample queries return matching results",
+    "Procedure documented in compose/backup/RESTORE.md"
   ],
-  "dependencies": [
-    "US-001"
-  ],
+  "dependencies": ["US-001"],
   "status": "todo",
   "createdAt": "2026-05-10T13:41:15Z",
   "completedAt": null,

@@ -1,21 +1,18 @@
 {
   "id": "US-003",
-  "featureId": "FEAT-20260510_134115-p2-5",
+  "featureId": "FEAT-20260510_134115-p4-5",
   "title": "/admin UI: Upgrade panel with current sha, latest sha, button, and live log",
-  "userStory": "As Steve, I want a single panel on /admin that shows whether an upgrade is available and lets me apply it with one click.",
+  "userStory": "As an operator, I want a single panel on /admin that shows whether an upgrade is available and lets me apply it with one click.",
   "acceptanceCriteria": [
     "New panel in pwa/src/routes/admin/+page.svelte titled 'Deploy'",
-    "Panel shows: current running commit (short sha + commit message + age), latest available commit on origin/main (resolved server-side via `git ls-remote` cached for 60s), 'Up to date' or 'Upgrade available' badge",
+    "Panel shows: current running commit (short sha + commit message + age), latest available commit on origin/main (resolved server-side via 'git ls-remote' cached for 60s), 'Up to date' or 'Upgrade available' badge",
     "'Deploy now' button is disabled when up to date or when a run is in flight; shows the in-flight run_id and tail when one exists",
     "On click: POSTs to /api/admin/deploy, opens the SSE stream from US-002, renders log lines in a scrolling pre block, replaces button with a 'Deploying...' spinner",
     "On completion: badge flips to success/failed, button re-enables only if a new commit is now available, current sha refreshes",
     "Confirmation modal before triggering ('This will restart all services. Continue?') because the deploy is brief but disruptive",
     "Verify: with origin/main ahead of the running sha, panel shows 'Upgrade available', click streams the deploy log to completion, badge flips to success, current sha updates"
   ],
-  "dependencies": [
-    "US-001",
-    "US-002"
-  ],
+  "dependencies": ["US-001", "US-002"],
   "status": "todo",
   "createdAt": "2026-05-10T13:41:15Z",
   "completedAt": null,
@@ -25,11 +22,6 @@
       "name": "Coolify Deploy panel",
       "url": "https://github.com/coollabsio/coolify",
       "what": "Reference UI for: current sha vs available, status badges, scrolling log block, confirmation modal."
-    },
-    {
-      "name": "OpenClaw upgrade UI",
-      "url": "https://github.com/openclaw/openclaw",
-      "what": "Reference for: layout decisions and disabled-button states during in-flight runs."
     }
   ]
 }

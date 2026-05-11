@@ -1,17 +1,16 @@
 {
   "id": "US-015",
   "featureId": "FEAT-20260510_134115-p2",
-  "title": "Add pwa service to docker-compose",
-  "userStory": "As an operator, I want the PWA running in compose so that it shares the docker network with Graphiti and Postgres.",
+  "title": "Caddy route for app.{domain} with cookie auth path",
+  "userStory": "As a brainbot user, I want app.{domain} to use a signed cookie after a one-time bearer login so that the PWA is usable on phone.",
   "acceptanceCriteria": [
-    "compose/docker-compose.yml adds a pwa service: build ../pwa, env DATABASE_URL, GRAPHITI_URL=http://graphiti:8000, ANTHROPIC_API_KEY, PWA_BEARER_TOKEN",
-    "depends_on: graphiti (healthy) and postgres (healthy)",
-    "Internal port 3000, no public mapping",
-    "Verify: docker compose up -d pwa; container healthy; reachable internally from caddy container"
+    "compose/Caddyfile has app.{$APP_DOMAIN} block reverse-proxying to pwa:3000",
+    "/login?token=... bearer match issues a signed __Host-session cookie valid for 30 days",
+    "Subsequent requests authenticate via the cookie automatically; bearer fallback retained for API callers",
+    "Cookie revocable by rotating the signing key",
+    "Verify: visit https://app.{domain}/login?token=... on phone -> redirected to /, cookie set; subsequent visits to / load without bearer; cookie cleared after key rotation"
   ],
-  "dependencies": [
-    "US-002"
-  ],
+  "dependencies": ["US-014"],
   "status": "todo",
   "createdAt": "2026-05-10T13:41:15Z",
   "completedAt": null,

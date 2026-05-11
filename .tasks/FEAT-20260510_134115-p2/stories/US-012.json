@@ -1,18 +1,21 @@
 {
   "id": "US-012",
   "featureId": "FEAT-20260510_134115-p2",
-  "title": "Tool-call instrumentation wrapper",
-  "userStory": "As an operator, I want all tool registrations wrapped so that observability coverage is complete with one-line changes.",
+  "title": "Browse UI: entity detail card with inline edit",
+  "userStory": "As a brainbot user, I want an entity detail view where I can fix extraction mistakes so that the human can directly edit brain data.",
   "acceptanceCriteria": [
-    "New file pwa/src/lib/server/tools/instrument.ts exports instrument<I, O>(tool) that records start time, status, latency, and inserts a row into brain.tool_calls in finally",
-    "On error, status='error' captured, error rethrown",
-    "Wrapper plumbs model + input/output tokens + cost from outer chat context when available",
-    "Every tool registration wrapped with instrument(...)",
-    "Verify: a chat turn that calls 3 tools writes 3 rows to brain.tool_calls with non-null latency_ms"
+    "New file pwa/src/routes/browse/entity/[id]/+page.svelte renders:",
+    "  - Entity name (inline-editable; rename calls rename_entity mutation)",
+    "  - Attributes table (click to edit; save calls set_entity_attribute mutation)",
+    "  - Outgoing edges list (each clickable to traverse; trash icon calls delete_edge)",
+    "  - Incoming edges list (same)",
+    "  - Linked episodes (chronological; click opens episode detail)",
+    "  - 'Merge into another entity' action: modal with search-as-you-type, then calls merge_entities",
+    "  - 'Delete entity' action: confirmation, then calls delete_entity (soft delete)",
+    "Mobile-first: merge modal especially must be usable on phone",
+    "Verify: rename, attribute edit, edge delete, and merge all succeed against a test entity and the page reflects each change immediately"
   ],
-  "dependencies": [
-    "US-011"
-  ],
+  "dependencies": ["US-010", "US-011"],
   "status": "todo",
   "createdAt": "2026-05-10T13:41:15Z",
   "completedAt": null,

@@ -1,19 +1,15 @@
 {
   "id": "US-008",
   "featureId": "FEAT-20260510_134115-p2",
-  "title": "Tools: save_draft + list_drafts (and brain.drafts table)",
-  "userStory": "As Steve, I want drafts persisted as app state (not graph state) so that I can revisit and send later.",
+  "title": "Capture API + capture screen",
+  "userStory": "As a brainbot user, I want a one-purpose capture surface so that saving a thought is a single screen, not a chat turn.",
   "acceptanceCriteria": [
-    "New file pwa/src/lib/server/tools/drafts.ts exporting save_draft and list_drafts",
-    "Postgres table brain.drafts created with columns id, created_at, target_persona, target_company, channel, subject, body, sent_at, episode_id",
-    "save_draft writes to brain.drafts (not Graphiti)",
-    "list_drafts queries unsent drafts with optional company filter",
-    "Sending a draft (separate UI flow) promotes it to a Graphiti Outreach episode and stamps episode_id + sent_at",
-    "Verify: save then list round-trips a draft; promotion path creates the episode and updates the row"
+    "New file pwa/src/routes/api/capture/+server.ts: POST { text, source? } calls graphiti add_episode synchronously and returns 200 with the episode id once extraction completes",
+    "New file pwa/src/routes/capture/+page.svelte: big textarea, Send button, 'captured' toast on response",
+    "No queue, no spool — wait for the Graphiti round-trip is acceptable for the Phase 2 smoke test (Phase 3 introduces the async path when iOS Shortcut forces it)",
+    "Verify: from phone, type a thought, tap send, see 'captured' toast within ~3s; the same thought appears in /browse and via search_brain"
   ],
-  "dependencies": [
-    "US-006"
-  ],
+  "dependencies": ["US-005"],
   "status": "todo",
   "createdAt": "2026-05-10T13:41:15Z",
   "completedAt": null,

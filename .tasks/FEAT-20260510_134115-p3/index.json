@@ -1,56 +1,14 @@
 {
   "featureId": "FEAT-20260510_134115-p3",
-  "title": "Phase 3: Close the write-back loop and decommission OpenClaw",
+  "title": "Phase 3: Close the write-back loop + capture surface polish",
   "stories": [
-    {
-      "id": "US-001",
-      "title": "SessionEnd hook that writes a session summary episode",
-      "status": "todo"
-    },
-    {
-      "id": "US-002",
-      "title": "Include touched filenames in session episode body",
-      "status": "todo"
-    },
-    {
-      "id": "US-003",
-      "title": "Idempotency / dedup for session episodes via Claude Code session id",
-      "status": "todo"
-    },
-    {
-      "id": "US-004",
-      "title": "PWA quick-capture screen at /capture",
-      "status": "todo"
-    },
-    {
-      "id": "US-005",
-      "title": "Capture API endpoint POST /api/capture",
-      "status": "todo"
-    },
-    {
-      "id": "US-006",
-      "title": "iOS Shortcut for voice capture",
-      "status": "todo"
-    },
-    {
-      "id": "US-007",
-      "title": "Multi-surface integration test",
-      "status": "todo"
-    },
-    {
-      "id": "US-008",
-      "title": "OpenClaw drain checkpoint",
-      "status": "todo"
-    },
-    {
-      "id": "US-009",
-      "title": "Stop and remove OpenClaw service",
-      "status": "todo"
-    },
-    {
-      "id": "US-010",
-      "title": "Archive OpenClaw-related docs",
-      "status": "todo"
-    }
+    { "id": "US-001", "title": "SessionEnd hook that writes a session summary episode", "status": "todo" },
+    { "id": "US-002", "title": "Include touched filenames in session episode body", "status": "todo" },
+    { "id": "US-003", "title": "Idempotency / dedup for session episodes via Claude Code session id", "status": "todo" },
+    { "id": "US-004", "title": "In-process async write queue in the PWA backend", "status": "todo" },
+    { "id": "US-005", "title": "POST /api/capture becomes async (returns 202)", "status": "todo" },
+    { "id": "US-006", "title": "PWA quick-capture screen polish (tags, manifest shortcut, draft autosave)", "status": "todo" },
+    { "id": "US-007", "title": "iOS Shortcut for voice capture", "status": "todo" },
+    { "id": "US-008", "title": "Multi-surface integration test", "status": "todo" }
   ]
 }

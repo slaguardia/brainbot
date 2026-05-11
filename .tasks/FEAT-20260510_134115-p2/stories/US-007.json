@@ -1,19 +1,16 @@
 {
   "id": "US-007",
   "featureId": "FEAT-20260510_134115-p2",
-  "title": "Tool: draft_outreach (compound)",
-  "userStory": "As Steve, I want a single tool that orchestrates the lookups for a draft so that the agent does not need to chain three calls.",
+  "title": "Chat UI: streaming markdown with inline tool-call cards",
+  "userStory": "As a brainbot user, I want a usable mobile-first chat UI so that the PWA actually feels like an app.",
   "acceptanceCriteria": [
-    "New file pwa/src/lib/server/tools/draft-outreach.ts",
-    "Internally calls search_brain (similar past outreach), get_company (target context), and loads voice rules from a boot-time cache of voice-rule episodes",
-    "Returns structured { subject, body, channel, target_persona } the LLM uses to compose the actual message",
-    "Verify: invoking draft_outreach for a known company returns a structured draft referencing real past outreach"
+    "pwa/src/routes/+page.svelte renders an auto-grow textarea and Send button (Enter to send)",
+    "Streaming markdown rendered with marked + a code highlighter",
+    "Tool calls shown inline as collapsed cards (e.g. 'search_brain(\"...\")') with results dropdown",
+    "Mobile-first: respects safe-area insets and virtual keyboard handling",
+    "Verify: a streamed response with a tool call renders the card and reveals results on tap"
   ],
-  "dependencies": [
-    "US-003",
-    "US-004",
-    "US-005"
-  ],
+  "dependencies": ["US-002"],
   "status": "todo",
   "createdAt": "2026-05-10T13:41:15Z",
   "completedAt": null,

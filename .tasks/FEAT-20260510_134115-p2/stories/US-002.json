@@ -2,16 +2,14 @@
   "id": "US-002",
   "featureId": "FEAT-20260510_134115-p2",
   "title": "Backend skeleton: /api/chat streaming endpoint",
-  "userStory": "As Steve, I want a streaming chat endpoint so that the PWA can talk to Claude with tools.",
+  "userStory": "As a brainbot user, I want a streaming chat endpoint so that the PWA can talk to Claude with tools over the brain.",
   "acceptanceCriteria": [
     "New file pwa/src/routes/api/chat/+server.ts accepts POST { messages: AnthropicMessage[] }",
-    "System prompt held in pwa/src/lib/server/system-prompt.ts (writing-partner persona, voice rules summary, brain integration instructions)",
-    "Endpoint calls anthropic.messages.stream({ model: 'claude-sonnet-4-6', tools: [...], messages }) and streams via SSE",
+    "System prompt held in pwa/src/lib/server/system-prompt.ts (generic writing/thinking-partner persona; brain integration instructions)",
+    "Endpoint calls anthropic.messages.stream with the latest Claude Sonnet model and the registered tools, streaming via SSE",
     "Verify: curl -X POST localhost:5173/api/chat -d '{\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}' streams a response"
   ],
-  "dependencies": [
-    "US-001"
-  ],
+  "dependencies": ["US-001"],
   "status": "todo",
   "createdAt": "2026-05-10T13:41:15Z",
   "completedAt": null,

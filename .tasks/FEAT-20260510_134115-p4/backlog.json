@@ -1,17 +1,24 @@
 {
   "featureId": "FEAT-20260510_134115-p4",
-  "note": "Phase 4 Tracks B-F. Per the plan: pick by current pain. Promote to a story file when you are about to start it.",
+  "note": "Phase 4 Tracks B-G. Per the plan: pick by current pain. Promote a backlog item to a story file when you are about to start it.",
   "sourcePlan": "plans/phase-4-hardening.md",
   "items": [
     {
-      "track": "B - Observability extensions",
-      "ref": "Task 4.5",
-      "title": "Roll up brain.tool_calls into daily aggregates",
-      "trigger": "When tool_calls table size starts hurting /admin query latency",
-      "notes": "Default plan: nightly rollup into brain.tool_calls_daily (tool_name, day, count, p50, p99, total_cost, error_count); drop raw rows older than 30 days"
+      "track": "B - Observability + /admin",
+      "ref": "Task 4.4",
+      "title": "Persistent tool-call logging",
+      "trigger": "When stderr logs (Phase 2 default) stop being enough — you want to ask 'how much did I spend last week?' or 'which tool errored most yesterday?'",
+      "notes": "Default shape: rotated ndjson files in a mounted volume. One line per tool call. Easy to grep, easy to ship to a real analytics store later if it ever matters. Reach for SQLite only if you need SQL-shaped questions; put it behind a small interface so the rest of the code does not care"
     },
     {
-      "track": "B - Observability extensions",
+      "track": "B - Observability + /admin",
+      "ref": "Task 4.5",
+      "title": "/admin route in the PWA",
+      "trigger": "Once persistent tool-call logging exists and the data is worth surfacing",
+      "notes": "Surfaces: recent tool calls, spend over time, capture queue depth (if Phase 3's queue is in use), backup freshness card (P4 US-003), failed extractions. Auth: same as the rest of the PWA"
+    },
+    {
+      "track": "B - Observability + /admin",
       "ref": "Task 4.6",
       "title": "Cost spike alerting",
       "trigger": "Always wanted; cheap; do once budget feels real",
@@ -20,54 +27,30 @@
     {
       "track": "C - Extraction quality maintenance",
       "ref": "Task 4.7",
-      "title": "Weekly dedup audit script (migrate/audit_dedup.py)",
+      "title": "Weekly dedup audit script (scripts/audit_dedup.py)",
       "trigger": "When entity duplicates start showing up in answers",
-      "notes": "Per entity type: pairwise similarity (Levenshtein/Jaro-Winkler/embedding cosine), flag pairs >0.85 into brain.dedup_candidates"
+      "notes": "Per entity type: pairwise similarity (Levenshtein/Jaro-Winkler/embedding cosine), flag pairs >0.85 into the observability store from Track B"
     },
     {
       "track": "C - Extraction quality maintenance",
       "ref": "Task 4.8",
       "title": "/admin/dedup view for merging candidates",
       "trigger": "Pairs with Task 4.7",
-      "notes": "Side-by-side cards; Merge into A/B or 'different' buttons; calls Graphiti merge or copies edges + deletes B"
+      "notes": "Side-by-side cards; Merge into A/B or 'different' buttons; calls the merge_entities mutation from Phase 2 US-010"
     },
     {
       "track": "D - Entity types as throughput justifies",
-      "ref": "Phase 4 Track D table",
-      "title": "Add JournalEntry entity",
-      "trigger": ">20 daily-journal entries/month for 2+ months",
-      "notes": "Define entity, update relevant tools, optionally backfill"
-    },
-    {
-      "track": "D - Entity types as throughput justifies",
-      "title": "Add Tweet entity",
-      "trigger": ">10 published tweets/month",
-      "notes": "Define entity, update relevant tools, optionally backfill"
-    },
-    {
-      "track": "D - Entity types as throughput justifies",
-      "title": "Add OmniDevFeature entity",
-      "trigger": "When OmniDev produces structured artifacts worth querying",
-      "notes": "e.g. 'show me features tagged auth shipped this quarter'"
-    },
-    {
-      "track": "D - Entity types as throughput justifies",
-      "title": "Add Book / Podcast entities",
-      "trigger": "If reading/listening notes become a habit (might never)",
-      "notes": "Skip indefinitely if the habit doesn't materialise"
-    },
-    {
-      "track": "D - Entity types as throughput justifies",
-      "title": "Enrich Person entity (last_contact, preferred_channel, context)",
-      "trigger": "If networking velocity ramps",
-      "notes": "Backfill from Outreach episodes"
+      "ref": "Phase 4 Track D",
+      "title": "Add typed entities only when usage demands them",
+      "trigger": "When you notice yourself wanting 'show me all things of type X'",
+      "notes": "Don't pre-design taxonomy. Each typed entity is a few hours of work: define in Graphiti, update relevant tools to populate, optionally backfill"
     },
     {
       "track": "E - Fallback memory layer",
       "ref": "Task 4.9",
-      "title": "Add Hermes-style turn-shaped vector layer (pgvector) as second memory provider",
+      "title": "Add a turn-shaped vector layer alongside the graph",
       "trigger": "3+ consecutive 'agent should have known X' incidents trace back to graph fragmentation (not missing episodes)",
-      "notes": "Augments, not replaces, the graph; unioned with Graphiti results in parallel queries"
+      "notes": "Augments, not replaces, the graph; a vector store of full episode bodies, queried in parallel with Graphiti and unioned in results"
     },
     {
       "track": "F - Surface polish",
@@ -92,15 +75,21 @@
     },
     {
       "track": "Portfolio",
-      "title": "Long-form architecture writeup at brain.{domain}/notes/architecture",
+      "title": "Long-form architecture writeup at app.{domain}/notes/architecture",
       "trigger": "Treat as the link in resume / cover letter / Twitter bio",
-      "notes": "Sections: what this is, the bet (graph vs vector), the decisions, what surprised, what I'd do differently, what's next. No-auth public page served by the PWA."
+      "notes": "Sections: what this is, the bet (graph vs vector), the decisions, what surprised, what I'd do differently, what's next. No-auth public page served by the PWA. Source material lives in design-history.md"
     },
     {
-      "track": "G - Deployment options",
+      "track": "G - Additional migrators",
+      "title": "Add a second source migrator (Obsidian, Roam/Logseq, Apple Notes, plain-text journals, etc.)",
+      "trigger": "When someone wants to seed the brain from a source other than Notion",
+      "notes": "The Notion migrator is the first of many; others are demand-driven. Lift shared code into migrate/lib/ only if the duplication actually hurts. New source migrators live as sibling files under migrate/ (e.g. migrate/obsidian_to_graphiti.py) and reuse the existing graphiti_clients.py"
+    },
+    {
+      "track": "H - Deployment options",
       "title": "Optional co-hosted Ollama for fully-local inference",
       "trigger": "Downstream user demand for 'data never leaves my box', or a contributor offers to land it",
-      "notes": "Compose profile `--profile local-llm` spins up an ollama service on brainnet; Graphiti points at it via OPENAI_BASE_URL=http://ollama:11434/v1. The provider-neutral env surface already supports this for users with their own Ollama host; this story is the on-VPS variant + docs. Requires the user to size their VPS at 16GB+ RAM (vs the 8GB default); CPU-only extraction is ~30s/episode (vs <1s hosted) so audit the throughput acceptance with users before defaulting. Small models do worse on entity extraction than Haiku/Sonnet — call out the quality tradeoff in the README so users know what they're trading."
+      "notes": "Compose profile `--profile local-llm` spins up an ollama service on brainnet; Graphiti points at it via OPENAI_BASE_URL=http://ollama:11434/v1. The provider-neutral env surface already supports this for users with their own Ollama host; this story is the on-VPS variant + docs. Requires the user to size their VPS at 16GB+ RAM (vs the 8GB default); CPU-only extraction is ~30s/episode (vs <1s hosted) so audit the throughput acceptance with users before defaulting. Small models do worse on entity extraction than Haiku/Sonnet — call out the quality tradeoff in the README so users know what they're trading"
     }
   ]
 }

@@ -1,18 +1,19 @@
 {
   "id": "FEAT-20260510_134115-p4",
   "title": "Phase 4 (Track A): Make backups real before anything else",
-  "summary": "Ship the only Phase 4 work that's non-negotiable: nightly FalkorDB + Postgres backups to off-VPS storage, a proven restore procedure, and a visible freshness indicator on /admin.",
+  "summary": "Ship the only Phase 4 work that's non-negotiable: nightly FalkorDB backups to off-VPS storage, a proven restore procedure, and a visible freshness indicator in the PWA. Everything else in Phase 4 (observability, /admin, dedup, polish) is in backlog.json — picked by current pain.",
   "status": "planning",
   "createdAt": "2026-05-10T13:41:15Z",
   "outOfScope": [
-    "Tracks B-F (observability rollups, dedup audits, new entity types, fallback memory layer, surface polish) - tracked in backlog.json, picked by current pain"
+    "Tracks B-G (observability + /admin, dedup audit, new entity types, fallback memory layer, surface polish, deployment options) — tracked in backlog.json, picked by current pain"
   ],
   "technicalConsiderations": [
     "Storage default: Cloudflare R2 via rclone (free egress)",
     "New shell script compose/backup/falkordb-backup.sh on a cron / systemd timer",
-    "New Postgres table brain.backup_runs for the freshness card",
-    "Restore procedure documented in compose/backup/RESTORE.md (a backup that does not restore is worthless)"
+    "Freshness indicator uses a sentinel file (touched by the backup script on success, mtime read by the PWA) — no second store added",
+    "Restore procedure documented in compose/backup/RESTORE.md (a backup that does not restore is worthless)",
+    "FalkorDB is the only persistent store in Phases 1–3, so it's the only thing to back up here. Postgres is not in the stack"
   ],
-  "storiesCount": 4,
+  "storiesCount": 3,
   "sourcePlan": "plans/phase-4-hardening.md"
 }

@@ -1,17 +1,15 @@
 {
   "id": "US-002",
-  "featureId": "FEAT-20260510_134115-p2-5",
+  "featureId": "FEAT-20260510_134115-p4-5",
   "title": "Backend: GET /api/admin/deploy/runs and /api/admin/deploy/runs/:id/stream",
-  "userStory": "As Steve, I want to see deploy history and live-tail an in-progress run so that the upgrade button is not a black box.",
+  "userStory": "As an operator, I want to see deploy history and live-tail an in-progress run so that the upgrade button is not a black box.",
   "acceptanceCriteria": [
     "GET /api/admin/deploy/runs returns last 20 runs (id, started_at, finished_at, status, exit_code, current commit sha)",
-    "GET /api/admin/deploy/runs/:id/stream is an SSE endpoint that tails the run's log column as new lines are appended; closes when status is no longer 'running'",
+    "GET /api/admin/deploy/runs/:id/stream is an SSE endpoint that tails the run's log as new lines are appended; closes when status is no longer 'running'",
     "Same admin auth as US-001",
     "Verify: trigger a deploy via US-001; the stream endpoint emits log lines in real time and closes on completion"
   ],
-  "dependencies": [
-    "US-001"
-  ],
+  "dependencies": ["US-001"],
   "status": "todo",
   "createdAt": "2026-05-10T13:41:15Z",
   "completedAt": null,

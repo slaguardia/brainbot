@@ -1,0 +1,37 @@
+flowchart TB
+    subgraph peers["FIRST-CLASS PEERS"]
+        H["👤 HUMAN<br/>editor / UI<br/>(VS Code, Obsidian, custom)"]
+        A["🤖 AGENT<br/>LLM + file tools<br/>(read/write/search)"]
+    end
+
+    CS["📁 CANONICAL STORE<br/>markdown + frontmatter / JSON<br/><b>source of truth</b><br/>versioned in git (optional)"]
+
+    W["👁️ FILE WATCHER<br/>detects diffs"]
+
+    ING["⚙️ INGESTION PIPELINE<br/>diff → episode<br/>(batched, debounced)"]
+
+    G["🧠 GRAPHITI<br/>LLM extracts entities + edges<br/>bi-temporal versioning"]
+
+    DB[("🗄️ GRAPH DB<br/>Neo4j / FalkorDB")]
+
+    Q["🔍 QUERY LAYER<br/>semantic + graph search<br/>returns relevant context"]
+
+    H -->|"reads & writes files"| CS
+    A -->|"reads & writes files"| CS
+    CS --> W
+    W --> ING
+    ING --> G
+    G --> DB
+    DB --> Q
+    Q -.->|"context injection<br/>at agent's reasoning time"| A
+    Q -.->|"optional: search UI<br/>for the human"| H
+
+    classDef peer fill:#e8f0fe,stroke:#1a73e8,stroke-width:2px,color:#000
+    classDef truth fill:#fef7e0,stroke:#f9ab00,stroke-width:3px,color:#000
+    classDef pipeline fill:#e6f4ea,stroke:#188038,stroke-width:1px,color:#000
+    classDef lens fill:#fce8e6,stroke:#d93025,stroke-width:1px,color:#000
+
+    class H,A peer
+    class CS truth
+    class W,ING pipeline
+    class G,DB,Q lens

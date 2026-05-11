@@ -6,13 +6,15 @@ Phases 1–3 stand the system up and make it daily-usable. Phase 4 is open-ended
 
 **Sequence:** backups first (the only one that's non-negotiable). Everything else: pick by current pain.
 
-**Definition of done for Phase 4:** there isn't one. The phase ends when brainbot stops being the most interesting thing to work on, and the focus shifts to OmniDev or other projects. The goal here is to leave it in a state where neglect for a month doesn't break it.
+**Definition of done for Phase 4:** there isn't one. The phase ends when brainbot stops being the most interesting thing to work on, and the focus shifts elsewhere. The goal here is to leave it in a state where neglect for a month doesn't break it.
+
+This is also the phase where any persistent operational state finally shows up — observability, dedup tracking, backup metadata. None of it existed in Phases 1–3 and it stayed out deliberately. By the time these tasks bite, the actual shape of the data is obvious and you can pick the right store (likely just rotated ndjson files; reach for SQLite or similar only if structured queries are genuinely needed).
 
 ---
 
 ## Track A — Backups (non-negotiable)
 
-### Task 4.1 — Nightly FalkorDB dump to S3-compatible storage
+### Task 4.1 — Nightly FalkorDB dump to off-VPS storage
 
 **Choice:** Backblaze B2 (cheapest) or Cloudflare R2 (free egress, ~$0.015/GB-month). Pick R2 for simplicity if Cloudflare is already in the stack.
 
@@ -28,18 +30,12 @@ sleep 5
 docker compose cp falkordb:/data/dump.rdb /tmp/falkor-${TS}.rdb
 rclone copy /tmp/falkor-${TS}.rdb r2:brainbot-backups/falkor/
 rm /tmp/falkor-${TS}.rdb
-# rotate: keep 7 daily, 4 weekly, 12 monthly
-rclone delete --min-age 7d --max-age 30d r2:brainbot-backups/falkor/ \
-  --include-from <(rclone lsf ... | awk '...')
+# rotation: keep 7 daily, 4 weekly, 12 monthly (rclone filters or a small companion script)
 ```
 
 **Cron:** systemd timer or `cron` entry: `0 3 * * * /opt/brainbot/compose/backup/falkordb-backup.sh`
 
-### Task 4.2 — Backup of Postgres `brain` schema
-
-Postgres already gets backed up (assumed Phase 0 work or existing infra). If not, add `pg_dump --schema=brain personal | gzip | rclone rcat r2:brainbot-backups/postgres/brain-${TS}.sql.gz` to the same nightly cron.
-
-### Task 4.3 — Restore-from-backup test (mandatory)
+### Task 4.2 — Restore-from-backup test (mandatory)
 
 A backup that doesn't restore is worthless. **Once, before declaring backups "done":**
 
@@ -50,32 +46,38 @@ A backup that doesn't restore is worthless. **Once, before declaring backups "do
 
 Document the procedure in `compose/backup/RESTORE.md`. Future-you needs this.
 
-### Task 4.4 — Backup monitoring
+### Task 4.3 — Backup freshness indicator
 
-Add to `/admin`: card showing "last successful backup: X hours ago" with red flag if >36h.
-
-Source: write a row to `brain.backup_runs` from the backup script on success.
+Add a tiny "last successful backup: X hours ago" indicator visible somewhere in the PWA (probably a corner of the chat or browse view). Source: the backup script `touch`es a sentinel file on success; the PWA reads its mtime. No database needed.
 
 ---
 
-## Track B — Observability extensions
+## Track B — Observability
 
-### Task 4.5 — Longer retention + summary tables
+### Task 4.4 — Persistent tool-call logging
 
-`brain.tool_calls` will get large. Three options:
-- (a) Drop rows older than 90 days
-- (b) Roll up daily aggregates into `brain.tool_calls_daily` and drop raw rows older than 30 days
-- (c) Move old rows to a `brain.tool_calls_archive` table
+When stderr logging from Phase 2 stops being enough (you want to ask "how much did I spend last week?" or "which tool errored most yesterday?"), introduce a persistent log.
 
-Default: (b). Daily rollups (`tool_name, day, count, p50, p99, total_cost, error_count`) are what `/admin` actually queries; raw rows are only useful for debugging recent issues.
+Default shape: rotated ndjson files in a mounted volume. One line per tool call. Easy to grep, easy to ship to a real analytics store later if it ever matters. No SQL.
 
-Cron job: nightly rollup script.
+If you genuinely need to ask SQL-shaped questions ("group by tool, p99 latency, last 30 days"), reach for SQLite at *that* point — and put it behind a small interface so the rest of the code doesn't care.
+
+### Task 4.5 — `/admin` route
+
+A SvelteKit route in the PWA that surfaces:
+- Recent tool calls (last 24h table)
+- Spend over time (per-day cost chart, last 30 days)
+- Capture queue depth (if Phase 3's queue is still in use)
+- Backup freshness card (Task 4.3)
+- Failed extractions (entities Graphiti couldn't extract from the last N episodes)
+
+Reads from whatever Task 4.4 settled on. Auth same as the rest of the PWA.
 
 ### Task 4.6 — Cost spike alerting
 
 If today's cost > 3× the trailing 7-day average, send an email (use a simple SMTP relay like Resend or Mailgun, ~free at this volume).
 
-Cheap and prevents "$200 surprise from a runaway loop."
+Cheap and prevents a "$200 surprise from a runaway loop."
 
 ---
 
@@ -83,20 +85,20 @@ Cheap and prevents "$200 surprise from a runaway loop."
 
 ### Task 4.7 — Weekly dedup audit script
 
-**New file:** `migrate/audit_dedup.py`
+**New file:** `scripts/audit_dedup.py`
 
 Runs weekly via cron. For each entity type:
 1. Pull all entities of that type
 2. For each pair, compute name similarity (Levenshtein, Jaro-Winkler, embedding cosine — pick one)
 3. Flag pairs with similarity > 0.85 as suspicious
-4. Write findings to `brain.dedup_candidates` for human review
+4. Write findings somewhere the `/admin` view can read (file, or whatever Task 4.4 settled on)
 
-### Task 4.8 — `/admin` view for dedup candidates
+### Task 4.8 — `/admin/dedup` view
 
 New panel in `/admin/dedup`:
 - Side-by-side cards for suspicious pairs
 - "Merge into A", "Merge into B", "These are different" buttons
-- Merge action calls Graphiti's merge API (if it exists; otherwise: copy edges from B to A, delete B)
+- Merge action calls the same `merge_entities` mutation the Phase 2 browser exposes
 
 This is maintenance work that should take 5 minutes/week if you stay on top of it. Skip a few weeks and the graph degrades.
 
@@ -104,29 +106,19 @@ This is maintenance work that should take 5 minutes/week if you stay on top of i
 
 ## Track D — Entity types as throughput justifies
 
-**Rule:** don't add new entity types until you have a use case generating data for them. The `feedback_data_before_taxonomy.md` rule cuts hard here.
+**Rule:** don't add new entity types until you have a use case generating data for them. Don't pre-design taxonomy.
 
-Candidates, in rough order of likely usefulness:
-
-| Type | When to add |
-|---|---|
-| `JournalEntry` | When the daily-journal habit is consistent (>20 entries/month for 2+ months) |
-| `Tweet` | When the Twitter pipeline is shipping (>10 published/month) |
-| `OmniDevFeature` | When OmniDev work is producing structured artifacts worth querying ("show me features tagged 'auth' shipped this quarter") |
-| `Book` / `Podcast` | If reading/listening notes become a habit. Might never. |
-| `Person` (richer than current) | If networking velocity ramps up — adding fields like "last contact", "preferred channel", "context" |
-
-Each one is a few hours of work: define the entity in Graphiti, update relevant tools to populate it, optionally backfill from existing data.
+Candidates emerge naturally as usage patterns settle. When you notice yourself wanting "show me all things of type X," that's the signal to add `X` as a typed entity. Each one is a few hours of work: define the entity in Graphiti, update relevant tools to populate it, optionally backfill from existing data.
 
 ---
 
 ## Track E — Fallback memory layer (only if extraction fails)
 
-If the graph noticeably degrades despite hedges (Tasks 4.7 + 4.8) and queries start missing things they shouldn't:
+If the graph noticeably degrades despite hedges (Tasks 4.7 + 4.8 + the Phase 2 browse/edit surface) and queries start missing things they shouldn't:
 
-### Task 4.9 — Add a Hermes-style turn-shaped provider as a second memory layer
+### Task 4.9 — Add a turn-shaped vector layer alongside the graph
 
-Don't replace the graph — augment it. A simple vector store (pgvector on the existing Postgres) of full episode bodies, queried in parallel with Graphiti and unioned in results.
+Don't replace the graph — augment it. A vector store of full episode bodies, queried in parallel with Graphiti and unioned in results.
 
 This is the honest fallback. Not a defeat — an admission that some recall is better as semantic search.
 
@@ -141,7 +133,7 @@ This is the honest fallback. Not a defeat — an admission that some recall is b
 - Multi-language: if traveling, accept dictation in other languages and let Graphiti's extraction handle it
 
 ### Task 4.11 — PWA polish
-- Offline shell with read-only graph cache (last 100 queries' results cached)
+- Offline shell with read-only graph cache (last 100 queries' results cached client-side)
 - Dark mode (whatever)
 - Search-as-you-type in the chat for past episodes
 
@@ -152,17 +144,17 @@ If the iOS Shortcut is reliable, surface it as a Watch complication. One tap →
 
 ## Phase 4 portfolio artifact
 
-Long-form writeup at `brain.{your-domain}/notes/architecture` (a static page served by the PWA, behind no auth).
+Long-form writeup at a public route: `app.{your-domain}/notes/architecture` (a static page served by the PWA, behind no auth).
 
 Audience: senior eng / hiring manager finding it via your job application or Twitter.
 
 Sections:
 1. **What this is** — one paragraph, link to GitHub
 2. **The bet** — graph vs vector, with the comparison table
-3. **The decisions** — Graphiti, FalkorDB, custom harness, MCP-only-for-Claude-Code
-4. **What surprised** — extraction cost was lower than expected, latency was higher than expected, Caddy auth was easier than expected, iOS Shortcut was harder than expected
+3. **The decisions** — Graphiti, FalkorDB, custom harness, MCP-only-for-Claude-Code, graph-canonical with a real editor surface, no second store until you actually need one
+4. **What surprised** — extraction cost was lower than expected, latency was higher than expected, Caddy auth was easier than expected, iOS Shortcut was harder than expected (fill in real surprises)
 5. **What I'd do differently** — honest section, names 2-3 things
-6. **What's next** — OmniDev integration? Multi-graph (work brain vs personal brain)? Shared brain with collaborators (only if life situation changes)?
+6. **What's next** — multi-graph (work brain vs personal brain)? Shared brain with collaborators (only if life situation changes)? Or — revisit the file-canonical experiment we parked.
 
 This becomes the link in the resume / cover letter / Twitter bio. It's the artifact that proves the project isn't a tutorial.
 
@@ -170,7 +162,8 @@ This becomes the link in the resume / cover letter / Twitter bio. It's the artif
 
 ## Risks called out
 
-- **Backup restoration is the only thing that *must* work.** Everything else in Phase 4 is "nice to have." If a single thing in this phase ships, it's Tasks 4.1–4.4.
+- **Backup restoration is the only thing that *must* work.** Everything else in Phase 4 is "nice to have." If a single thing in this phase ships, it's Tasks 4.1–4.3.
 - **The dedup audit ritual is easy to skip.** If you find yourself skipping 3 weeks in a row, automate the no-brainer cases (e.g., exact-name-match nodes auto-merge) and only surface the genuinely ambiguous ones.
 - **Phase 4 has no end state.** That's intentional — it's the maintenance/expansion track. The risk is treating it as "must finish all of this." Pick what hurts. Skip what doesn't.
-- **Cost creep over time.** Episode volume grows; extraction cost grows linearly. Watch the `/admin` cost trend monthly. If it crosses $20/mo without a corresponding value increase, audit what's being written and tighten the source filters.
+- **Cost creep over time.** Episode volume grows; extraction cost grows linearly. Watch the `/admin` cost trend monthly. If it crosses a comfort threshold without a corresponding value increase, audit what's being written and tighten the source filters.
+- **The persistent-store decision deferred from Phases 1–3 lands here.** Don't reach for the most capable store; reach for the one that fits the actual shape of the data you've accumulated. Files are usually enough.

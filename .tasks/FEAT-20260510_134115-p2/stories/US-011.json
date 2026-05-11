@@ -1,14 +1,17 @@
 {
   "id": "US-011",
   "featureId": "FEAT-20260510_134115-p2",
-  "title": "Postgres brain.tool_calls table for observability",
-  "userStory": "As an operator, I want every tool call recorded so that /admin can show real numbers.",
+  "title": "Browse UI: entry + recent feed + search",
+  "userStory": "As a brainbot user, I want a /browse entry view so that I can see what's in the brain at a glance and navigate into it.",
   "acceptanceCriteria": [
-    "Postgres table brain.tool_calls created with columns: id BIGSERIAL, occurred_at, session_id UUID, tool_name, input_json JSONB, output_json JSONB, status, latency_ms, model, input_tokens, output_tokens, cost_usd",
-    "Indexes on (occurred_at DESC) and (tool_name, occurred_at DESC)",
-    "Migration committed via the chosen migration tool"
+    "New file pwa/src/routes/browse/+page.svelte renders: search box at top, chronological episode feed below",
+    "Search uses the GET /api/graph/search endpoint (debounced as the user types)",
+    "Recent feed uses GET /api/graph/recent with infinite scroll (load more as the user reaches the bottom)",
+    "Each result row is a clickable summary that opens the entity card or episode detail",
+    "Mobile-first: works on phone with touch-friendly hit targets",
+    "Verify: phone test — the feed loads, scrolls smoothly past the first page, and search-as-you-type returns results within a couple hundred ms"
   ],
-  "dependencies": [],
+  "dependencies": ["US-009"],
   "status": "todo",
   "createdAt": "2026-05-10T13:41:15Z",
   "completedAt": null,

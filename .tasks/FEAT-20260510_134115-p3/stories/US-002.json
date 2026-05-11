@@ -2,16 +2,14 @@
   "id": "US-002",
   "featureId": "FEAT-20260510_134115-p3",
   "title": "Include touched filenames in session episode body",
-  "userStory": "As Steve, I want the episode to mention which files I touched so that 'what files did I change?' is answerable semantically.",
+  "userStory": "As a brainbot user, I want the session episode to mention which files I touched so that 'what files did I change?' is answerable semantically.",
   "acceptanceCriteria": [
     "If the transcript contains Edit/Write tool calls, hook appends a deduped list of filenames to the episode body",
     "First pass: filenames only (no diff text) to keep the body lean",
     "Re-evaluation note: revisit including one-line diff summaries if recall feels thin",
     "Verify: a session that edited two files produces an episode whose body lists both"
   ],
-  "dependencies": [
-    "US-001"
-  ],
+  "dependencies": ["US-001"],
   "status": "todo",
   "createdAt": "2026-05-10T13:41:15Z",
   "completedAt": null,

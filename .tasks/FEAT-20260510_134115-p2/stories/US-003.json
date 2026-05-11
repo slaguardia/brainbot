@@ -10,9 +10,7 @@
     "Tool registered with the chat endpoint",
     "Verify: a chat turn that needs context invokes search_brain and the response cites returned entities"
   ],
-  "dependencies": [
-    "US-002"
-  ],
+  "dependencies": ["US-002"],
   "status": "todo",
   "createdAt": "2026-05-10T13:41:15Z",
   "completedAt": null,

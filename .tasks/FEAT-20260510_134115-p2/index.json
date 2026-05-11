@@ -1,86 +1,21 @@
 {
   "featureId": "FEAT-20260510_134115-p2",
-  "title": "Phase 2: Build the PWA + custom harness with /admin observability",
+  "title": "Phase 2: PWA — chat + browse/edit + capture",
   "stories": [
-    {
-      "id": "US-001",
-      "title": "Scaffold SvelteKit PWA in pwa/",
-      "status": "todo"
-    },
-    {
-      "id": "US-002",
-      "title": "Backend skeleton: /api/chat streaming endpoint",
-      "status": "todo"
-    },
-    {
-      "id": "US-003",
-      "title": "Tool: search_brain (Graphiti hybrid search)",
-      "status": "todo"
-    },
-    {
-      "id": "US-004",
-      "title": "Tool: recall_similar_outreach",
-      "status": "todo"
-    },
-    {
-      "id": "US-005",
-      "title": "Tool: get_company (one-hop neighborhood)",
-      "status": "todo"
-    },
-    {
-      "id": "US-006",
-      "title": "Tool: add_episode (fire-and-forget queue)",
-      "status": "todo"
-    },
-    {
-      "id": "US-007",
-      "title": "Tool: draft_outreach (compound)",
-      "status": "todo"
-    },
-    {
-      "id": "US-008",
-      "title": "Tools: save_draft + list_drafts (and brain.drafts table)",
-      "status": "todo"
-    },
-    {
-      "id": "US-009",
-      "title": "Chat UI: streaming markdown with inline tool-call cards",
-      "status": "todo"
-    },
-    {
-      "id": "US-010",
-      "title": "Outreach workflow form at /draft",
-      "status": "todo"
-    },
-    {
-      "id": "US-011",
-      "title": "Postgres brain.tool_calls table for observability",
-      "status": "todo"
-    },
-    {
-      "id": "US-012",
-      "title": "Tool-call instrumentation wrapper",
-      "status": "todo"
-    },
-    {
-      "id": "US-013",
-      "title": "/admin route with summary cards, cost chart, and recent activity",
-      "status": "todo"
-    },
-    {
-      "id": "US-014",
-      "title": "Anthropic spend pricing table",
-      "status": "todo"
-    },
-    {
-      "id": "US-015",
-      "title": "Add pwa service to docker-compose",
-      "status": "todo"
-    },
-    {
-      "id": "US-016",
-      "title": "Caddy route for app.{domain} with cookie auth path",
-      "status": "todo"
-    }
+    { "id": "US-001", "title": "Scaffold SvelteKit PWA in pwa/", "status": "todo" },
+    { "id": "US-002", "title": "Backend skeleton: /api/chat streaming endpoint", "status": "todo" },
+    { "id": "US-003", "title": "Tool: search_brain (Graphiti hybrid search)", "status": "todo" },
+    { "id": "US-004", "title": "Tool: get_entity (one-hop neighborhood)", "status": "todo" },
+    { "id": "US-005", "title": "Tool: add_episode (synchronous)", "status": "todo" },
+    { "id": "US-006", "title": "Tool-call logging via stderr", "status": "todo" },
+    { "id": "US-007", "title": "Chat UI: streaming markdown with inline tool-call cards", "status": "todo" },
+    { "id": "US-008", "title": "Capture API + capture screen", "status": "todo" },
+    { "id": "US-009", "title": "Graph browser read APIs", "status": "todo" },
+    { "id": "US-010", "title": "Graph editor mutation APIs", "status": "todo" },
+    { "id": "US-011", "title": "Browse UI: entry + recent feed + search", "status": "todo" },
+    { "id": "US-012", "title": "Browse UI: entity detail card with inline edit", "status": "todo" },
+    { "id": "US-013", "title": "Browse UI: episode detail with body editor", "status": "todo" },
+    { "id": "US-014", "title": "Add pwa service to docker-compose", "status": "todo" },
+    { "id": "US-015", "title": "Caddy route for app.{domain} with cookie auth path", "status": "todo" }
   ]
 }

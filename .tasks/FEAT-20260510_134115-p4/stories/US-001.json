@@ -1,14 +1,15 @@
 {
   "id": "US-001",
   "featureId": "FEAT-20260510_134115-p4",
-  "title": "Nightly FalkorDB dump to S3-compatible storage",
+  "title": "Nightly FalkorDB dump to off-VPS storage",
   "userStory": "As an operator, I want a nightly off-VPS backup of the graph so that a host loss does not lose the brain.",
   "acceptanceCriteria": [
     "Storage choice picked and documented (default: Cloudflare R2 for free egress; Backblaze B2 acceptable)",
     "New file compose/backup/falkordb-backup.sh runs: BGSAVE -> wait for LASTSAVE timestamp change -> docker compose cp dump.rdb to /tmp -> rclone copy to remote bucket -> rm local",
+    "On success, the script touches a sentinel file (e.g. /var/lib/brainbot/last_backup_ok) so the PWA freshness indicator (US-003) can read its mtime",
     "Retention rotation: keep 7 daily, 4 weekly, 12 monthly",
     "Cron entry installed: 0 3 * * * /opt/brainbot/compose/backup/falkordb-backup.sh (or systemd timer)",
-    "Verify: trigger the script manually; remote bucket gets a new dump; rotation removes the oldest beyond policy"
+    "Verify: trigger the script manually; remote bucket gets a new dump; sentinel file mtime updates; rotation removes the oldest beyond policy"
   ],
   "dependencies": [],
   "status": "todo",

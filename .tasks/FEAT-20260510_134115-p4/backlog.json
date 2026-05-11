@@ -95,6 +95,12 @@
       "title": "Long-form architecture writeup at brain.{domain}/notes/architecture",
       "trigger": "Treat as the link in resume / cover letter / Twitter bio",
       "notes": "Sections: what this is, the bet (graph vs vector), the decisions, what surprised, what I'd do differently, what's next. No-auth public page served by the PWA."
+    },
+    {
+      "track": "G - Deployment options",
+      "title": "Optional co-hosted Ollama for fully-local inference",
+      "trigger": "Downstream user demand for 'data never leaves my box', or a contributor offers to land it",
+      "notes": "Compose profile `--profile local-llm` spins up an ollama service on brainnet; Graphiti points at it via OPENAI_BASE_URL=http://ollama:11434/v1. The provider-neutral env surface already supports this for users with their own Ollama host; this story is the on-VPS variant + docs. Requires the user to size their VPS at 16GB+ RAM (vs the 8GB default); CPU-only extraction is ~30s/episode (vs <1s hosted) so audit the throughput acceptance with users before defaulting. Small models do worse on entity extraction than Haiku/Sonnet — call out the quality tradeoff in the README so users know what they're trading."
     }
   ]
 }

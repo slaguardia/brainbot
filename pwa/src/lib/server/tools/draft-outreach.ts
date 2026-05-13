@@ -1,5 +1,5 @@
 import type { Tool } from './types';
-import { searchHybrid, searchNodes } from '../graphiti';
+import { searchNodes, searchFacts } from '../graphiti';
 
 interface Input {
   target_company: string;
@@ -47,15 +47,23 @@ export const draftOutreach: Tool<Input, Output | { error: string; message: strin
   handler: async (input) => {
     const channel = input.channel ?? 'linkedin';
 
-    const similar = await searchHybrid(
-      `outreach to ${input.target_persona ?? 'founder'} via ${channel}`,
-      3
-    );
-    if (similar === null) {
+    const [similarNodes, similarFacts] = await Promise.all([
+      searchNodes(
+        `outreach to ${input.target_persona ?? 'founder'} via ${channel}`,
+        3,
+        ['Outreach']
+      ),
+      searchFacts(
+        `outreach to ${input.target_persona ?? 'founder'} via ${channel}`,
+        3
+      )
+    ]);
+    if (similarNodes === null || similarFacts === null) {
       return { error: 'brain_offline', message: 'Phase 1 not online.' };
     }
+    const similar = { nodes: similarNodes, facts: similarFacts };
 
-    const company = await searchNodes(input.target_company, 'Company', 1);
+    const company = await searchNodes(input.target_company, 1, ['Company']);
     if (company === null) {
       return { error: 'brain_offline', message: 'Phase 1 not online.' };
     }

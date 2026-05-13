@@ -1,5 +1,5 @@
 import type { Tool } from './types';
-import { searchHybrid } from '../graphiti';
+import { searchNodes, searchFacts } from '../graphiti';
 
 interface Input {
   query: string;
@@ -14,19 +14,23 @@ export const searchBrain: Tool<Input, unknown> = {
     type: 'object',
     properties: {
       query: { type: 'string', description: 'Natural-language query.' },
-      limit: { type: 'number', description: 'Max results (default 5).' }
+      limit: { type: 'number', description: 'Max results per dimension (default 5).' }
     },
     required: ['query']
   },
   handler: async (input) => {
-    const results = await searchHybrid(input.query, input.limit ?? 5);
-    if (results === null) {
+    const limit = input.limit ?? 5;
+    const [nodes, facts] = await Promise.all([
+      searchNodes(input.query, limit),
+      searchFacts(input.query, limit)
+    ]);
+    if (nodes === null || facts === null) {
       return {
         error: 'brain_offline',
         message:
           'The knowledge graph is not online yet (phase 1 deliverable). Tell the user honestly.'
       };
     }
-    return { results };
+    return { nodes, facts };
   }
 };

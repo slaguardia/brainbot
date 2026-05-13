@@ -9,7 +9,7 @@ interface Input {
 
 // Fire-and-forget queue. MUST NOT block the response on Graphiti's
 // 1-3s extraction. We insert a pending row to Postgres and let a background
-// worker drain into Graphiti.
+// worker drain by calling Graphiti's MCP `add_memory` tool.
 //
 // The worker itself isn't built yet — see brain.pending_episodes migration.
 

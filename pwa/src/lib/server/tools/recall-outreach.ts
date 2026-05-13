@@ -23,7 +23,7 @@ export const recallSimilarOutreach: Tool<Input, unknown> = {
     required: ['query']
   },
   handler: async (input) => {
-    const results = await searchNodes(input.query, 'Outreach', input.limit ?? 3);
+    const results = await searchNodes(input.query, input.limit ?? 3, ['Outreach']);
     if (results === null) {
       return { error: 'brain_offline', message: 'Phase 1 not online.' };
     }

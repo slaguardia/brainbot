@@ -1,5 +1,5 @@
 import type { Tool } from './types';
-import { searchNodes, getNode } from '../graphiti';
+import { searchNodes, getEntity } from '../graphiti';
 
 interface Input {
   name: string;
@@ -17,14 +17,14 @@ export const getCompany: Tool<Input, unknown> = {
     required: ['name']
   },
   handler: async (input) => {
-    const matches = await searchNodes(input.name, 'Company', 1);
+    const matches = await searchNodes(input.name, 1, ['Company']);
     if (matches === null) {
       return { error: 'brain_offline', message: 'Phase 1 not online.' };
     }
     if (matches.length === 0) {
       return { company: null, message: 'No matching company in the brain.' };
     }
-    const detail = await getNode(matches[0].uuid);
+    const detail = await getEntity(matches[0].uuid);
     return { company: detail };
   }
 };

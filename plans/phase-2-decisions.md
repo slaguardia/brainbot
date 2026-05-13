@@ -53,6 +53,42 @@ Graphiti exists.
 
 ---
 
+## D2.5 — Graphiti transport: MCP JSON-RPC, not REST
+
+**Question:** how does Phase 2's `pwa/src/lib/server/graphiti.ts` talk to
+Graphiti?
+
+**Original scaffold (wrong):** REST calls to `/search/hybrid`,
+`/search/nodes`, `/nodes/{uuid}`, `/episodes`.
+
+**Decision:** **MCP JSON-RPC over `/mcp/`**, matching the Phase 1 migrator
+(`migrate/graphiti_clients.py`) and the Claude Code hook
+(`templates/claude-code-client/inject_memory.py`).
+
+**Why:** Phase 1 ships `zepai/graphiti-mcp:latest`, which is the MCP-only
+image — it does not serve a REST surface. The REST endpoints I originally
+wrote into `graphiti.ts` would have 404'd against Phase 1's stack. The
+alternative was to ask Phase 1 to swap to `zepai/graphiti` (the core image,
+which serves REST), but the migrator and hook already use MCP — adding a
+second transport would create drift.
+
+**Tool name mapping (verified against upstream):**
+| Phase 2 function | MCP tool |
+|---|---|
+| `searchNodes()` | `search_memory_nodes` |
+| `searchFacts()` | `search_memory_facts` |
+| `addMemory()` | `add_memory` |
+| `getEntity()` | composite: `search_memory_nodes` + `search_memory_facts` |
+
+Single global `group_id = "brain"` for cross-source dedup, matching Phase 1's
+convention.
+
+**Revisit if:** Phase 1 swaps to the core image (`zepai/graphiti`). Then we
+*can* use REST and the simpler request shapes, though the migration is
+forward-only (REST returns slightly different node/edge shapes than MCP).
+
+---
+
 ## D3 — Framework
 
 **Decision:** **SvelteKit** (already defaulted in the plan). Adapter-node so

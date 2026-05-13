@@ -2,7 +2,9 @@
   "id": "FEAT-20260510_134115-p2",
   "title": "Phase 2: Build the PWA + custom harness with /admin observability",
   "summary": "Ship a SvelteKit PWA powered by a custom @anthropic-ai/sdk harness with brain-aware tools (search, draft, capture), backed by an /admin route that surfaces per-tool latency and cost.",
-  "status": "planning",
+  "status": "staged",
+  "stagedAt": "2026-05-13T00:00:00Z",
+  "stagedNote": "Scaffolded on branch claude/stage-phase-2-NTFym. UI shell runnable; tools/graph blocked on phase 1. See plans/phase-2-decisions.md.",
   "createdAt": "2026-05-10T13:41:15Z",
   "outOfScope": [
     "Claude Code -> brain write-back (Phase 3)",

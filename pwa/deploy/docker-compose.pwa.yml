@@ -1,0 +1,40 @@
+# Additive compose snippet — merge into the main compose file once it exists
+# (created in phase 1). Do not deploy this file standalone; it references
+# `graphiti`, `falkordb`, and `postgres` services that live in the main file.
+
+services:
+  pwa:
+    build:
+      context: ../
+      dockerfile: Dockerfile
+    container_name: pwa
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgres://brainbot:brainbot@postgres:5432/personal}
+      GRAPHITI_URL: http://graphiti:8000
+      FALKORDB_URL: redis://falkordb:6379
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-sonnet-4-6}
+      PWA_BEARER_TOKEN: ${PWA_BEARER_TOKEN}
+      APP_DOMAIN: ${APP_DOMAIN:-app.localhost}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: '3000'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      # graphiti and falkordb are phase-1 services; uncomment when present.
+      # graphiti:
+      #   condition: service_healthy
+      # falkordb:
+      #   condition: service_healthy
+    networks:
+      - default
+    # No public port mapping — Caddy is the only ingress.
+    healthcheck:
+      test: ['CMD', 'wget', '--quiet', '--spider', 'http://localhost:3000/api/health']
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s

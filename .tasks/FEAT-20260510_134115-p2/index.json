@@ -1,86 +1,107 @@
 {
   "featureId": "FEAT-20260510_134115-p2",
   "title": "Phase 2: Build the PWA + custom harness with /admin observability",
+  "statusLegend": {
+    "todo": "not started",
+    "staged": "scaffolded on disk; needs phase 1 (or other dep) to verify end-to-end",
+    "done": "verified working in deployed environment"
+  },
   "stories": [
     {
       "id": "US-001",
       "title": "Scaffold SvelteKit PWA in pwa/",
-      "status": "todo"
+      "status": "staged",
+      "note": "Project files written; npm install not yet verified in this env. Run `npm install && npm run check` when you're back online."
     },
     {
       "id": "US-002",
       "title": "Backend skeleton: /api/chat streaming endpoint",
-      "status": "todo"
+      "status": "staged",
+      "note": "SSE streaming + multi-turn tool-use loop in src/routes/api/chat/+server.ts. Blocked on ANTHROPIC_API_KEY at runtime."
     },
     {
       "id": "US-003",
       "title": "Tool: search_brain (Graphiti hybrid search)",
-      "status": "todo"
+      "status": "staged",
+      "note": "Calls /search/hybrid; returns brain_offline if Graphiti unreachable (phase-1-blocked)."
     },
     {
       "id": "US-004",
       "title": "Tool: recall_similar_outreach",
-      "status": "todo"
+      "status": "staged",
+      "note": "Filters search_nodes to Outreach. Same phase-1 dependency."
     },
     {
       "id": "US-005",
       "title": "Tool: get_company (one-hop neighborhood)",
-      "status": "todo"
+      "status": "staged",
+      "note": "search_nodes + get_node. Neighborhood shape is a placeholder; phase 1 will pin the real response shape."
     },
     {
       "id": "US-006",
       "title": "Tool: add_episode (fire-and-forget queue)",
-      "status": "todo"
+      "status": "staged",
+      "note": "Inserts to brain.pending_episodes (table created). Background drainer NOT built yet — see plans/phase-2-decisions.md §D9."
     },
     {
       "id": "US-007",
       "title": "Tool: draft_outreach (compound)",
-      "status": "todo"
+      "status": "staged",
+      "note": "Orchestrates similar-outreach + get_company + voice-rules. Voice rules are hard-coded until phase 1 ships the load-at-boot path."
     },
     {
       "id": "US-008",
       "title": "Tools: save_draft + list_drafts (and brain.drafts table)",
-      "status": "todo"
+      "status": "staged",
+      "note": "Migration written. Tools functional once Postgres has the schema applied."
     },
     {
       "id": "US-009",
       "title": "Chat UI: streaming markdown with inline tool-call cards",
-      "status": "todo"
+      "status": "staged",
+      "note": "MessageBubble + ToolCallCard. Tool-call cards not yet wired to live stream events — currently they appear only when constructed client-side from server-side multi-turn results."
     },
     {
       "id": "US-010",
       "title": "Outreach workflow form at /draft",
-      "status": "todo"
+      "status": "staged",
+      "note": "Form UI rendered; submit handler not wired. Treat as placeholder until chat-first usage proves a form is actually needed."
     },
     {
       "id": "US-011",
       "title": "Postgres brain.tool_calls table for observability",
-      "status": "todo"
+      "status": "staged",
+      "note": "Migration 003. Run `npm run migrate` when DB is reachable."
     },
     {
       "id": "US-012",
       "title": "Tool-call instrumentation wrapper",
-      "status": "todo"
+      "status": "staged",
+      "note": "lib/server/tools/instrument.ts. Logs best-effort; failures don't block tools."
     },
     {
       "id": "US-013",
       "title": "/admin route with summary cards, cost chart, and recent activity",
-      "status": "todo"
+      "status": "staged",
+      "note": "Cards + recent table done. Cost chart deferred until real data is flowing."
     },
     {
       "id": "US-014",
       "title": "Anthropic spend pricing table",
-      "status": "todo"
+      "status": "staged",
+      "note": "lib/server/pricing.ts. Verify numbers against anthropic.com/pricing before first deploy."
     },
     {
       "id": "US-015",
       "title": "Add pwa service to docker-compose",
-      "status": "todo"
+      "status": "staged",
+      "note": "Snippet in pwa/deploy/docker-compose.pwa.yml — merge into main compose once it exists. graphiti/falkordb depends_on are commented out until phase 1 brings them up."
     },
     {
       "id": "US-016",
       "title": "Caddy route for app.{domain} with cookie auth path",
-      "status": "todo"
+      "status": "staged",
+      "note": "Snippet in pwa/deploy/Caddyfile.snippet. Cookie auth implementation deferred — header-only for now."
     }
   ]
 }

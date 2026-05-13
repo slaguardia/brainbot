@@ -1,0 +1,40 @@
+# Caddy vhost snippet for the PWA. Merge into the main Caddyfile (created in
+# phase 1.5). Public ingress to the PWA backend over TLS.
+#
+# Auth strategy (D9):
+#   - All routes under /api/ require Bearer token.
+#   - Browsing routes (/, /entity/..., /admin) require either Bearer header
+#     OR a signed __Host-session cookie set after a one-time /login?token=...
+#   - Cookie strategy implementation is deferred; for now, header-only.
+#
+# When you wire the cookie strategy, replace the @authorized matcher with one
+# that also accepts the cookie.
+
+app.{$APP_DOMAIN} {
+    encode zstd gzip
+
+    @api path /api/*
+    handle @api {
+        @authorized header Authorization "Bearer {$PWA_BEARER_TOKEN}"
+        handle @authorized {
+            reverse_proxy pwa:3000
+        }
+        handle {
+            respond "Unauthorized" 401
+        }
+    }
+
+    # Browsing: same bearer for now; swap for cookie once /login is wired.
+    @authorized header Authorization "Bearer {$PWA_BEARER_TOKEN}"
+    handle @authorized {
+        reverse_proxy pwa:3000
+    }
+    handle {
+        respond "Unauthorized" 401
+    }
+
+    log {
+        output file /var/log/caddy/pwa.log
+        format json
+    }
+}

@@ -14,6 +14,12 @@ Nothing assumes a specific project layout or name.
   wrapper script that sources `compose/.env` from your brainbot
   checkout.
 
+**Privacy note:** the `UserPromptSubmit` hook installed in step 3
+sends every prompt's first 2KB to your VPS (which then sends it to
+your embeddings provider, Voyage by default) for vector search.
+Set `BRAIN_INJECT_DISABLE=1` in a session to opt out for sensitive
+prompts.
+
 ## 1. Add the Graphiti MCP server (US-012)
 
 Current Claude Code expects MCP servers in `.mcp.json`, not
@@ -24,7 +30,7 @@ Current Claude Code expects MCP servers in `.mcp.json`, not
   "mcpServers": {
     "graphiti": {
       "type": "http",
-      "url": "https://brain.${BRAIN_DOMAIN}/mcp",
+      "url": "https://brain.${BRAIN_DOMAIN}/mcp/",
       "headers": {
         "Authorization": "Bearer ${BRAIN_BEARER_TOKEN}"
       }
@@ -42,8 +48,9 @@ Verify in a fresh Claude Code session opened in the client repo:
 list the available MCP tools
 ```
 
-You should see `mcp__graphiti__search_nodes`, `mcp__graphiti__search_facts`,
-and `mcp__graphiti__add_episode` in the response.
+You should see `mcp__graphiti__search_memory_nodes`,
+`mcp__graphiti__search_memory_facts`, `mcp__graphiti__add_memory`, and
+a few others (`get_episodes`, `delete_entity_edge`, etc.) in the response.
 
 ## 2. Document the env requirement in the client repo's CLAUDE.md
 

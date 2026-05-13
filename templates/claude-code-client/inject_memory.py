@@ -6,7 +6,7 @@ Behavior:
 2. If BRAIN_INJECT_SCOPE is set and cwd is not under that path, exit 0
    with no changes. If unset, the hook always runs.
 3. Call Graphiti's search_nodes tool over MCP JSON-RPC at /mcp/ with
-   an 800ms budget.
+   a 2s socket budget (settings.json gives the hook 3s total).
 4. If hits returned, emit a hookSpecificOutput.additionalContext block on
    stdout that prepends a <relevant-memory> envelope to the prompt.
 5. On timeout or any error, log to .claude/logs/inject_memory.log under
@@ -20,6 +20,7 @@ Required env (set in shell before launching claude):
 
 Optional env:
     BRAIN_INJECT_SCOPE     filesystem path; hook no-ops outside it
+    BRAIN_INJECT_DISABLE   set to "1" to no-op (kill switch for sensitive sessions)
     GRAPHITI_GROUP_ID      defaults to "brain"
 """
 
@@ -28,6 +29,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+import time
 import traceback
 import urllib.error
 import urllib.request
@@ -35,8 +37,9 @@ import uuid
 from datetime import datetime
 from pathlib import Path
 
-SEARCH_TIMEOUT_S = 0.8
+SEARCH_TIMEOUT_S = 2.0  # cold TLS to a VPS routinely > 800ms; settings.json gives us 3s total
 RESULT_LIMIT = 5
+MAX_QUERY_BYTES = 2000
 
 
 def _log_path() -> Path:
@@ -144,8 +147,9 @@ def _last_sse_message(stream: str) -> dict:
     return last
 
 
-def _search_nodes(prompt: str) -> list[dict]:
+def _search_nodes(prompt: str) -> tuple[list[dict], int]:
     group_id = os.environ.get("GRAPHITI_GROUP_ID", "brain")
+    start = time.monotonic()
     result = _mcp_call(
         "search_nodes",
         {
@@ -154,7 +158,8 @@ def _search_nodes(prompt: str) -> list[dict]:
             "max_nodes": RESULT_LIMIT,
         },
     )
-    return result.get("nodes", []) or []
+    elapsed_ms = int((time.monotonic() - start) * 1000)
+    return result.get("nodes", []) or [], elapsed_ms
 
 
 def _format_block(nodes: list[dict]) -> str:
@@ -173,9 +178,15 @@ def main() -> int:
         return 0
     if not _scope_allows(cwd):
         return 0
+    if os.environ.get("BRAIN_INJECT_DISABLE") == "1":
+        return 0
+
+    encoded = prompt.encode("utf-8")
+    if len(encoded) > MAX_QUERY_BYTES:
+        prompt = encoded[:MAX_QUERY_BYTES].decode("utf-8", errors="ignore")
 
     try:
-        nodes = _search_nodes(prompt)
+        nodes, elapsed_ms = _search_nodes(prompt)
     except urllib.error.URLError as e:
         _log(f"search_nodes URLError: {e}")
         return 0
@@ -184,11 +195,11 @@ def main() -> int:
         return 0
 
     if not nodes:
-        _log("no hits for prompt; no injection")
+        _log(f"no hits for prompt; no injection (search took {elapsed_ms}ms)")
         return 0
 
     block = _format_block(nodes)
-    _log(f"injected {len(nodes)} hits")
+    _log(f"injected {len(nodes)} hits in {elapsed_ms}ms")
 
     output = {
         "hookSpecificOutput": {

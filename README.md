@@ -61,8 +61,12 @@ The Phase 1 stack is two compose services: `falkordb` (graph store) and `graphit
 ```sh
 cd compose
 cp .env.example .env
-# edit .env: pick an OPENAI_API_KEY (OpenRouter is the default provider),
-# set BRAIN_DOMAIN + BRAIN_BEARER_TOKEN, set NOTION_TOKEN if you'll run the migrator
+# edit .env: set ANTHROPIC_API_KEY (LLM extraction) and VOYAGE_API_KEY (embeddings) —
+# these are the defaults baked into graphiti-config.yaml. Also set BRAIN_DOMAIN +
+# BRAIN_BEARER_TOKEN, and NOTION_TOKEN if you'll run the migrator.
+#
+# To swap providers: see comments in graphiti-config.yaml. OpenAI / OpenRouter /
+# local Ollama are all supported but require editing the yaml, not just .env.
 ```
 
 ### 2. Bring the stack up

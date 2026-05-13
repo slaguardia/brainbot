@@ -47,9 +47,16 @@ def make_client() -> GraphitiClient:
     base_url = os.environ.get("BRAIN_URL")
     if not base_url:
         sys.exit("BRAIN_URL not set (e.g. http://127.0.0.1:8000)")
+    bearer = os.environ.get("BRAIN_BEARER_TOKEN")
+    if base_url.startswith("https://") and not bearer:
+        print(
+            "WARNING: BRAIN_BEARER_TOKEN is unset but BRAIN_URL is https — "
+            "Caddy will 401. Set BRAIN_BEARER_TOKEN before re-running.",
+            file=sys.stderr,
+        )
     return GraphitiClient(
         base_url=base_url,
-        bearer=os.environ.get("BRAIN_BEARER_TOKEN"),
+        bearer=bearer,
         group_id=os.environ.get("GRAPHITI_GROUP_ID", "brain"),
     )
 

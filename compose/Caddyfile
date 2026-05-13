@@ -1,6 +1,9 @@
 brain.{$BRAIN_DOMAIN} {
     @authorized header Authorization "Bearer {$BRAIN_BEARER_TOKEN}"
 
+    @mcp_no_slash path /mcp
+    redir @mcp_no_slash /mcp/ 308
+
     handle @authorized {
         reverse_proxy graphiti:8000
     }

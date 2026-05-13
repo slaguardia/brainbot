@@ -241,9 +241,17 @@ def build_clients(dry_run: bool, group_id: str):
     if dry_run:
         return notion, _NoOpGraphiti(group_id)
 
+    brain_url = _require_env("BRAIN_URL")
+    bearer = os.environ.get("BRAIN_BEARER_TOKEN")
+    if brain_url.startswith("https://") and not bearer:
+        print(
+            "WARNING: BRAIN_BEARER_TOKEN is unset but BRAIN_URL is https — "
+            "Caddy will 401. Set BRAIN_BEARER_TOKEN before re-running.",
+            file=sys.stderr,
+        )
     graphiti = GraphitiClient(
-        base_url=_require_env("BRAIN_URL"),
-        bearer=os.environ.get("BRAIN_BEARER_TOKEN"),
+        base_url=brain_url,
+        bearer=bearer,
         group_id=group_id,
     )
     return notion, graphiti
@@ -292,6 +300,14 @@ def main(argv: list[str] | None = None) -> int:
     episodes = migrator.migrate(args.target, kind=args.kind)
     logger.info("%s: %d episodes planned (group_id=%s)", args.target, len(episodes), args.group_id)
     logger.info("summary: queued=%d", migrator.counts["migrated"])
+    if args.dry_run:
+        print(
+            f"\nNote: each of these {len(episodes)} episodes triggers Graphiti extraction "
+            f"(~$0.0016 with claude-haiku-4-5 + voyage-3-lite, "
+            f"~${len(episodes) * 0.0016:.2f} total). "
+            "Re-runs re-extract everything — there's no migration log.",
+            file=sys.stderr,
+        )
     return 0
 
 

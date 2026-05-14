@@ -48,7 +48,7 @@ Verify in a fresh Claude Code session opened in the client repo:
 list the available MCP tools
 ```
 
-You should see `mcp__graphiti__search_memory_nodes`,
+You should see `mcp__graphiti__search_nodes`,
 `mcp__graphiti__search_memory_facts`, `mcp__graphiti__add_memory`, and
 a few others (`get_episodes`, `delete_entity_edge`, etc.) in the response.
 

@@ -183,19 +183,31 @@ collision and let the project have its own identity). Tokens live in
 
 ## D9 — What's safe to scaffold now vs. blocked on phase 1
 
-**Scaffolded (works without phase 1):**
+**Scaffolded and verified (works without phase 1):**
 - PWA project structure, manifest, service worker
-- UI shell — chat page, composer, message bubble, tool-call card
+- UI shell — chat page, composer, message bubble, tool-call card,
+  conversation drawer
 - Theme tokens, layout, navigation
-- SQL migration files (sit on disk; not applied)
-- Tool definition skeletons (handlers throw "phase 1 not online")
-- Instrument wrapper
-- Pricing table
+- SQL migration files + idempotent runner
+- Tool definition skeletons (handlers return brain_offline cleanly)
+- Instrument wrapper, pricing table
 - Dockerfile + compose snippet + Caddyfile snippet (additive)
+- **Conversation persistence** — `/api/conversations`, `/api/conversations/[id]`,
+  chat endpoint writes user + assistant messages to `brain.messages`,
+  drawer renders the list, auto-titles on first user message
+- **PWA icons** — 192/512/maskable PNGs generated from `favicon.svg`,
+  `npm run icons` regenerates
+- **Background worker** for `brain.pending_episodes` — boots once on
+  first request via `hooks.server.ts`, claims rows with `SKIP LOCKED`,
+  retries up to 5× then marks failed
+- **Auth (cookie + bearer)** — `/login?token=…` issues a signed
+  `__Host-session` cookie for 30 days; both header and cookie paths verified
+  end-to-end with 401/303/200 responses
 
-**Blocked on phase 1 (stubs only):**
-- Anything that calls Graphiti REST (search-brain, recall-outreach,
-  get-company, add-episode, draft-outreach)
+**Blocked on phase 1 (stubs only — return brain_offline cleanly):**
+- Anything that calls Graphiti MCP (search-brain, recall-outreach,
+  get-company, add-episode, draft-outreach) — code is correct, just has
+  no server to talk to
 - `/api/graph/neighborhood` (needs FalkorDB available)
 - `/admin` cost data (needs real tool calls flowing)
 

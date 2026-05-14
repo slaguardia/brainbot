@@ -1,19 +1,13 @@
 # App icons
 
-PNG icons referenced in `manifest.webmanifest` are not committed because they
-need to be designed. Until they exist:
+PNG icons referenced in `manifest.webmanifest` are committed and generated
+from `favicon.svg` by `scripts/generate-icons.mjs`.
 
-- iOS "Add to Home Screen" will fall back to a screenshot.
-- Lighthouse PWA audit will warn about missing icons.
-
-When you're ready, generate from `favicon.svg`:
+To regenerate (after changing the SVG):
 
 ```bash
-# Requires imagemagick or rsvg-convert
-rsvg-convert -w 192 -h 192 favicon.svg -o icon-192.png
-rsvg-convert -w 512 -h 512 favicon.svg -o icon-512.png
-# For maskable, add a 20% safe-area padding around the design
-rsvg-convert -w 512 -h 512 favicon.svg -o icon-maskable-512.png
+npm run icons
 ```
 
-Or use https://realfavicongenerator.net/ for one-shot generation.
+The maskable variant adds 10% padding inside the canvas so iOS/Android
+safe-area cropping doesn't clip the design.

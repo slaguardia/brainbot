@@ -2,13 +2,19 @@
   import { onMount } from 'svelte';
   import Composer from '$lib/components/Composer.svelte';
   import MessageBubble from '$lib/components/MessageBubble.svelte';
-  import type { ChatMessage } from '$lib/types';
+  import ConversationDrawer from '$lib/components/ConversationDrawer.svelte';
+  import type { ChatMessage, Conversation } from '$lib/types';
 
   let messages = $state<ChatMessage[]>([]);
   let input = $state('');
   let streaming = $state(false);
   let composer: Composer | undefined = $state();
   let scroller: HTMLDivElement | undefined = $state();
+
+  let conversations = $state<Conversation[]>([]);
+  let conversationId = $state<string | null>(null);
+  let drawerOpen = $state(false);
+  let dbConnected = $state(false);
 
   function uid(): string {
     return crypto.randomUUID();
@@ -18,6 +24,60 @@
     queueMicrotask(() => {
       if (scroller) scroller.scrollTop = scroller.scrollHeight;
     });
+  }
+
+  async function refreshConversations() {
+    try {
+      const res = await fetch('/api/conversations');
+      if (!res.ok) return;
+      const data = (await res.json()) as { conversations: Conversation[]; connected: boolean };
+      conversations = data.conversations;
+      dbConnected = data.connected;
+    } catch {
+      /* drawer just stays empty */
+    }
+  }
+
+  async function ensureConversation(): Promise<string | null> {
+    if (conversationId) return conversationId;
+    if (!dbConnected) return null;
+    try {
+      const res = await fetch('/api/conversations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({})
+      });
+      if (!res.ok) return null;
+      const data = (await res.json()) as { id: string };
+      conversationId = data.id;
+      return data.id;
+    } catch {
+      return null;
+    }
+  }
+
+  async function loadConversation(id: string) {
+    drawerOpen = false;
+    try {
+      const res = await fetch(`/api/conversations/${id}`);
+      if (!res.ok) return;
+      const data = (await res.json()) as {
+        conversation: Conversation;
+        messages: ChatMessage[];
+      };
+      conversationId = data.conversation.id;
+      messages = data.messages;
+      scrollToBottom();
+    } catch {
+      /* ignore */
+    }
+  }
+
+  function newConversation() {
+    drawerOpen = false;
+    conversationId = null;
+    messages = [];
+    composer?.focus();
   }
 
   async function send(text: string) {
@@ -39,6 +99,8 @@
     };
     messages = [...messages, assistantMsg];
 
+    const convId = await ensureConversation();
+
     try {
       const res = await fetch('/api/chat', {
         method: 'POST',
@@ -46,7 +108,8 @@
         body: JSON.stringify({
           messages: messages
             .filter((m) => m.role !== 'system')
-            .map((m) => ({ role: m.role, content: m.content }))
+            .map((m) => ({ role: m.role, content: m.content })),
+          conversationId: convId
         })
       });
 
@@ -91,10 +154,13 @@
       messages = [...messages];
     } finally {
       streaming = false;
+      // Refresh sidebar so the new title shows up.
+      refreshConversations();
     }
   }
 
   onMount(() => {
+    refreshConversations();
     function onKey(e: KeyboardEvent) {
       const mod = e.metaKey || e.ctrlKey;
       if (mod && e.key === '/') {
@@ -103,8 +169,7 @@
       }
       if (mod && e.key === 'k') {
         e.preventDefault();
-        messages = [];
-        composer?.focus();
+        newConversation();
       }
     }
     window.addEventListener('keydown', onKey);
@@ -117,6 +182,18 @@
 </svelte:head>
 
 <div class="page">
+  <header class="bar">
+    <button
+      class="icon-btn"
+      onclick={() => (drawerOpen = true)}
+      aria-label="Open conversations"
+    >
+      ☰
+    </button>
+    <span class="title">Brainbot</span>
+    <button class="icon-btn" onclick={newConversation} aria-label="New conversation">+</button>
+  </header>
+
   <div class="scroll" bind:this={scroller}>
     {#if messages.length === 0}
       <div class="empty">
@@ -143,12 +220,54 @@
   </div>
 </div>
 
+<ConversationDrawer
+  open={drawerOpen}
+  {conversations}
+  currentId={conversationId}
+  onclose={() => (drawerOpen = false)}
+  onselect={loadConversation}
+  onnew={newConversation}
+/>
+
 <style>
   .page {
     display: flex;
     flex-direction: column;
     height: 100%;
     min-height: 100dvh;
+  }
+
+  .bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--space-2) var(--space-3);
+    border-bottom: 1px solid var(--color-border);
+    background: var(--color-bg);
+    position: sticky;
+    top: 0;
+    z-index: 5;
+  }
+
+  .icon-btn {
+    width: 40px;
+    height: 40px;
+    min-width: 40px;
+    min-height: 40px;
+    border-radius: var(--radius-md);
+    color: var(--color-text-muted);
+    font-size: var(--text-lg);
+  }
+
+  .icon-btn:hover {
+    background: var(--color-bg-subtle);
+    color: var(--color-text);
+  }
+
+  .title {
+    font-size: var(--text-sm);
+    font-weight: 600;
+    color: var(--color-text-muted);
   }
 
   .scroll {

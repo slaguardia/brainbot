@@ -2,36 +2,18 @@
 # phase 1.5). Public ingress to the PWA backend over TLS.
 #
 # Auth strategy (D9):
-#   - All routes under /api/ require Bearer token.
-#   - Browsing routes (/, /entity/..., /admin) require either Bearer header
-#     OR a signed __Host-session cookie set after a one-time /login?token=...
-#   - Cookie strategy implementation is deferred; for now, header-only.
+#   - The PWA enforces auth itself (lib/server/auth.ts + hooks.server.ts).
+#     Bearer header for API clients OR signed __Host-session cookie for
+#     browsers (set after one-time /login?token=<bearer>).
+#   - Caddy is just a TLS terminator + reverse proxy here.
 #
-# When you wire the cookie strategy, replace the @authorized matcher with one
-# that also accepts the cookie.
+# If you want belt-and-braces (Caddy rejects bad bearer at the edge), uncomment
+# the matcher block; the PWA's own auth still runs as defense in depth.
 
 app.{$APP_DOMAIN} {
     encode zstd gzip
 
-    @api path /api/*
-    handle @api {
-        @authorized header Authorization "Bearer {$PWA_BEARER_TOKEN}"
-        handle @authorized {
-            reverse_proxy pwa:3000
-        }
-        handle {
-            respond "Unauthorized" 401
-        }
-    }
-
-    # Browsing: same bearer for now; swap for cookie once /login is wired.
-    @authorized header Authorization "Bearer {$PWA_BEARER_TOKEN}"
-    handle @authorized {
-        reverse_proxy pwa:3000
-    }
-    handle {
-        respond "Unauthorized" 401
-    }
+    reverse_proxy pwa:3000
 
     log {
         output file /var/log/caddy/pwa.log

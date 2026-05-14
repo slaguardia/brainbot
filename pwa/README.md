@@ -90,8 +90,7 @@ See `../plans/phase-2-decisions.md` §D6.
 ## Things explicitly NOT in this scaffold
 
 - Live deployment (phase 1 / 1.5 prerequisites)
-- Conversation persistence wired to UI (table exists, save logic isn't)
-- Cookie auth for browsing (defer until first device test)
 - Force-directed graph viz library + page (defer until graph has data)
-- Background worker for `brain.pending_episodes` (queue exists, drainer doesn't)
+- Voice Tier 2 mic button in the composer (Groq Whisper endpoint exists at
+  `/api/transcribe`; UI wiring deferred to phase 2.x)
 - Tests (add when phase 2 lands)

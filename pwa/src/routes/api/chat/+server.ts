@@ -4,6 +4,7 @@ import { anthropic } from '$lib/server/anthropic';
 import { env } from '$lib/server/env';
 import { SYSTEM_PROMPT } from '$lib/server/system-prompt';
 import { TOOLS, TOOL_BY_NAME, toolDefinitions } from '$lib/server/tools/registry';
+import { appendMessage } from '$lib/server/conversations';
 
 // SSE chat endpoint. Streams text deltas as `data: {"delta": "..."}`. Tool
 // calls are not exposed in the stream yet — when they fire, the route resolves
@@ -13,6 +14,7 @@ import { TOOLS, TOOL_BY_NAME, toolDefinitions } from '$lib/server/tools/registry
 
 interface Body {
   messages: Array<{ role: 'user' | 'assistant'; content: string }>;
+  conversationId?: string;
   sessionId?: string;
   model?: string;
 }
@@ -29,8 +31,18 @@ export const POST: RequestHandler = async ({ request }) => {
 
   const model = body.model ?? env.anthropicModel;
   const sessionId = body.sessionId ?? crypto.randomUUID();
+  const conversationId = body.conversationId ?? null;
   const client = anthropic();
   void TOOLS;
+
+  // Persist the latest user message before streaming so a refresh mid-stream
+  // doesn't lose it. Best-effort — if the DB is offline, skip silently.
+  const latest = body.messages[body.messages.length - 1];
+  if (conversationId && latest && latest.role === 'user') {
+    appendMessage(conversationId, { role: 'user', content: latest.content }).catch(() => {
+      /* persistence is best-effort */
+    });
+  }
 
   const stream = new ReadableStream({
     async start(controller) {
@@ -38,10 +50,9 @@ export const POST: RequestHandler = async ({ request }) => {
         controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(obj)}\n\n`));
       };
 
+      let assistantText = '';
+
       try {
-        // Single-turn streaming for now. Tool-use loop is handled by resolving
-        // tool calls server-side between turns; the SDK's `stream` helper
-        // properly buffers tool_use blocks across chunks.
         const messages = body.messages.map((m) => ({
           role: m.role,
           content: m.content
@@ -66,6 +77,7 @@ export const POST: RequestHandler = async ({ request }) => {
               event.type === 'content_block_delta' &&
               event.delta.type === 'text_delta'
             ) {
+              assistantText += event.delta.text;
               send({ delta: event.delta.text });
             }
           }
@@ -115,6 +127,16 @@ export const POST: RequestHandler = async ({ request }) => {
       } catch (e) {
         send({ error: e instanceof Error ? e.message : String(e) });
       } finally {
+        // Persist the assistant response (best-effort).
+        if (conversationId && assistantText) {
+          appendMessage(
+            conversationId,
+            { role: 'assistant', content: assistantText },
+            { model }
+          ).catch(() => {
+            /* best-effort */
+          });
+        }
         controller.close();
       }
     }

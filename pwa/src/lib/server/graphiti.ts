@@ -144,7 +144,7 @@ export async function searchNodes(
   };
   if (entityTypes && entityTypes.length > 0) args.entity_types = entityTypes;
 
-  const result = await callTool('search_memory_nodes', args);
+  const result = await callTool('search_nodes', args);
   if (result === null) return null;
   const obj = result as { nodes?: SearchNode[] };
   return obj.nodes ?? [];

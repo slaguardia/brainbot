@@ -75,10 +75,10 @@ second transport would create drift.
 **Tool name mapping (verified against upstream):**
 | Phase 2 function | MCP tool |
 |---|---|
-| `searchNodes()` | `search_memory_nodes` |
+| `searchNodes()` | `search_nodes` |
 | `searchFacts()` | `search_memory_facts` |
 | `addMemory()` | `add_memory` |
-| `getEntity()` | composite: `search_memory_nodes` + `search_memory_facts` |
+| `getEntity()` | composite: `search_nodes` + `search_memory_facts` |
 
 Single global `group_id = "brain"` for cross-source dedup, matching Phase 1's
 convention.

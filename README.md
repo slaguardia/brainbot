@@ -22,6 +22,7 @@ The full reasoning lives in [`architecture.md`](./architecture.md).
 |---|---|---|
 | 0 — VPS + Docker substrate | ✅ done | Hostinger KVM, Ubuntu 24.04, Postgres 18, UFW, Caddy |
 | 1 — Brain online, Claude Code reads it | 🟡 in plan | [`plans/phase-1-graph-online.md`](./plans/phase-1-graph-online.md) |
+| 1b — CSV bulk loader (structured data path) | 🟡 in plan | [`plans/phase-1b-csv-loader.md`](./plans/phase-1b-csv-loader.md) |
 | 2 — PWA + custom harness | 🟡 in plan | [`plans/phase-2-pwa-harness.md`](./plans/phase-2-pwa-harness.md) |
 | 3 — Write-back loop + capture polish | 🟡 in plan | [`plans/phase-3-writeback.md`](./plans/phase-3-writeback.md) |
 | 4 — Hardening + life expansion | 🟡 in plan | [`plans/phase-4-hardening.md`](./plans/phase-4-hardening.md) |
@@ -39,6 +40,7 @@ brainbot/
 ├── architecture.md           — full architecture + decision history
 ├── plans/
 │   ├── phase-1-graph-online.md
+│   ├── phase-1b-csv-loader.md
 │   ├── phase-2-pwa-harness.md
 │   ├── phase-3-writeback.md
 │   └── phase-4-hardening.md

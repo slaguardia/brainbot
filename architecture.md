@@ -87,6 +87,24 @@ flowchart TB
   GCORE --> ANTH
 ```
 
+### Data flow — two ingestion paths, one graph
+
+```mermaid
+flowchart LR
+  TWEETS[Free-text<br/>tweets, journal,<br/>outreach DMs]
+  CSVS[Structured CSVs<br/>Crunchbase, Notion DB<br/>exports, contact lists]
+
+  TWEETS --> GCORE[Graphiti core<br/>LLM extraction<br/>~$0.0016/row]
+  CSVS --> LOADER[csv_to_graph<br/>mapping rules<br/>no LLM at ingest]
+
+  GCORE --> FALKOR[(FalkorDB)]
+  LOADER --> FALKOR
+
+  FALKOR --> QUERY[Unified query surface<br/>graph + vector hybrid]
+```
+
+The mapping-file path skips extraction because structured columns already declare the entities and relations. Both paths land in the same node/edge store; queries can't tell which path wrote a node. Free-text mentions still dedupe against CSV-loaded entities via Graphiti's entity-resolution pass.
+
 ### Data flow — drafting outreach from the PWA
 
 ```
@@ -162,6 +180,13 @@ Each phase is broken into bite-size tasks in [`plans/`](./plans/). The list here
 Detail: [`plans/phase-1-graph-online.md`](./plans/phase-1-graph-online.md)
 
 **Definition of done:** the agent surfaces relevant context from the graph without being told where to look.
+
+### Phase 1b — CSV bulk loader (structured data path)
+**Outcome:** Tabular datasets (Crunchbase exports, contact lists, Notion DB exports) load directly into FalkorDB via a declarative mapping file, bypassing LLM extraction entirely. ~2 min and <$0.50 for a 10k-row load vs. hours and ~$80 going through Graphiti.
+
+Detail: [`plans/phase-1b-csv-loader.md`](./plans/phase-1b-csv-loader.md)
+
+**Definition of done:** a CSV-loaded `Company` node is queryable from Claude Code via the same MCP tools as Graphiti-extracted nodes, and entity dedup links a free-text mention of that company to the existing CSV-loaded node.
 
 ### Phase 2 — PWA + custom harness
 **Outcome:** Phone/desktop chat surface that drafts outreach and tweets in voice using the brain.

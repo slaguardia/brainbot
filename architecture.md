@@ -2,7 +2,7 @@
 
 A self-hosted shared brain: a single graph that any of your surfaces can read from and write to. The PWA (phone + desktop) is the daily driver — chat with an agent that uses the brain, browse and edit graph data directly, capture thoughts in two seconds. Claude Code in any project repo reads from the same brain via MCP.
 
-**Dual purpose:** this is a daily-driver tool *and* a portfolio piece. Every architectural decision should be defensible to a senior-eng interviewer. The writeup is half the deliverable. The decision history lives in [`design-history.md`](./design-history.md).
+**Dual purpose:** this is a daily-driver tool *and* a portfolio piece. Every architectural decision should be defensible to a senior-eng interviewer. The writeup is half the deliverable. Per-component working docs (current state, tradeoffs, alternatives considered) live in [`docs/`](./docs/README.md).
 
 ## Goal
 
@@ -16,7 +16,7 @@ The brain is graph-shaped end to end. There is no markdown substrate, no file wa
 - Realtime collaboration features
 - A general-purpose Notion competitor
 - Feature breadth for its own sake — portfolio value comes from *daily use*, not surface area
-- A markdown-canonical brain (considered, parked — see [design-history](./design-history.md))
+- A markdown-canonical brain (considered, parked — see [docs/human-edit-surface.md](./docs/human-edit-surface.md))
 
 ## Why not just use Hermes (or similar)?
 
@@ -43,7 +43,7 @@ The risk is real and acknowledged in the [extraction-quality](#extraction-qualit
 | **Graphiti (Apache 2.0) for the graph engine** | Bi-temporal property graph, schema-flexible (string-typed nodes/edges, no migrations), official MCP server already shipped. Graphiti makes ingestion via LLM extraction. |
 | **FalkorDB as Graphiti backend** | Redis-module, ~6× more memory-efficient than Neo4j. Fits comfortably on a small VPS. |
 | **Custom PWA with `@anthropic-ai/sdk` harness** | The unlock. Mobile-first surface that owns the chat agent, the graph browser/editor, and the capture screen — three modes against one brain. |
-| **Graph-canonical, no markdown substrate** | The PWA exposes the graph directly. No file system, no watcher, no parser between editor and graph. Edits hit Graphiti as mutations. The file-canonical alternative was considered seriously and parked — see [design-history](./design-history.md). |
+| **Graph-canonical, no markdown substrate** | The PWA exposes the graph directly. No file system, no watcher, no parser between editor and graph. Edits hit Graphiti as mutations. The file-canonical alternative was considered seriously and parked — see [docs/human-edit-surface.md](./docs/human-edit-surface.md). |
 | **MCP for Claude Code only** | The terminal harness gets a Graphiti MCP server pointer added to its config and a `UserPromptSubmit` hook that injects relevant memory. The PWA bypasses MCP because it talks to Graphiti directly on the docker network. |
 | **No second store** | The brain (FalkorDB via Graphiti) is the only persistent store in early phases. No Postgres, no SQLite. Tool-call logs go to stderr; the PWA writes to Graphiti synchronously. If observability or queueing later genuinely demand a second store, it gets added then — not preemptively. |
 
@@ -218,7 +218,7 @@ The project is a daily-driver tool *and* an interview asset. Each phase produces
 | 1 | Twitter thread + blog post: "Why I built my second brain on a property graph instead of a vector store." Hermes-vs-graph table + the Graphiti/FalkorDB rationale. |
 | 2 | Landing page with 30-second screen recording of the smoke test: capture on phone → browse on laptop → edit → chat-agent recall. Plus a screenshot of the graph browser. |
 | 3 | Twitter thread: "Three capture surfaces, one brain — a postmortem on quick-capture UX." Honest writeup of what worked, what didn't, what's still rough. |
-| 4 | Long-form writeup at a public route: the full decision history (sourced from [`design-history.md`](./design-history.md)), what surprised, what to do differently. Becomes the link in every job application. |
+| 4 | Long-form writeup at a public route: the full decision history (sourced from the per-component docs in [`docs/`](./docs/README.md)), what surprised, what to do differently. Becomes the link in every job application. |
 
 **Discipline:** ship the artifact for each phase *before* starting the next phase. The writeup is half the deliverable.
 

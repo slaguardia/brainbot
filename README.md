@@ -12,9 +12,9 @@ Built on [Graphiti](https://github.com/getzep/graphiti) (bi-temporal property gr
 Two reasons:
 
 1. **Daily-driver tool.** Notion is a great editor and a poor substrate for "answer questions about my life over time." A property graph with bi-temporal facts and entity dedup gives structured queries Notion can't.
-2. **Portfolio piece.** Most "I built an AI agent" projects look the same: LangChain, Pinecone, Vercel. This one defends real architectural decisions — graph-shaped vs turn-shaped memory, custom harness vs adopting [Hermes](https://github.com/nousresearch/hermes-agent), MCP for terminals only vs everywhere, graph-canonical vs file-canonical (the most interesting fork — see [`design-history.md`](./design-history.md)).
+2. **Portfolio piece.** Most "I built an AI agent" projects look the same: LangChain, Pinecone, Vercel. This one defends real architectural decisions — graph-shaped vs turn-shaped memory, custom harness vs adopting [Hermes](https://github.com/nousresearch/hermes-agent), MCP for terminals only vs everywhere, graph-canonical vs file-canonical (the most interesting fork — see [`docs/human-edit-surface.md`](./docs/human-edit-surface.md)).
 
-The full reasoning lives in [`architecture.md`](./architecture.md). The decision history — what was considered, what was parked, why — lives in [`design-history.md`](./design-history.md).
+The full reasoning lives in [`architecture.md`](./architecture.md). Per-component working docs (current state + tradeoffs + alternatives considered) live in [`docs/`](./docs/README.md).
 
 ## Status
 
@@ -37,7 +37,7 @@ The honest comparison table with Hermes lives in [`architecture.md`](./architect
 ```
 brainbot/
 ├── architecture.md              — current architecture + decision rationale
-├── design-history.md            — the iteration story: what we considered, what we picked, why
+├── docs/                        — per-component working docs (memory model, embedder, MCP, etc.)
 ├── plans/
 │   ├── phase-1-graph-online.md
 │   ├── phase-2-pwa-harness.md

@@ -4,7 +4,11 @@ Working docs for the current implementation. Each file explains how one piece wo
 
 These are not historical — they describe the system as it is, and get updated when the system changes. If a decision gets reversed, the old version goes away with it. Each doc ends with a brief "alternatives considered" section so the tradeoff is legible without needing a separate history file.
 
-## Index
+## Start here
+
+- [how-it-works.md](./how-it-works.md) — end-to-end walkthrough with a worked example: episode in, extraction, storage, retrieval, correction. Read this first if you're new to the project or fuzzy on what Graphiti actually does.
+
+## Per-component
 
 - [memory-model.md](./memory-model.md) — episode-shaped graph, bi-temporal facts, why not turn-shaped
 - [graph-engine.md](./graph-engine.md) — Graphiti: extraction, dedup, storage layer

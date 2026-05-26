@@ -9,40 +9,46 @@ Two call sites, one provider:
 1. **Ingest.** Graphiti extracts entities and edges from each episode and asks the embedder to vectorize each one. The vector is stored alongside the node in FalkorDB and used for dedup ("is this 'Steve' the same as the 'Steven L.' we already have?").
 2. **Query.** When the Claude Code hook calls `search_nodes`, the search string is embedded so FalkorDB can return semantically related nodes, not just keyword matches.
 
-```
-                ┌─────────────────────┐
-   ingest ────▶│  Graphiti extractor │──┐
-   (episode)   └─────────────────────┘  │ entity/edge text
-                                        ▼
-                              ┌───────────────────┐
-                              │     EMBEDDER      │
-                              │ (text → vector)   │
-                              └───────────────────┘
-                                        │ vector
-                                        ▼
-                              ┌───────────────────┐
-                              │     FalkorDB      │
-                              │  graph + vectors  │
-                              └───────────────────┘
-                                        ▲
-                                        │ vector
-                              ┌───────────────────┐
-                              │     EMBEDDER      │
-                              └───────────────────┘
-                                        ▲ query text
-                                        │
-   query ───────────────────────────────┘
-   (hook search_nodes)
+```mermaid
+flowchart TD
+    ingest["**ingest**<br/>(episode)"]
+    extractor["Graphiti extractor"]
+    embed1["**EMBEDDER**<br/>text → vector"]
+    falkor[("**FalkorDB**<br/>graph + vectors")]
+    embed2["**EMBEDDER**<br/>text → vector"]
+    query["**query**<br/>(hook search_nodes)"]
+
+    ingest -->|episode| extractor
+    extractor -->|entity/edge text| embed1
+    embed1 -->|vector| falkor
+    query -->|query text| embed2
+    embed2 -->|vector| falkor
+
+    classDef io fill:#e3f2fd,stroke:#1976d2
+    classDef svc fill:#fff3e0,stroke:#f57c00
+    classDef store fill:#f3e5f5,stroke:#7b1fa2
+    class ingest,query io
+    class extractor,embed1,embed2 svc
+    class falkor store
 ```
 
 ## Current default: Voyage (`voyage-3`)
 
-```
-   laptop / VPS                          voyage.ai
-   ┌──────────────┐                      ┌──────────┐
-   │   Graphiti   │── HTTPS embed ──────▶│ voyage-3 │
-   │   FalkorDB   │◀──── vectors ────────│          │
-   └──────────────┘                      └──────────┘
+```mermaid
+flowchart LR
+    subgraph host["laptop / VPS"]
+        stack["Graphiti<br/>FalkorDB"]
+    end
+    subgraph external["voyage.ai"]
+        voyage["voyage-3"]
+    end
+    stack -->|HTTPS embed| voyage
+    voyage -->|vectors| stack
+
+    classDef hostStyle fill:#e8f5e9,stroke:#388e3c
+    classDef extStyle fill:#ffebee,stroke:#c62828
+    class host hostStyle
+    class external extStyle
 ```
 
 One external hop per ingest and per query. Search query text leaves the box. Configured with `VOYAGE_API_KEY`. Cost is ~$0.02 per 1M tokens — pennies/month at personal-brain scale.
@@ -53,29 +59,33 @@ Privacy escape hatch: set `BRAIN_INJECT_DISABLE=1` to skip the hook entirely (no
 
 `nomic-embed-text` (or similar) running in Ollama on the same host.
 
-```
-   laptop / VPS
-   ┌──────────────────────────────────────────┐
-   │  ┌──────────────┐      ┌──────────────┐  │
-   │  │   Graphiti   │─────▶│    Ollama    │  │
-   │  │   FalkorDB   │◀─────│ nomic-embed  │  │
-   │  └──────────────┘      └──────────────┘  │
-   └──────────────────────────────────────────┘
-                  (no external hop)
+```mermaid
+flowchart LR
+    subgraph host["laptop / VPS — no external hop"]
+        stack["Graphiti<br/>FalkorDB"]
+        ollama["Ollama<br/>nomic-embed-text"]
+        stack -->|embed| ollama
+        ollama -->|vectors| stack
+    end
+
+    classDef hostStyle fill:#e8f5e9,stroke:#388e3c
+    class host hostStyle
 ```
 
 Adds one container. Embeddings are CPU-cheap (~30–80ms/query for nomic on a modern core), so the bottleneck argument that blocks co-hosted *extraction* doesn't apply here.
 
 ## Alternative: no embedder at all
 
-```
-   laptop / VPS
-   ┌──────────────────────────┐
-   │  Graphiti (dedup by LLM  │
-   │  or exact-string only)   │
-   │  FalkorDB (full-text +   │
-   │  graph traversal)        │
-   └──────────────────────────┘
+```mermaid
+flowchart LR
+    subgraph host["laptop / VPS — no embedder at all"]
+        graphiti["Graphiti<br/>(dedup by LLM<br/>or exact-string only)"]
+        falkor[("FalkorDB<br/>full-text + graph traversal")]
+        graphiti --- falkor
+    end
+
+    classDef hostStyle fill:#e8f5e9,stroke:#388e3c
+    class host hostStyle
 ```
 
 Dedup falls back to exact-string match or per-candidate LLM calls. Search becomes BM25 + graph traversal — only as good as the graph is dense.

@@ -115,16 +115,14 @@ docker compose ps
 
 ### 3. Smoke tests
 
-The smokes run against an isolated `smoketest` graph so they never touch your real `brain`. The brain writes to its configured namespace (there's no per-call `group_id`), so start the throwaway **smoke brain** — the local overlay's `smoke` profile runs a second brain on `:8101` with `BRAIN_GROUP_ID=smoketest`:
+The smokes run against your normal brain but isolate to a `smoketest` graph via the brain's optional `group_id` — so they never touch your real `brain` data:
 
 ```sh
-docker compose -f docker-compose.yml -f docker-compose.local.yml --profile smoke up -d brain-smoke
-
 # Brain API contract smoke (capture → recall)
-BRAIN_URL=http://127.0.0.1:8101 python scripts/smoke_brain.py
+BRAIN_URL=http://127.0.0.1:8100 python scripts/smoke_brain.py
 
 # Ingest CLI smoke (stdin, file, --split headings)
-BRAIN_URL=http://127.0.0.1:8101 python scripts/smoke_ingest.py
+BRAIN_URL=http://127.0.0.1:8100 python scripts/smoke_ingest.py
 ```
 
 Both drop the `smoketest` graph on success (pass `--keep` to inspect it in the FalkorDB Browser). Your real `brain` graph is untouched. The hyphen-free graph name is forced by RediSearch — `-` is the NOT operator in queries.

@@ -71,6 +71,47 @@ brainbot/
 ```
 
 
+## How access works (security model)
+
+```mermaid
+flowchart TB
+    NET["Internet — firewall (UFW) opens only 80/443"]
+
+    subgraph VPS["one VPS"]
+      CADDY["Caddy (HTTPS)<br/>the ONLY public door"]
+      subgraph BNET["brainnet (private Docker network — never public)"]
+        PWA["pwa<br/>web UI + /api proxy"]
+        BRAIN["brain :8100<br/>capture · recall · profile"]
+        SCOUT["scout<br/>(your consumer)"]
+        HOOK["Claude Code hook"]
+        FALKOR[("falkordb")]
+      end
+    end
+
+    NET -->|"PWA host"| CADDY
+    NET -->|"API host"| CADDY
+    CADDY -->|"Google login (oauth2-proxy)"| PWA
+    CADDY -->|"bearer token"| BRAIN
+    PWA -->|"brain:8100"| BRAIN
+    SCOUT -->|"brain:8100 · no auth"| BRAIN
+    HOOK -->|"brain:8100"| BRAIN
+    BRAIN --> FALKOR
+```
+
+**In plain words:**
+
+- **From the internet there is exactly one door: Caddy (port 443).** The firewall (UFW) blocks everything else. Caddy is locked two ways:
+  - `brain.{domain}` (the PWA) → **Google login** (oauth2-proxy + email whitelist).
+  - `brain.api.{domain}` (the brain API) → **bearer token**.
+- **Inside the VPS, the services share a private Docker network, `brainnet`** — created by docker-compose, *not* Tailscale, and never exposed publicly. Anything on it (Scout, the PWA, the Claude Code hook) calls **`http://brain:8100` directly, with no auth**, because the brain's port is never published to the internet.
+
+**Rule of thumb:**
+
+- **Off the VPS** (your laptop, another server): `https://brain.api.{domain}` + the bearer token.
+- **On the VPS, on `brainnet`** (e.g. Scout): `http://brain:8100` — no token needed.
+- Only put services you trust on `brainnet`. Being on it = being allowed to call the brain (there's no per-app auth inside).
+
+
 ## Running it (fresh install)
 
 The stack is two compose services: `falkordb` (graph store) and `brain` (a FastAPI service that constructs graphiti-core directly and does the decompose + entity-extraction pipeline on every write). On the VPS, Caddy adds two vhosts — `brain.api.{domain}` (the brain API, bearer-authed) and `brain.{domain}` (the PWA, Google sign-in via oauth2-proxy). No second store — FalkorDB is the only persistent service.
@@ -158,7 +199,7 @@ See [`templates/claude-code-client/INSTALL.md`](templates/claude-code-client/INS
 
 ### 6. Building your own consumer
 
-The brain exposes a small contract — `capture`, `recall`, `profile` — over **plain HTTP/JSON** (`POST /capture`, `GET /recall`, `GET /profile`). Any app — Python, TypeScript, a shell script — can hit it with a bearer token over HTTPS at `brain.api.{domain}`; no protocol library needed. The same three operations are also exposed as **MCP tools** at `/mcp` for Claude Code and other LLM-tool-discovery harnesses. See [`docs/consumer-integration.md`](./docs/consumer-integration.md) and the reference client `migrate/graphiti_clients.py` (`BrainClient`); full spec in [`docs/consumer-api.md`](./docs/consumer-api.md).
+The brain exposes a small contract — `capture`, `recall`, `profile` — over **plain HTTP/JSON** (`POST /capture`, `GET /recall`, `GET /profile`). Any app — Python, TypeScript, a shell script — can hit it. **If your consumer runs on the same VPS** (e.g. Scout), call `http://brain:8100` directly over `brainnet` — no auth needed; **from off-box**, use `https://brain.api.{domain}` + the bearer token. (See [How access works](#how-access-works-security-model).) The same three operations are also exposed as **MCP tools** at `/mcp` for Claude Code and other LLM-tool-discovery harnesses. See [`docs/consumer-integration.md`](./docs/consumer-integration.md) and the reference client `migrate/graphiti_clients.py` (`BrainClient`); full spec in [`docs/consumer-api.md`](./docs/consumer-api.md).
 
 The brain doesn't enforce any schema on you — your job-fit scorer and your reading-list app can both query "what does the brain know about Acme" and get back the same Acme entity with the same dedupe'd context. That's the whole point.
 

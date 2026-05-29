@@ -211,5 +211,5 @@ The "extraction + dedup + bi-temporal correction" trio is the value. Each piece 
 - [graph-engine.md](./graph-engine.md) — Graphiti's role specifically
 - [graph-database.md](./graph-database.md) — why FalkorDB underneath
 - [embedder.md](./embedder.md) — the vectorization step in Stage 2/4
-- [mcp-integration.md](./mcp-integration.md) — how Claude Code calls `search_nodes` in Stage 4
+- [consumer-integration.md](./consumer-integration.md) — how consumers call `search_nodes` in Stage 4
 - [human-edit-surface.md](./human-edit-surface.md) — what to do when Stage 2 extraction is wrong

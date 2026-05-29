@@ -8,7 +8,7 @@ Brainbot uses [**Graphiti**](https://github.com/getzep/graphiti) (Apache 2.0) as
 - Merges extracted entities into the existing graph using embedding-based dedup.
 - Stores everything as a bi-temporal property graph in FalkorDB ([graph-database.md](./graph-database.md)).
 - Exposes search, get-by-id, add-episode, and related operations over an HTTP API.
-- Ships an official MCP server, which is how Claude Code talks to it ([mcp-integration.md](./mcp-integration.md)).
+- Ships an official MCP server, which is how Claude Code and our typed BrainClient libraries talk to it ([consumer-integration.md](./consumer-integration.md)).
 
 ## Why Graphiti
 

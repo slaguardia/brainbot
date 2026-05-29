@@ -1,14 +1,32 @@
 # Brainbot — Architecture & Phased Build Plan
 
-A self-hosted shared brain: a single graph that any of your surfaces can read from and write to. The PWA (phone + desktop) is the daily driver — chat with an agent that uses the brain, browse and edit graph data directly, capture thoughts in two seconds. Claude Code in any project repo reads from the same brain via MCP.
+A self-hosted personal knowledge service. The brain is the only thing that holds structured truth about you; everything else — terminal harnesses, mobile apps, narrow scoring agents — is a thin consumer that calls in. One graph, N consumers.
 
 **Dual purpose:** this is a daily-driver tool *and* a portfolio piece. Every architectural decision should be defensible to a senior-eng interviewer. The writeup is half the deliverable. Per-component working docs (current state, tradeoffs, alternatives considered) live in [`docs/`](./docs/README.md).
 
 ## Goal
 
-One graph, two surfaces. The PWA on phone + desktop is the daily driver for *using* the brain — chatting, browsing, editing, capturing. Claude Code in the terminal is the dev/build harness for working on projects, with the brain plugged in as ambient context. Both read and write to the same Graphiti store. No dual-truth, no sync layer, no second store of record.
+One self-hosted brain (Graphiti on FalkorDB) reached over HTTP + MCP by any number of small consumer apps. Each consumer stays stateless and narrow because the cross-app knowledge lives in the brain.
 
-The brain is graph-shaped end to end. There is no markdown substrate, no file watcher, no derived projection of the data — Graphiti (backed by FalkorDB) is the source of truth. The PWA exposes that graph directly to the human through a real graph browser and editor, not through a markdown abstraction.
+The brain itself is graph-shaped end to end. There is no markdown substrate, no file watcher, no derived projection of the data — Graphiti is the source of truth. Consumers read what the brain knows; consumers don't keep their own parallel state.
+
+### First-party consumers shipped with the project
+
+These are example consumers built as part of the project to prove the contract. They are not the point of the project — the brain is.
+
+- **Claude Code MCP** (Phase 1) — terminal harness in any project repo. `UserPromptSubmit` hook injects relevant brain context into every prompt; `SessionEnd` writes a session summary back as an episode.
+- **PWA** (Phase 2, planned, scope may shrink) — phone + desktop surface for direct human use: chat, browse/edit, capture.
+
+### Third-party consumers (the actual vision)
+
+Apps you build later, each calling the brain over HTTP/MCP. Examples worth building once the substrate is solid:
+
+- Job-fit scorer that consults work history + role preferences in the brain
+- Reading-queue triage that knows what you've already absorbed
+- Calendar prep that pulls everything you've ever captured about attendees
+- Passive CRM that builds itself from "had coffee with X" captures
+
+The brain doesn't care which consumer is asking. There's no schema migration, no per-app namespace, no profile config — just `search_nodes(query)` and `search_memory_facts(query)` over the same `brain` group.
 
 ## Non-goals
 
@@ -137,7 +155,7 @@ The whole loop exercises every surface against one source of truth.
 | **PWA frontend** | SvelteKit (default) or Next.js | SvelteKit for lighter footprint and faster dev |
 | **PWA backend** | TypeScript (SvelteKit server routes or Hono) | One process: chat harness + graph browser API + capture API |
 | **Agent SDK** | `@anthropic-ai/sdk` | Tool use API for the chat harness |
-| **Auth** | Bearer token at Caddy, exchanged for signed cookie after first hit | Convenient on phones; same security model as Notion. Internal services (Graphiti, FalkorDB) never publish ports. |
+| **Auth** | Bearer token at Caddy for the brain API; Google sign-in + email whitelist (oauth2-proxy at the edge) for the PWA | Per-identity access + easy revocation on phones; internal services (brain, FalkorDB) never publish ports. See [plans/phase-2-pwa-auth.md](plans/phase-2-pwa-auth.md). |
 | **Deployment** | Single docker-compose on a small VPS | All services on one box. Iteration: `git pull && docker compose up -d --build`. |
 | **Ingestion model** | Claude Haiku (provider-neutral via OpenAI-compatible API; OpenRouter by default) | Cheap; runs on every episode write. Swap provider via env. |
 | **Chat model** | Claude Sonnet (latest) | The user-facing harness |
@@ -199,7 +217,7 @@ If these hedges fail and the graph noticeably degrades, the fallback is honest: 
 1. **Ingestion model cost ceiling.** Graphiti calls an LLM at every episode write to extract entities. At expected volume with Haiku, probably <$5/mo. Confirm by counting expected episodes per week × tokens-per-episode.
 2. **PWA framework: Svelte vs Next.** Pick before Phase 2 starts. Defaulting to SvelteKit.
 3. **Mutation API granularity.** What's the minimum set of graph mutations the browse/edit UI needs to expose? At least: `update_episode_body`, `rename_entity`, `set_entity_attribute`, `delete_edge`, `merge_entities`. Settled in Phase 2 design.
-4. **Cookie-based auth on the PWA.** Bearer-in-header is fine for API; bad UX on phones. After-first-bearer-set-a-cookie flow is the plan; details in Phase 2.
+4. **~~Cookie-based auth on the PWA.~~** Resolved: Google sign-in + email whitelist enforced at the edge by oauth2-proxy (session cookie, no bearer on the phone). See [plans/phase-2-pwa-auth.md](plans/phase-2-pwa-auth.md).
 
 ## Honest tradeoffs (signed off)
 

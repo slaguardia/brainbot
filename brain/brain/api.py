@@ -101,11 +101,12 @@ async def capture_http(request: Request) -> JSONResponse:
     except Exception:
         return JSONResponse({"error": "invalid JSON"}, status_code=400)
     text = (body.get("text") or "").strip() if isinstance(body, dict) else ""
+    group_id = (body.get("group_id") or None) if isinstance(body, dict) else None
     if not text:
         return JSONResponse({"error": "text is required"}, status_code=400)
     try:
         b = await brain()
-        return JSONResponse(await b.capture(text), status_code=202)
+        return JSONResponse(await b.capture(text, group_id=group_id), status_code=202)
     except ValueError as e:
         return JSONResponse({"error": str(e)}, status_code=400)
 
@@ -119,8 +120,9 @@ async def recall_http(request: Request) -> JSONResponse:
         limit = int(request.query_params.get("limit") or 20)
     except ValueError:
         limit = 20
+    group_id = request.query_params.get("group_id") or None
     b = await brain()
-    out = await b.recall(q, limit=limit)
+    out = await b.recall(q, limit=limit, group_id=group_id)
     return JSONResponse(
         {
             "query": q,
@@ -133,9 +135,10 @@ async def recall_http(request: Request) -> JSONResponse:
 
 
 @mcp.custom_route("/profile", methods=["GET"])
-async def profile_http(_request: Request) -> JSONResponse:
+async def profile_http(request: Request) -> JSONResponse:
+    group_id = request.query_params.get("group_id") or None
     b = await brain()
-    episodes = await b.profile()
+    episodes = await b.profile(group_id=group_id)
     return JSONResponse({"count": len(episodes), "episodes": episodes})
 
 

@@ -54,39 +54,43 @@ class Brain:
     async def close(self) -> None:
         await self.graphiti.driver.close()
 
-    async def _add(self, name: str, body: str, source_description: str) -> None:
+    async def _add(self, name: str, body: str, source_description: str, group_id: str) -> None:
         await self.graphiti.add_episode(
             name=name,
             episode_body=body,
             source=EpisodeType.text,
             source_description=source_description,
             reference_time=datetime.now(timezone.utc),
-            group_id=self.cfg.group_id,
+            group_id=group_id,
             entity_types=self.entity_types,
             custom_extraction_instructions=self.cfg.extraction_instructions,
         )
 
-    async def capture(self, text: str) -> dict:
+    async def capture(self, text: str, group_id: str | None = None) -> dict:
         """Rewrite + ingest as ONE episode. Returns a summary of what was written.
 
         The rewrite produces faithful, rule-preserving, named-subject prose; the
         override-tuned extractor pulls the facts from that single episode. No
         per-fact fan-out (that over-atomized, was slow, and shattered rules into
         instances — see ARCHITECTURE.md).
+
+        group_id overrides the target graph (defaults to the configured one).
+        Used for test isolation (e.g. a `smoketest` graph).
         """
+        gid = group_id or self.cfg.group_id
         text = text.strip()
         if not text:
             raise ValueError("empty capture")
 
         if not self.cfg.decompose_enabled:
-            await self._add(name=text[:55], body=text, source_description="capture:raw")
+            await self._add(name=text[:55], body=text, source_description="capture:raw", group_id=gid)
             return {"mode": "raw", "episodes": 1, "topic": None}
 
         r = await decompose(self.anthropic, self.cfg.decompose_model, self.cfg.user_name, text)
-        await self._add(name=r.topic, body=r.body, source_description="capture")
+        await self._add(name=r.topic, body=r.body, source_description="capture", group_id=gid)
         return {"mode": "rewrite", "episodes": 1, "topic": r.topic}
 
-    async def recall(self, query: str, limit: int = 20) -> dict:
+    async def recall(self, query: str, limit: int = 20, group_id: str | None = None) -> dict:
         """Targeted retrieval for a question. Returns BOTH:
 
         - facts: scored entity-edge facts (precise, but positive-only — the
@@ -100,12 +104,13 @@ class Brain:
         `episodes`; one that wants precise scored facts reads `facts`. See
         ARCHITECTURE.md ("graphs store facts, not rules").
         """
+        gid = group_id or self.cfg.group_id
         cfg = COMBINED_HYBRID_SEARCH_RRF.model_copy(deep=True)
         cfg.limit = limit
         res = await self.graphiti.search_(
             query=query,
             config=cfg,
-            group_ids=[self.cfg.group_id],
+            group_ids=[gid],
             search_filter=SearchFilters(),
         )
 
@@ -145,20 +150,23 @@ class Brain:
         )
         return {r["uuid"]: r["emb"] for r in records if r.get("emb")}
 
-    async def profile(self) -> list[dict]:
+    async def profile(self, group_id: str | None = None) -> list[dict]:
         """Full-profile dump: every captured episode BODY (the faithful rewrites).
 
         The episode body is the canonical record — it includes negatives and
         rules (avoid-lists, gates) that the edge extractor drops. The graph is a
         lossy positive-only index; for completeness we return the prose. At
         current scale the consumer reasons over the whole set. Newest first.
+
+        group_id overrides the target graph (defaults to the configured one).
         """
+        gid = group_id or self.cfg.group_id
         records, _, _ = await self.graphiti.driver.execute_query(
             "MATCH (e:Episodic) WHERE e.group_id = $gid "
             "RETURN e.name AS name, e.content AS body, e.source_description AS source, "
             "e.created_at AS created_at "
             "ORDER BY e.created_at DESC",
-            gid=self.cfg.group_id,
+            gid=gid,
         )
         return [
             {"name": r.get("name"), "body": r.get("body"), "source": r.get("source")}

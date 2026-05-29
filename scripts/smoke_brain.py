@@ -1,21 +1,32 @@
 #!/usr/bin/env python3
 """End-to-end smoke test for the brain's API contract.
 
-Default: posts one episode via add_memory, polls search_nodes until the
-Acme entity appears (extraction is queued, not synchronous), asserts.
-With --dedup, posts a second overlapping episode and asserts no new
-entities appeared — proves bi-temporal dedup is working.
+Captures one fixture, then polls `recall` until the brain returns the captured
+content — proving capture → rewrite → extract → recall works end to end.
 
-Isolation: always writes to a dedicated `smoketest` graph so it never
-pollutes your real `brain`. (Hyphen-free name is forced by RediSearch:
-'-' is the NOT operator and breaks the group_id query.) Pass --keep to
-leave the graph for inspection; default behavior drops it on success.
+What it asserts (against the current contract, brain/brain/service.py):
+  - POST /capture returns {mode, episodes, topic} with episodes >= 1.
+  - GET  /recall returns {facts, episodes}. We check BOTH: the faithful episode
+    bodies (which always carry the captured text) and the lossy positive-only
+    facts. A hit in either proves retrieval.
+
+Isolation (the brain has no per-call group_id):
+    The brain writes to its configured BRAIN_GROUP_ID. To avoid polluting your
+    real `brain` graph, run this against a brain configured with
+    BRAIN_GROUP_ID=smoketest. The local overlay's `smoke` profile runs one on
+    :8101:
+
+        docker compose -f docker-compose.yml -f docker-compose.local.yml \\
+            --profile smoke up -d brain-smoke
+        BRAIN_URL=http://127.0.0.1:8101 python scripts/smoke_brain.py
+
+    On success the script drops the `smoketest` FalkorDB graph. Pass --keep to
+    leave it for inspection.
 
 Usage:
-    BRAIN_URL=http://127.0.0.1:8100 python scripts/smoke_brain.py
-    BRAIN_URL=http://127.0.0.1:8100 python scripts/smoke_brain.py --dedup
+    BRAIN_URL=http://127.0.0.1:8101 python scripts/smoke_brain.py
     BRAIN_URL=https://brain.api.example.com BRAIN_BEARER_TOKEN=... \\
-        python scripts/smoke_brain.py [--dedup] [--keep]
+        python scripts/smoke_brain.py --keep
 """
 
 from __future__ import annotations
@@ -25,112 +36,88 @@ import os
 import sys
 import time
 
+import requests
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "migrate"))
 sys.path.insert(0, os.path.join(ROOT, "scripts"))
 
-from graphiti_clients import GraphitiClient  # noqa: E402
+from graphiti_clients import BrainClient  # noqa: E402
 
-# group_id must be RediSearch-safe — '-' is interpreted as NOT, so use
-# an alphanumeric-only name here.
+# The graph the smoke writes to. The brain must run with BRAIN_GROUP_ID=smoketest
+# for capture to land here. RediSearch treats '-' as NOT, so keep it alphanumeric.
 SMOKE_GROUP_ID = "smoketest"
 
-EPISODE_FIRST = {
-    "name": "Meeting: Alice at Acme",
-    "episode_body": "Met Alice at Acme on May 9 to discuss the engineering role.",
-    "source_description": "smoke-test",
-}
-
-EPISODE_SECOND = {
-    "name": "Coffee: Alice at Acme",
-    "episode_body": "Had coffee with Alice from Acme.",
-    "source_description": "smoke-test",
-}
+FIXTURE = "Met Alice at Acme on May 9 to discuss the forward-deployed engineering role."
+RECALL_QUERY = "Acme"
+EXPECT_SUBSTR = "acme"  # the recalled facts/episodes should mention this
 
 EXTRACTION_TIMEOUT_S = 180
-# Polling interval is set conservatively so the smoke fits inside
-# embedder free-tier rate limits (Voyage default = 3 RPM without a
-# payment method on file). Override with SMOKE_POLL_INTERVAL_S.
+# Conservative poll interval so the smoke fits inside Voyage's free-tier rate
+# limit (3 RPM without a card on file). Override with SMOKE_POLL_INTERVAL_S.
 POLL_INTERVAL_S = int(os.environ.get("SMOKE_POLL_INTERVAL_S", "25"))
 
 
-def make_client() -> GraphitiClient:
+def env() -> tuple[str, dict[str, str]]:
     base_url = os.environ.get("BRAIN_URL")
     if not base_url:
-        sys.exit("BRAIN_URL not set (e.g. http://127.0.0.1:8100)")
+        sys.exit("BRAIN_URL not set (e.g. http://127.0.0.1:8101 for the smoke brain)")
+    headers = {"Accept": "application/json"}
     bearer = os.environ.get("BRAIN_BEARER_TOKEN")
-    if base_url.startswith("https://") and not bearer:
+    if bearer:
+        headers["Authorization"] = f"Bearer {bearer}"
+    elif base_url.startswith("https://"):
         print(
-            "WARNING: BRAIN_BEARER_TOKEN is unset but BRAIN_URL is https — "
-            "Caddy will 401. Set BRAIN_BEARER_TOKEN before re-running.",
+            "WARNING: BRAIN_BEARER_TOKEN unset but BRAIN_URL is https — Caddy will 401.",
             file=sys.stderr,
         )
-    # Smoke always uses the isolated smoke-test group. We deliberately
-    # ignore GRAPHITI_GROUP_ID so a developer's local env doesn't redirect
-    # the smoke into their real brain graph.
-    return GraphitiClient(
-        base_url=base_url,
-        bearer=bearer,
-        group_id=SMOKE_GROUP_ID,
-    )
+    return base_url.rstrip("/"), headers
 
 
-def wait_for_node(client: GraphitiClient, query: str, timeout_s: int) -> list[dict]:
-    """Poll search_nodes until at least one match returns or timeout."""
+def wait_for_recall(base_url: str, headers: dict, query: str, expect: str, timeout_s: int) -> dict | None:
+    """Poll GET /recall until an episode body or a fact mentions `expect`."""
     deadline = time.time() + timeout_s
     while time.time() < deadline:
-        nodes = client.search_nodes(query=query, max_nodes=10)
-        if nodes:
-            return nodes
+        r = requests.get(f"{base_url}/recall", params={"q": query, "limit": 10}, headers=headers, timeout=60)
+        r.raise_for_status()
+        data = r.json()
+        hay = " ".join(
+            [e.get("body", "") for e in data.get("episodes", [])]
+            + [f.get("fact", "") for f in data.get("facts", [])]
+        ).lower()
+        if expect.lower() in hay:
+            return data
         time.sleep(POLL_INTERVAL_S)
-    return []
-
-
-def _post_and_wait(client: GraphitiClient, payload: dict, label: str) -> set[str]:
-    client.add_memory(
-        name=payload["name"],
-        episode_body=payload["episode_body"],
-        source="text",
-        source_description=payload["source_description"],
-    )
-    print(f"queued: {payload['name']}")
-    nodes = wait_for_node(client, "Acme", EXTRACTION_TIMEOUT_S)
-    if not nodes:
-        sys.exit(f"{label}: no Acme node within {EXTRACTION_TIMEOUT_S}s")
-    names = {n.get("name", "") for n in nodes}
-    print(f"{label}: search_nodes('Acme') -> {sorted(names)}")
-    return names
+    return None
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
-        "--dedup",
-        action="store_true",
-        help="also post a second overlapping episode and assert no new nodes appear",
-    )
-    parser.add_argument(
-        "--keep",
-        action="store_true",
-        help="leave the smoketest graph populated after the run (default: wipe)",
-    )
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--keep", action="store_true", help="leave the smoketest graph populated (default: drop it)")
     args = parser.parse_args()
 
-    client = make_client()
+    base_url, headers = env()
+    client = BrainClient(base_url=base_url, bearer=os.environ.get("BRAIN_BEARER_TOKEN"))
 
-    names_first = _post_and_wait(client, EPISODE_FIRST, "first ")
+    result = client.capture(FIXTURE)
+    print(f"captured: mode={result.get('mode')} episodes={result.get('episodes')} topic={result.get('topic')!r}")
+    if not result.get("episodes"):
+        sys.exit(f"capture returned no episodes: {result}")
 
-    if args.dedup:
-        names_second = _post_and_wait(client, EPISODE_SECOND, "second")
-        new_nodes = names_second - names_first
-        if new_nodes:
-            sys.exit(f"dedup failed: new nodes after follow-up episode: {new_nodes}")
-        print("dedup OK: no new entities on second overlapping episode")
+    data = wait_for_recall(base_url, headers, RECALL_QUERY, EXPECT_SUBSTR, EXTRACTION_TIMEOUT_S)
+    if data is None:
+        sys.exit(f"recall('{RECALL_QUERY}') never surfaced '{EXPECT_SUBSTR}' within {EXTRACTION_TIMEOUT_S}s")
+    print(f"recall('{RECALL_QUERY}'): {len(data.get('facts', []))} facts, {len(data.get('episodes', []))} episodes")
+    if data.get("episodes"):
+        print(f"  episode: {data['episodes'][0].get('body', '')[:120]}")
+    if data.get("facts"):
+        top = data["facts"][0]
+        print(f"  top fact: [{top.get('score')}] {top.get('fact')}")
+    print("smoke OK: capture → recall round-trip works")
 
     if not args.keep:
         from reset_brain import drop_graph  # noqa: WPS433
-        dropped = drop_graph(SMOKE_GROUP_ID)
-        print(f"cleanup: dropped graph '{SMOKE_GROUP_ID}' ({dropped})")
+        print(f"cleanup: dropped graph '{SMOKE_GROUP_ID}' ({drop_graph(SMOKE_GROUP_ID)})")
     else:
         print(f"--keep: smoketest graph left populated (group_id='{SMOKE_GROUP_ID}')")
 

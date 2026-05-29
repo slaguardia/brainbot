@@ -37,3 +37,34 @@ services:
   # with `cd pwa && npm run dev` instead.
   pwa:
     profiles: ["vps-only"]
+
+  # Isolated brain for the smoke tests. Same image + FalkorDB as the real
+  # brain, but writes to the `smoketest` graph (BRAIN_GROUP_ID=smoketest) on
+  # :8101, so smoke_brain.py / smoke_ingest.py never touch your real `brain`
+  # graph. Not started by default — opt in with `--profile smoke`:
+  #
+  #   docker compose -f docker-compose.yml -f docker-compose.local.yml \
+  #       --profile smoke up -d brain-smoke
+  #   BRAIN_URL=http://127.0.0.1:8101 python scripts/smoke_brain.py
+  #
+  # Cleanup drops the `smoketest` graph (reset_brain.py / drop_graph).
+  brain-smoke:
+    profiles: ["smoke"]
+    build:
+      context: ../brain
+    image: brainbot/brain:0.1
+    container_name: brain-smoke
+    restart: "no"
+    networks:
+      - brainnet
+    env_file:
+      - .env
+    environment:
+      FALKORDB_HOST: falkordb
+      FALKORDB_PORT: "6379"
+      BRAIN_GROUP_ID: smoketest
+    ports:
+      - "127.0.0.1:8101:8100"
+    depends_on:
+      falkordb:
+        condition: service_healthy

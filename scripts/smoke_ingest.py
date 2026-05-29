@@ -1,20 +1,24 @@
 #!/usr/bin/env python3
 """Smoke test for the ingest CLI (scripts/ingest.py).
 
-Exercises three ingest modes in sequence against an isolated `smoke-test`
-graph, then drops the graph on success:
+Exercises three ingest modes in sequence, then drops the graph on success:
 
-1. stdin → one episode
-2. single file → one episode
-3. markdown file with --split headings → multiple episodes
+1. stdin → one capture
+2. single file → one capture
+3. markdown file with --split headings → multiple captures
 
-Each step waits for the matching entity to appear in search before
-moving on. The smoke runs the real ingest.py subprocess (not an import)
-so it covers argv parsing + stdin handling end-to-end.
+After each step it polls GET /recall and checks that the ingested content comes
+back — in the faithful episode bodies and/or the extracted facts. Runs the real
+ingest.py subprocess (not an import) so it covers argv parsing + stdin handling.
+
+Isolation: like smoke_brain.py, point BRAIN_URL at a brain configured with
+BRAIN_GROUP_ID=smoketest (the local overlay's `smoke` profile — see smoke_brain.py
+for the command). The brain has no per-call group_id, so isolation is the
+instance. Cleanup drops the smoketest FalkorDB graph.
 
 Usage:
-    BRAIN_URL=http://127.0.0.1:8100 python scripts/smoke_ingest.py
-    python scripts/smoke_ingest.py --keep    # leave the graph populated for inspection
+    BRAIN_URL=http://127.0.0.1:8101 python scripts/smoke_ingest.py
+    BRAIN_URL=http://127.0.0.1:8101 python scripts/smoke_ingest.py --keep
 """
 
 from __future__ import annotations
@@ -27,11 +31,12 @@ import tempfile
 import time
 from pathlib import Path
 
+import requests
+
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "migrate"))
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from graphiti_clients import GraphitiClient  # noqa: E402
 from reset_brain import drop_graph  # noqa: E402
 
 SMOKE_GROUP_ID = "smoketest"  # RediSearch treats '-' as NOT; keep alphanumeric
@@ -41,15 +46,22 @@ EXTRACTION_TIMEOUT_S = 240
 POLL_INTERVAL_S = int(os.environ.get("SMOKE_POLL_INTERVAL_S", "10"))
 
 
+def recall_headers() -> dict[str, str]:
+    headers = {"Accept": "application/json"}
+    bearer = os.environ.get("BRAIN_BEARER_TOKEN")
+    if bearer:
+        headers["Authorization"] = f"Bearer {bearer}"
+    return headers
+
+
 def run_ingest(stdin: str | None, *args: str) -> None:
     """Run the ingest CLI, forwarding env + asserting success."""
-    env = {**os.environ, "GRAPHITI_GROUP_ID": SMOKE_GROUP_ID}
     result = subprocess.run(
         ["python3", str(INGEST), *args],
         input=stdin,
         capture_output=True,
         text=True,
-        env=env,
+        env={**os.environ},
         check=False,
     )
     if result.returncode != 0:
@@ -61,39 +73,38 @@ def run_ingest(stdin: str | None, *args: str) -> None:
     print(result.stdout.strip())
 
 
-def wait_for_entity(client: GraphitiClient, query: str, label: str) -> None:
+def wait_for_recall(base_url: str, query: str, label: str) -> None:
+    """Poll GET /recall until an episode body or fact mentions `query`."""
     deadline = time.time() + EXTRACTION_TIMEOUT_S
     while time.time() < deadline:
-        hits = client.search_nodes(query=query, max_nodes=10)
-        names = [h.get("name", "") for h in hits]
-        if any(query.lower() in n.lower() for n in names):
-            print(f"  ✓ {label}: found {names}")
+        r = requests.get(f"{base_url}/recall", params={"q": query, "limit": 10}, headers=recall_headers(), timeout=60)
+        r.raise_for_status()
+        data = r.json()
+        hay = " ".join(
+            [e.get("body", "") for e in data.get("episodes", [])]
+            + [f.get("fact", "") for f in data.get("facts", [])]
+        ).lower()
+        if query.lower() in hay:
+            print(f"  ✓ {label}: recall('{query}') hit")
             return
         time.sleep(POLL_INTERVAL_S)
-    sys.exit(f"  ✗ {label}: no '{query}' entity within {EXTRACTION_TIMEOUT_S}s")
+    sys.exit(f"  ✗ {label}: '{query}' not recalled within {EXTRACTION_TIMEOUT_S}s")
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--keep", action="store_true", help="Don't wipe the smoke-test graph on success")
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--keep", action="store_true", help="Don't drop the smoketest graph on success")
     args = parser.parse_args()
 
     base_url = os.environ.get("BRAIN_URL")
     if not base_url:
-        sys.exit("BRAIN_URL not set (e.g. http://127.0.0.1:8100)")
-    client = GraphitiClient(
-        base_url=base_url,
-        bearer=os.environ.get("BRAIN_BEARER_TOKEN"),
-        group_id=SMOKE_GROUP_ID,
-    )
+        sys.exit("BRAIN_URL not set (e.g. http://127.0.0.1:8101 for the smoke brain)")
+    base_url = base_url.rstrip("/")
 
     # 1. stdin
     print("\n[1/3] stdin ingest")
-    run_ingest(
-        "Met Zarya at Nimbus Labs. She's their new principal researcher.\n",
-        "--name", "stdin smoke",
-    )
-    wait_for_entity(client, "Nimbus Labs", "stdin entity")
+    run_ingest("Met Zarya at Nimbus Labs. She's their new principal researcher.\n", "--name", "stdin smoke")
+    wait_for_recall(base_url, "Nimbus", "stdin")
 
     # 2. single file
     print("\n[2/3] single-file ingest")
@@ -102,7 +113,7 @@ def main() -> int:
         single_path = f.name
     try:
         run_ingest(None, single_path)
-        wait_for_entity(client, "Pemberton", "single-file entity")
+        wait_for_recall(base_url, "Pemberton", "single-file")
     finally:
         os.unlink(single_path)
 
@@ -121,8 +132,8 @@ def main() -> int:
         md_path = f.name
     try:
         run_ingest(None, md_path, "--split", "headings")
-        wait_for_entity(client, "Hexadyne", "headings split entity #1")
-        wait_for_entity(client, "Iris", "headings split entity #2")
+        wait_for_recall(base_url, "Hexadyne", "headings split #1")
+        wait_for_recall(base_url, "Iris", "headings split #2")
     finally:
         os.unlink(md_path)
 

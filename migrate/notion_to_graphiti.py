@@ -22,9 +22,9 @@ to existing entities rather than silently fragmenting, but each run
 still pays the per-episode extraction cost. Add tracking later if
 incremental re-runs become important.
 
-All episodes land in a single global Graphiti group (default 'brain';
-override with --group-id). One group = cross-source dedup; the whole
-point of the shared brain.
+Each row/section becomes one `capture` call; the brain decomposes + extracts
+it into the brain's configured namespace (BRAIN_GROUP_ID on the service).
+One namespace = cross-source dedup; the whole point of the shared brain.
 
 If your Notion data has structure worth preserving differently, fork
 this file and edit migrate_database / migrate_page directly. The
@@ -55,7 +55,6 @@ from typing import Any, Iterable
 logger = logging.getLogger("notion_to_graphiti")
 
 KINDS = ("database", "page", "auto")
-DEFAULT_GROUP_ID = "brain"
 
 
 @dataclass
@@ -253,12 +252,9 @@ def _require_env(key: str) -> str:
     return value
 
 
-class _NoOpGraphiti:
-    def __init__(self, group_id: str) -> None:
-        self.group_id = group_id
-
-    def add_memory(self, **_: Any) -> dict[str, Any]:
-        return {"message": "dry-run"}
+class _NoOpBrain:
+    def capture(self, _text: str) -> dict[str, Any]:
+        return {"mode": "dry-run", "episodes": 0, "facts": 0}
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -267,27 +263,22 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--kind", choices=KINDS, default="auto")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--since", help="ISO date; only migrate items edited on/after")
-    parser.add_argument(
-        "--group-id",
-        default=os.environ.get("GRAPHITI_GROUP_ID", DEFAULT_GROUP_ID),
-        help="Graphiti namespace (default: brain, or GRAPHITI_GROUP_ID env)",
-    )
     parser.add_argument("--log-level", default="INFO")
     args = parser.parse_args(argv)
 
     logging.basicConfig(level=args.log_level, format="%(message)s")
 
     since = parse_since(args.since)
-    notion, graphiti = build_clients(dry_run=args.dry_run, group_id=args.group_id)
+    notion, brain = build_clients(dry_run=args.dry_run)
     migrator = NotionMigrator(
         notion,
-        graphiti,
+        brain,
         dry_run=args.dry_run,
         since=since,
     )
 
     episodes = migrator.migrate(args.target, kind=args.kind)
-    logger.info("%s: %d episodes planned (group_id=%s)", args.target, len(episodes), args.group_id)
+    logger.info("%s: %d episodes planned", args.target, len(episodes))
     logger.info("summary: queued=%d", migrator.counts["migrated"])
     if args.dry_run:
         print(

@@ -1,5 +1,27 @@
 # Plan: Phase 1 — Brain online, Claude Code reads it
 
+## Status: stack works end-to-end; remaining work is operator-side
+
+This plan was written before anyone ran the stack end-to-end. The first real smoke (2026-05-25) surfaced a stack of issues — all are now resolved in the repo. The remaining gating items are operator setup (Voyage billing, VPS provisioning, client wiring), not code.
+
+### Resolved during smoke
+- **LLM provider routing** — the published `zepai/knowledge-graph-mcp:latest` image ships without the `providers` extra of `mcp_server`, so anthropic/voyage/gemini/groq SDKs aren't installed and the MCP server silently falls back to "no LLM configured." Resolved by building our own image at `compose/graphiti/Dockerfile`, pinned to upstream `v0.29.1`, with `--extra providers --extra azure` installed. Reverts the config to native anthropic + voyage providers.
+- **Cross-encoder default** — `graphiti-core.Graphiti.__init__` always instantiates an `OpenAIRerankerClient`, which demands `OPENAI_API_KEY` at construction even when unused. The MCP server doesn't expose a `cross_encoder=` override. Worked around by passing a placeholder `OPENAI_API_KEY` in compose; documented inline.
+- **Upstream issue [#1103](https://github.com/getzep/graphiti/issues/1103)** — the MCP server's config schema defaults `temperature` to `None`, which Anthropic's API rejects. Worked around by setting `temperature: 1.0` explicitly in `graphiti-config.yaml`.
+- **Image name fix** — the published image is `zepai/knowledge-graph-mcp`, not `zepai/graphiti-mcp` (Zep renamed). Moot now that we build our own, but documented because the upstream plan referenced the old name.
+- **Config mount path** — Graphiti reads from `/app/mcp/config/config.yaml`, not `/app/config/config.yaml`. Fixed in compose.
+- **MCP session handshake** — streamable-HTTP requires `initialize` → echo back `mcp-session-id` on every subsequent call. Implemented in `migrate/graphiti_clients.py`.
+- **Compose `.env` precedence** — Claude Code subshells export empty `ANTHROPIC_API_KEY`, which shadows the file value. Documented in README; the fix is `unset ANTHROPIC_API_KEY` before `docker compose up`.
+- **`.env` location** — Compose only auto-loads `compose/.env`, not `./.env.local` at repo root. Documented.
+
+### Open items (operator-side, not code)
+- **Voyage payment method** — Free tier without a card is 3 RPM, which blocks even single-episode extraction (entity extraction makes a burst of embedding calls per episode). Add a card on the [Voyage dashboard](https://dashboard.voyageai.com/) to use the 200M free tokens at proper RPS.
+- **VPS provisioning (US-004)** — DNS, UFW, Caddy, env vars on the VPS. Not started.
+- **Claude Code client wiring** — end-to-end test of `.mcp.json` + the `UserPromptSubmit` hook in a real client repo.
+- **Notion seed migration smoke** — dry-run + live-run against a small DB.
+
+See [README → Known limits](../README.md#known-limits--setup-gotchas) for the full writeup.
+
 ## Context
 
 Phase 0 left a working VPS substrate (small VPS, Ubuntu LTS, Caddy, UFW, Tailscale). Phase 1 puts the graph on top of it and gives Claude Code in any client repo a way to read from it. End state: ask any question whose answer lives in seeded content from a configured client repo, get a real answer pulled from Graphiti without naming the source or any tool.
@@ -37,7 +59,7 @@ Add service with:
 **File:** `compose/docker-compose.yml`
 
 Single service using the official Graphiti MCP server image (which embeds the core + REST API):
-- Image: `zepai/graphiti-mcp:latest` (verify exact tag against [Graphiti MCP repo](https://github.com/getzep/graphiti/tree/main/mcp_server))
+- Image: `zepai/knowledge-graph-mcp:latest` (Zep's published name for the Graphiti MCP server; see [Graphiti MCP repo](https://github.com/getzep/graphiti/tree/main/mcp_server))
 - Env vars: `FALKORDB_URI=falkor://falkordb:6379`, `ANTHROPIC_API_KEY` (LLM), `VOYAGE_API_KEY` (embedder), `GRAPHITI_GROUP_ID` (defaults to `brain`)
 - Bind-mount `compose/graphiti-config.yaml` at `/app/config/config.yaml` — upstream defaults hardcode `gpt-4o-mini` + OpenAI, so we ship our own to pin `llm.provider=anthropic`/`model=claude-haiku-4-5` and `embedder.provider=voyage`/`model=voyage-3-lite`. Other providers (OpenAI direct, OpenRouter, Ollama) are documented swaps in `.env.example`
 - Internal port `8000` exposed only on the docker network as `graphiti:8000` (the local overlay maps it to `127.0.0.1:8000` for laptop dev)
@@ -87,67 +109,45 @@ brain.{$BRAIN_DOMAIN} {
 
 ---
 
-## Workstream B — Seed → Graphiti migration
+## Workstream B — Generic text/document ingest
 
-The migrator is intentionally domain-agnostic: point it at any Notion database or page id and it produces episodes. Graphiti's per-write entity extraction handles routing/dedup, so the script never needs to know the shape of your data. If your data has structure worth preserving differently, fork `migrate_database` / `migrate_page` directly — the extension point is the source.
+The brain's native input is an *episode*: a `(name, body)` pair plus a provenance label. Graphiti's per-write entity extraction does the rest. The Phase 1 ingest surface is therefore deliberately generic — drop arbitrary text or files in, get entities and relations out. Specialized producers (Notion, Slack, email, etc.) are out of scope for Phase 1 and tracked separately under "specialized producers (future)" below.
 
-Notion is the first source we ship a migrator for because it's the most common seed corpus, but the migrator's contract is generic: anything that can produce `{ name, body, source_description }` payloads can become an `add_memory` call. (No `reference_time` — Graphiti's `add_memory` is server-timestamped at queue insertion.)
+### Task B.1 — `scripts/ingest.py`
 
-### Task B.1 — Generic migration skeleton
+**File:** `scripts/ingest.py`
 
-**New file:** `migrate/notion_to_graphiti.py`
+A single CLI that accepts text from stdin, a file, or a directory and posts `add_memory` for each chunk. All episodes land in the single global Graphiti group (`brain` by default; override with `GRAPHITI_GROUP_ID`).
 
-Structure:
+Surfaces:
 ```
-class NotionMigrator:
-    def __init__(self, notion_client, graphiti_client, log=None, dry_run=False, since=None): ...
-    def migrate_database(self, database_id): ...
-    def migrate_page(self, page_id): ...
-    def migrate(self, target_id, kind="auto"): ...   # dispatches by kind
-
-if __name__ == "__main__":
-    # CLI: --target <notion-id>  --kind {database,page,auto}  --dry-run  --since <date>
+echo "..."          | scripts/ingest.py                       # stdin → one episode
+scripts/ingest.py notes/2026-05-25-meeting.md                 # file → one episode (name = filename stem)
+scripts/ingest.py journal/                                    # directory → one episode per file
+scripts/ingest.py spec.md --split headings                    # H1/H2 sections each become an episode
+cat raw.txt | scripts/ingest.py --name "Journal 2026-05-25"   # explicit name override
+scripts/ingest.py path --dry-run                              # print what would be ingested
 ```
 
-Each `migrate_*` method:
-- Pages through Notion content via the shared `NotionClient`
-- For each item, builds a `PlannedEpisode` (`name`, `body`, `source_description`)
-- Hands it to the shared dispatcher, which calls `graphiti.add_memory(...)` over MCP JSON-RPC
+**Verify:** `--dry-run` prints the planned episodes; live runs leave entities visible via `MATCH (n:Entity) RETURN n.name` in the FalkorDB Browser.
 
-All episodes land in a single global Graphiti group (`brain` by default; override with `--group-id` or `GRAPHITI_GROUP_ID` env). One group means cross-source entity dedup — your Alice from Notion and your Alice from a Claude session are the same node. The `source_description` field still carries provenance ("notion-database:&lt;id&gt;", "notion-page:&lt;id&gt;").
+### Task B.2 — Ingest smoke
 
-`kind="auto"` peeks at the Notion object to pick `database` or `page` automatically.
+**File:** `scripts/smoke_ingest.py`
 
-The migrator is a one-shot seed. It does not track what's already been written, and there is no migration log. Re-running posts everything again — Graphiti's bi-temporal extraction means re-runs link to existing entities rather than silently fragmenting, but each re-run still pays the extraction cost. If incremental re-runs become important enough to justify state, add tracking then; not preemptively.
+Exercises the CLI in an isolated `smoketest` group so it never pollutes the real `brain` graph:
+1. Pipes a small string through `ingest.py`
+2. Ingests a temp markdown file with `--split headings`
+3. Polls `search_nodes` until expected entities appear
+4. Wipes the `smoketest` graph at the end (or skips wipe with `--keep`)
 
-### Task B.2 — Generic database migration
+**Verify:** exit 0 with a printed entity/fact count; the `brain` graph is unaffected.
 
-**Default shape per row:**
-- `name`: the row's title property if present, otherwise `"{database label or id} row {created_time}"`
-- `body`: every property flattened as `Property Name: value` lines, in the order Notion returns them
-- `source_description`: `"notion-database:{database_id}"`
+### Specialized producers (future — not Phase 1)
 
-**Verify:** `--target <db-id> --kind database --dry-run` prints planned episodes for every row in the database.
+When a specific source's structure is worth preserving in a way the generic CLI doesn't capture, a specialized producer can be added under `migrate/` (one file per source). The repo already ships an example: `migrate/notion_to_graphiti.py` for Notion databases/pages.
 
-### Task B.3 — Generic page migration
-
-**Default shape per page:**
-- If the page has `heading_2` blocks → emit one episode per H2 section, named `"{page title} - {section heading}"`
-- Else → emit one episode for the whole page, named with the page title
-- `body`: plain-text concatenation of paragraphs, headings, lists, quotes
-- `source_description`: `"notion-page:{page_id}"`
-
-**Verify:** `--target <page-id> --kind page --dry-run` prints one or many episodes depending on whether the page has H2s.
-
-### Task B.4 — Run a migration, audit results
-
-Run with `--dry-run` first, eyeball the log, then live run.
-
-**Audit checklist:**
-- Episode count for the chosen target matches Notion item count
-- Spot-check entity dedup: an entity referenced in 3+ episodes collapses to one node
-- Spot-check fact timestamps: `valid_from` matches the source item's `created_time`
-- Cost: total extraction-LLM spend for the run. Surface the actual figure in the audit note.
+These are explicitly deprioritized — the bet is that generic text ingest plus per-app HTTP clients (see [README](../README.md#the-vision)) covers the practical surface area. Don't build new producers preemptively; add one only when a concrete consumer needs it.
 
 ---
 

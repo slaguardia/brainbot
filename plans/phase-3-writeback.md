@@ -84,7 +84,7 @@ Polish pass on the Phase 2 capture screen:
 iOS Shortcuts app config (one-time setup, document in `pwa/docs/ios-shortcut.md`):
 1. Trigger: "Hey Siri, capture brain"
 2. Step 1: Dictate text (Siri voice-to-text)
-3. Step 2: HTTP POST to `https://app.{domain}/api/capture` with `{ text: <dictation>, source: "ios-voice" }` and the bearer header
+3. Step 2: HTTP POST to `https://brain.api.{domain}/capture` with `{ text: <dictation>, source: "ios-voice" }` and the bearer header. **Note:** headless capture goes to the **brain API** (bearer-authed), not the PWA host — the PWA is now gated by interactive Google sign-in (oauth2-proxy), which a Shortcut can't complete. See [phase-2-pwa-auth.md](phase-2-pwa-auth.md).
 4. Step 3: Show notification "Captured" or "Failed"
 
 Add to iCloud Shortcuts so it's available on iPhone + Apple Watch.

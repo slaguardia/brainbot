@@ -1,30 +1,24 @@
 #!/usr/bin/env python3
 """End-to-end smoke test for the brain's API contract.
 
-Captures one fixture, then polls `recall` until the brain returns the captured
-content — proving capture → rewrite → extract → recall works end to end.
+Captures one fixture into an isolated `smoketest` graph, then polls `recall`
+until the brain returns the captured content — proving capture → rewrite →
+extract → recall works end to end.
 
-What it asserts (against the current contract, brain/brain/service.py):
+What it asserts (against brain/brain/service.py):
   - POST /capture returns {mode, episodes, topic} with episodes >= 1.
   - GET  /recall returns {facts, episodes}. We check BOTH: the faithful episode
     bodies (which always carry the captured text) and the lossy positive-only
     facts. A hit in either proves retrieval.
 
-Isolation (the brain has no per-call group_id):
-    The brain writes to its configured BRAIN_GROUP_ID. To avoid polluting your
-    real `brain` graph, run this against a brain configured with
-    BRAIN_GROUP_ID=smoketest. The local overlay's `smoke` profile runs one on
-    :8101:
-
-        docker compose -f docker-compose.yml -f docker-compose.local.yml \\
-            --profile smoke up -d brain-smoke
-        BRAIN_URL=http://127.0.0.1:8101 python scripts/smoke_brain.py
-
-    On success the script drops the `smoketest` FalkorDB graph. Pass --keep to
-    leave it for inspection.
+Isolation: the brain takes an optional `group_id` per call (defaults to its
+configured namespace). The smoke writes/reads `smoketest`, so it runs against
+your normal brain without touching the real `brain` graph. On success it drops
+the `smoketest` FalkorDB graph (reset_brain talks to FalkorDB directly). Pass
+--keep to leave it.
 
 Usage:
-    BRAIN_URL=http://127.0.0.1:8101 python scripts/smoke_brain.py
+    BRAIN_URL=http://127.0.0.1:8100 python scripts/smoke_brain.py
     BRAIN_URL=https://brain.api.example.com BRAIN_BEARER_TOKEN=... \\
         python scripts/smoke_brain.py --keep
 """
@@ -44,8 +38,8 @@ sys.path.insert(0, os.path.join(ROOT, "scripts"))
 
 from graphiti_clients import BrainClient  # noqa: E402
 
-# The graph the smoke writes to. The brain must run with BRAIN_GROUP_ID=smoketest
-# for capture to land here. RediSearch treats '-' as NOT, so keep it alphanumeric.
+# Isolated graph for the smoke. RediSearch treats '-' as NOT, so keep it
+# alphanumeric. drop_graph() removes it on success.
 SMOKE_GROUP_ID = "smoketest"
 
 FIXTURE = "Met Alice at Acme on May 9 to discuss the forward-deployed engineering role."
@@ -61,7 +55,7 @@ POLL_INTERVAL_S = int(os.environ.get("SMOKE_POLL_INTERVAL_S", "25"))
 def env() -> tuple[str, dict[str, str]]:
     base_url = os.environ.get("BRAIN_URL")
     if not base_url:
-        sys.exit("BRAIN_URL not set (e.g. http://127.0.0.1:8101 for the smoke brain)")
+        sys.exit("BRAIN_URL not set (e.g. http://127.0.0.1:8100)")
     headers = {"Accept": "application/json"}
     bearer = os.environ.get("BRAIN_BEARER_TOKEN")
     if bearer:
@@ -75,10 +69,16 @@ def env() -> tuple[str, dict[str, str]]:
 
 
 def wait_for_recall(base_url: str, headers: dict, query: str, expect: str, timeout_s: int) -> dict | None:
-    """Poll GET /recall until an episode body or a fact mentions `expect`."""
+    """Poll GET /recall (scoped to the smoketest graph) until an episode body or
+    a fact mentions `expect`."""
     deadline = time.time() + timeout_s
     while time.time() < deadline:
-        r = requests.get(f"{base_url}/recall", params={"q": query, "limit": 10}, headers=headers, timeout=60)
+        r = requests.get(
+            f"{base_url}/recall",
+            params={"q": query, "limit": 10, "group_id": SMOKE_GROUP_ID},
+            headers=headers,
+            timeout=60,
+        )
         r.raise_for_status()
         data = r.json()
         hay = " ".join(
@@ -99,7 +99,7 @@ def main() -> int:
     base_url, headers = env()
     client = BrainClient(base_url=base_url, bearer=os.environ.get("BRAIN_BEARER_TOKEN"))
 
-    result = client.capture(FIXTURE)
+    result = client.capture(FIXTURE, group_id=SMOKE_GROUP_ID)
     print(f"captured: mode={result.get('mode')} episodes={result.get('episodes')} topic={result.get('topic')!r}")
     if not result.get("episodes"):
         sys.exit(f"capture returned no episodes: {result}")

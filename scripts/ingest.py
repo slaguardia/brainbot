@@ -169,15 +169,16 @@ def ingest_one(
     body: str,
     source_description: str,
     dry_run: bool,
+    group_id: str | None = None,
 ) -> None:
     # name + source_description are kept for human-readable logging; the brain's
     # capture() takes only the text (it derives its own episode names from the
-    # decomposition). They are not sent to the brain.
+    # rewrite). They are not sent to the brain.
     if dry_run:
         print(f"DRY-RUN  {name}  ({len(body)} chars)  source={source_description}")
         return
-    result = client.capture(body)
-    print(f"captured {name}  ({len(body)} chars)  -> {result.get('episodes', '?')} episodes, {result.get('facts', '?')} facts")
+    result = client.capture(body, group_id=group_id)
+    print(f"captured {name}  ({len(body)} chars)  -> {result.get('episodes', '?')} episode(s)  [{result.get('topic')}]")
 
 
 # ---------- CLI ---------------------------------------------------------
@@ -217,6 +218,11 @@ def main() -> int:
         action="store_true",
         help="Print what would be ingested without calling the brain.",
     )
+    parser.add_argument(
+        "--group-id",
+        help="Target a non-default graph (defaults to the brain's configured "
+        "namespace). Used for test isolation, e.g. --group-id smoketest.",
+    )
     args = parser.parse_args()
 
     splitter = SPLITTERS[args.split]
@@ -228,7 +234,7 @@ def main() -> int:
         base = derive_episode_name(None, args.name)
         src = derive_source_description(None, args.source_description)
         for ep_name, ep_body in splitter(text, base):
-            ingest_one(client, ep_name, ep_body, src, args.dry_run)
+            ingest_one(client, ep_name, ep_body, src, args.dry_run, args.group_id)
         return 0
 
     path = Path(args.path).expanduser().resolve()
@@ -248,7 +254,7 @@ def main() -> int:
         base = derive_episode_name(f, args.name if len(files) == 1 else None)
         src = derive_source_description(f, args.source_description)
         for ep_name, ep_body in splitter(text, base):
-            ingest_one(client, ep_name, ep_body, src, args.dry_run)
+            ingest_one(client, ep_name, ep_body, src, args.dry_run, args.group_id)
 
     return 0
 

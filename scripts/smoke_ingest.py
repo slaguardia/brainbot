@@ -7,18 +7,18 @@ Exercises three ingest modes in sequence, then drops the graph on success:
 2. single file → one capture
 3. markdown file with --split headings → multiple captures
 
-After each step it polls GET /recall and checks that the ingested content comes
-back — in the faithful episode bodies and/or the extracted facts. Runs the real
-ingest.py subprocess (not an import) so it covers argv parsing + stdin handling.
+After each step it polls GET /recall (scoped to the smoketest graph) and checks
+that the ingested content comes back — in the faithful episode bodies and/or the
+extracted facts. Runs the real ingest.py subprocess (not an import) so it covers
+argv parsing + stdin handling.
 
-Isolation: like smoke_brain.py, point BRAIN_URL at a brain configured with
-BRAIN_GROUP_ID=smoketest (the local overlay's `smoke` profile — see smoke_brain.py
-for the command). The brain has no per-call group_id, so isolation is the
-instance. Cleanup drops the smoketest FalkorDB graph.
+Isolation: ingest is run with `--group-id smoketest` and recall is scoped the
+same way, so the smoke runs against your normal brain without touching the real
+`brain` graph. Cleanup drops the smoketest FalkorDB graph.
 
 Usage:
-    BRAIN_URL=http://127.0.0.1:8101 python scripts/smoke_ingest.py
-    BRAIN_URL=http://127.0.0.1:8101 python scripts/smoke_ingest.py --keep
+    BRAIN_URL=http://127.0.0.1:8100 python scripts/smoke_ingest.py
+    BRAIN_URL=http://127.0.0.1:8100 python scripts/smoke_ingest.py --keep
 """
 
 from __future__ import annotations
@@ -55,9 +55,9 @@ def recall_headers() -> dict[str, str]:
 
 
 def run_ingest(stdin: str | None, *args: str) -> None:
-    """Run the ingest CLI, forwarding env + asserting success."""
+    """Run the ingest CLI against the smoketest graph, asserting success."""
     result = subprocess.run(
-        ["python3", str(INGEST), *args],
+        ["python3", str(INGEST), "--group-id", SMOKE_GROUP_ID, *args],
         input=stdin,
         capture_output=True,
         text=True,
@@ -74,10 +74,15 @@ def run_ingest(stdin: str | None, *args: str) -> None:
 
 
 def wait_for_recall(base_url: str, query: str, label: str) -> None:
-    """Poll GET /recall until an episode body or fact mentions `query`."""
+    """Poll GET /recall (smoketest graph) until an episode body or fact mentions `query`."""
     deadline = time.time() + EXTRACTION_TIMEOUT_S
     while time.time() < deadline:
-        r = requests.get(f"{base_url}/recall", params={"q": query, "limit": 10}, headers=recall_headers(), timeout=60)
+        r = requests.get(
+            f"{base_url}/recall",
+            params={"q": query, "limit": 10, "group_id": SMOKE_GROUP_ID},
+            headers=recall_headers(),
+            timeout=60,
+        )
         r.raise_for_status()
         data = r.json()
         hay = " ".join(
@@ -98,7 +103,7 @@ def main() -> int:
 
     base_url = os.environ.get("BRAIN_URL")
     if not base_url:
-        sys.exit("BRAIN_URL not set (e.g. http://127.0.0.1:8101 for the smoke brain)")
+        sys.exit("BRAIN_URL not set (e.g. http://127.0.0.1:8100)")
     base_url = base_url.rstrip("/")
 
     # 1. stdin

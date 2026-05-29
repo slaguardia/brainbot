@@ -9,12 +9,14 @@ Stdlib + requests only, so an external consumer can copy this single file.
 (The filename is historical — it predates the brain-service rename; the class
 is `BrainClient`.)
 
-  - capture(text)            -> dict   POST /capture   (decompose + extract; slow)
-  - recall(query, limit=20)  -> list   GET  /recall    (scored facts, best first)
-  - profile()                -> list   GET  /profile   (all current facts)
-  - health()                 -> dict   GET  /health
+  - capture(text, group_id=None)            -> dict   POST /capture  (rewrite+extract; slow)
+  - recall(query, limit=20, group_id=None)  -> list   GET  /recall   (scored facts, best first)
+  - profile(group_id=None)                  -> list   GET  /profile  (episode bodies)
+  - health()                                -> dict   GET  /health
 
-See docs/consumer-api.md for the full per-operation spec.
+`group_id` overrides the target graph (defaults to the brain's configured one) —
+used for test isolation, e.g. a `smoketest` graph. See docs/consumer-api.md for
+the full per-operation spec.
 """
 
 from __future__ import annotations
@@ -48,23 +50,31 @@ class BrainClient:
 
     # ---- operations ----------------------------------------------------------
 
-    def capture(self, text: str) -> dict:
-        """Write a thought/note. The brain decomposes it and extracts each
-        fact server-side, so this returns after the pipeline finishes (seconds).
-        Returns {mode, episodes, topic, facts}."""
-        return self._request("POST", "/capture", json={"text": text})
+    def capture(self, text: str, group_id: str | None = None) -> dict:
+        """Write a thought/note. The brain rewrites it into faithful prose and
+        extracts facts server-side, so this returns after the pipeline finishes
+        (seconds). Returns {mode, episodes, topic}. Pass group_id to target a
+        non-default graph (e.g. test isolation)."""
+        body: dict[str, Any] = {"text": text}
+        if group_id:
+            body["group_id"] = group_id
+        return self._request("POST", "/capture", json=body)
 
-    def recall(self, query: str, limit: int = 20) -> list[dict]:
-        """Scored fact records for a question, best first. Each record is
-        {fact, name, score, valid_at, invalid_at}. `score` is an absolute
-        on-target cosine the brain reports but does NOT threshold — the caller
-        decides what's strong enough."""
-        return self._request("GET", "/recall", params={"q": query, "limit": limit}).get("facts", [])
+    def recall(self, query: str, limit: int = 20, group_id: str | None = None) -> list[dict]:
+        """Scored fact records for a question, best first: {fact, name, score,
+        valid_at, invalid_at}. `score` is an absolute on-target cosine the brain
+        reports but does NOT threshold. (The brain also returns faithful episode
+        bodies; this client surfaces the facts.) Pass group_id for a non-default graph."""
+        params: dict[str, Any] = {"q": query, "limit": limit}
+        if group_id:
+            params["group_id"] = group_id
+        return self._request("GET", "/recall", params=params).get("facts", [])
 
-    def profile(self) -> list[dict]:
-        """Every currently-true fact about the user, newest first (unscored).
-        Each record is {fact, name, valid_at, invalid_at}."""
-        return self._request("GET", "/profile").get("facts", [])
+    def profile(self, group_id: str | None = None) -> list[dict]:
+        """Every captured episode body (the faithful record), newest first.
+        Each record is {name, body, source}. Pass group_id for a non-default graph."""
+        params = {"group_id": group_id} if group_id else None
+        return self._request("GET", "/profile", params=params).get("episodes", [])
 
     def health(self) -> dict:
         """Liveness probe -> {"ok": true}."""

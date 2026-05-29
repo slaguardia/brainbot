@@ -1,18 +1,21 @@
 #!/usr/bin/env python3
-"""End-to-end smoke test for the brain.
+"""End-to-end smoke test for the brain's API contract.
 
-Calls add_memory via the MCP server, then polls search_nodes until the
-Acme entity appears (entity extraction is queued, not synchronous).
-A second invocation with --second posts a follow-up episode that
-mentions the same entities and verifies node counts didn't increase
-(dedup smoke).
+Default: posts one episode via add_memory, polls search_nodes until the
+Acme entity appears (extraction is queued, not synchronous), asserts.
+With --dedup, posts a second overlapping episode and asserts no new
+entities appeared — proves bi-temporal dedup is working.
+
+Isolation: always writes to a dedicated `smoketest` graph so it never
+pollutes your real `brain`. (Hyphen-free name is forced by RediSearch:
+'-' is the NOT operator and breaks the group_id query.) Pass --keep to
+leave the graph for inspection; default behavior drops it on success.
 
 Usage:
     BRAIN_URL=http://127.0.0.1:8000 python scripts/smoke_brain.py
-    BRAIN_URL=https://brain.example.com BRAIN_BEARER_TOKEN=... \\
-        python scripts/smoke_brain.py [--second]
-
-Default talks to Graphiti's MCP JSON-RPC transport at /mcp/.
+    BRAIN_URL=http://127.0.0.1:8000 python scripts/smoke_brain.py --dedup
+    BRAIN_URL=https://brain.api.example.com BRAIN_BEARER_TOKEN=... \\
+        python scripts/smoke_brain.py [--dedup] [--keep]
 """
 
 from __future__ import annotations
@@ -24,8 +27,13 @@ import time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "migrate"))
+sys.path.insert(0, os.path.join(ROOT, "scripts"))
 
 from graphiti_clients import GraphitiClient  # noqa: E402
+
+# group_id must be RediSearch-safe — '-' is interpreted as NOT, so use
+# an alphanumeric-only name here.
+SMOKE_GROUP_ID = "smoketest"
 
 EPISODE_FIRST = {
     "name": "Meeting: Alice at Acme",
@@ -39,8 +47,11 @@ EPISODE_SECOND = {
     "source_description": "smoke-test",
 }
 
-EXTRACTION_TIMEOUT_S = 90
-POLL_INTERVAL_S = 3
+EXTRACTION_TIMEOUT_S = 180
+# Polling interval is set conservatively so the smoke fits inside
+# embedder free-tier rate limits (Voyage default = 3 RPM without a
+# payment method on file). Override with SMOKE_POLL_INTERVAL_S.
+POLL_INTERVAL_S = int(os.environ.get("SMOKE_POLL_INTERVAL_S", "25"))
 
 
 def make_client() -> GraphitiClient:
@@ -54,10 +65,13 @@ def make_client() -> GraphitiClient:
             "Caddy will 401. Set BRAIN_BEARER_TOKEN before re-running.",
             file=sys.stderr,
         )
+    # Smoke always uses the isolated smoke-test group. We deliberately
+    # ignore GRAPHITI_GROUP_ID so a developer's local env doesn't redirect
+    # the smoke into their real brain graph.
     return GraphitiClient(
         base_url=base_url,
         bearer=bearer,
-        group_id=os.environ.get("GRAPHITI_GROUP_ID", "brain"),
+        group_id=SMOKE_GROUP_ID,
     )
 
 
@@ -72,25 +86,7 @@ def wait_for_node(client: GraphitiClient, query: str, timeout_s: int) -> list[di
     return []
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
-        "--second",
-        action="store_true",
-        help="send the follow-up episode and verify dedup against the first run",
-    )
-    args = parser.parse_args()
-
-    client = make_client()
-    payload = EPISODE_SECOND if args.second else EPISODE_FIRST
-
-    nodes_before: set[str] = set()
-    if args.second:
-        nodes_before = {
-            n.get("name", "") for n in client.search_nodes(query="Acme", max_nodes=20)
-        }
-        print(f"nodes_before('Acme') = {sorted(nodes_before)}")
-
+def _post_and_wait(client: GraphitiClient, payload: dict, label: str) -> set[str]:
     client.add_memory(
         name=payload["name"],
         episode_body=payload["episode_body"],
@@ -98,18 +94,45 @@ def main() -> int:
         source_description=payload["source_description"],
     )
     print(f"queued: {payload['name']}")
+    nodes = wait_for_node(client, "Acme", EXTRACTION_TIMEOUT_S)
+    if not nodes:
+        sys.exit(f"{label}: no Acme node within {EXTRACTION_TIMEOUT_S}s")
+    names = {n.get("name", "") for n in nodes}
+    print(f"{label}: search_nodes('Acme') -> {sorted(names)}")
+    return names
 
-    nodes_after = wait_for_node(client, "Acme", EXTRACTION_TIMEOUT_S)
-    if not nodes_after:
-        sys.exit(f"no Acme node within {EXTRACTION_TIMEOUT_S}s — extraction may have failed")
-    names_after = {n.get("name", "") for n in nodes_after}
-    print(f"search_nodes('Acme') -> {sorted(names_after)}")
 
-    if args.second:
-        new_nodes = names_after - nodes_before
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--dedup",
+        action="store_true",
+        help="also post a second overlapping episode and assert no new nodes appear",
+    )
+    parser.add_argument(
+        "--keep",
+        action="store_true",
+        help="leave the smoketest graph populated after the run (default: wipe)",
+    )
+    args = parser.parse_args()
+
+    client = make_client()
+
+    names_first = _post_and_wait(client, EPISODE_FIRST, "first ")
+
+    if args.dedup:
+        names_second = _post_and_wait(client, EPISODE_SECOND, "second")
+        new_nodes = names_second - names_first
         if new_nodes:
-            sys.exit(f"dedup failed: new nodes appeared on second run: {new_nodes}")
-        print("dedup OK: no new Acme/Alice nodes after follow-up episode")
+            sys.exit(f"dedup failed: new nodes after follow-up episode: {new_nodes}")
+        print("dedup OK: no new entities on second overlapping episode")
+
+    if not args.keep:
+        from reset_brain import drop_graph  # noqa: WPS433
+        dropped = drop_graph(SMOKE_GROUP_ID)
+        print(f"cleanup: dropped graph '{SMOKE_GROUP_ID}' ({dropped})")
+    else:
+        print(f"--keep: smoketest graph left populated (group_id='{SMOKE_GROUP_ID}')")
 
     return 0
 

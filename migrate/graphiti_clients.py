@@ -1,9 +1,22 @@
-"""Tiny MCP-over-HTTP client for the Graphiti MCP server.
+"""Brain client — typed Python interface to the brain over HTTP.
 
-The Graphiti MCP image at zepai/graphiti-mcp:latest exposes a FastMCP
-JSON-RPC endpoint at /mcp/ (not a REST API). Every operation is a
-tools/call invocation. This client wraps that for the two tools we
-need from the migrator: add_memory and search_nodes.
+This is the canonical Python client for consumer apps. The wire
+protocol underneath is MCP JSON-RPC (see docs/consumer-integration.md
+for the full picture), but you don't need to know that to use this —
+just construct a GraphitiClient and call its methods.
+
+Currently lives under migrate/ for historical reasons; will move to a
+top-level location (likely brain_client/) once the contract stabilizes.
+External consumers can import it via the path or copy this file into
+their own project — it's intentionally stdlib-plus-requests only.
+
+Exposes the brain's two most useful operations:
+  - add_memory(...)       — write an episode to the brain
+  - search_nodes(...)     — read entities matching a query
+
+Both go to https://{brain}/mcp via JSON-RPC 2.0 tools/call wrappers.
+The MCP session handshake (initialize → mcp-session-id header) is
+handled automatically on first call.
 """
 
 from __future__ import annotations
@@ -35,15 +48,45 @@ class GraphitiClient:
         )
         if bearer:
             self.session.headers["Authorization"] = f"Bearer {bearer}"
+        self._initialized = False
+
+    def _endpoint(self) -> str:
+        # Server's streamable-HTTP route is /mcp (no trailing slash).
+        return f"{self.base_url}/mcp"
+
+    def _initialize(self) -> None:
+        """One-time MCP session handshake; caches mcp-session-id for the session."""
+        init_body = {
+            "jsonrpc": "2.0",
+            "id": "init",
+            "method": "initialize",
+            "params": {
+                "protocolVersion": "2025-03-26",
+                "capabilities": {},
+                "clientInfo": {"name": "brainbot-migrator", "version": "0.1"},
+            },
+        }
+        r = self.session.post(self._endpoint(), json=init_body, timeout=self.timeout)
+        r.raise_for_status()
+        session_id = r.headers.get("mcp-session-id")
+        if not session_id:
+            raise RuntimeError("MCP server did not return mcp-session-id header on initialize")
+        self.session.headers["Mcp-Session-Id"] = session_id
+        # MCP spec requires a notifications/initialized message after initialize.
+        notify = {"jsonrpc": "2.0", "method": "notifications/initialized", "params": {}}
+        self.session.post(self._endpoint(), json=notify, timeout=self.timeout)
+        self._initialized = True
 
     def _call_tool(self, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+        if not self._initialized:
+            self._initialize()
         body = {
             "jsonrpc": "2.0",
             "id": str(uuid.uuid4()),
             "method": "tools/call",
             "params": {"name": name, "arguments": arguments},
         }
-        r = self.session.post(f"{self.base_url}/mcp/", json=body, timeout=self.timeout)
+        r = self.session.post(self._endpoint(), json=body, timeout=self.timeout)
         r.raise_for_status()
         return _parse_mcp_response(r)
 

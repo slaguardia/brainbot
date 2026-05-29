@@ -37,7 +37,7 @@ Usage:
 Required env:
     NOTION_TOKEN              integration token, read access to the target
     BRAIN_URL                 e.g. http://127.0.0.1:8000 (local) or
-                              https://brain.example.com (VPS)
+                              https://brain.api.example.com (VPS)
     BRAIN_BEARER_TOKEN        bearer for Caddy (only on the VPS path)
 """
 

@@ -1,0 +1,185 @@
+/* Warm-dark palette tuned to feel like a writing app, not a form.
+   Reference: claude.ai's input affordance — warm neutrals, generous
+   whitespace, restrained accent, serif-leaning body for the writing
+   surface itself. UI chrome stays sans. */
+:root {
+  --bg: #1f1e1c;
+  --bg-elevated: #2a2926;
+  --border: #383632;
+  --border-strong: #4a4844;
+  --fg: #f5f4ee;
+  --fg-muted: #a8a59d;
+  --fg-faint: #6e6b64;
+  --accent: #d97757;
+  --accent-press: #c46342;
+  --error: #e07a6a;
+  --error-bg: #3a201c;
+  --radius: 14px;
+  --radius-lg: 18px;
+  --shadow-soft: 0 1px 0 rgba(255, 255, 255, 0.04) inset,
+    0 8px 24px rgba(0, 0, 0, 0.25);
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI",
+    system-ui, sans-serif;
+  font-size: 17px;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  -webkit-tap-highlight-color: transparent;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  /* Subtle vertical falloff — invisible at a glance, gives the surface
+     depth instead of a flat slab. */
+  background: radial-gradient(
+      ellipse at top,
+      rgba(217, 119, 87, 0.04) 0%,
+      transparent 55%
+    ),
+    var(--bg);
+  background-attachment: fixed;
+}
+
+main {
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+  gap: 14px;
+  padding: max(20px, env(safe-area-inset-top))
+    max(20px, env(safe-area-inset-right))
+    max(20px, env(safe-area-inset-bottom))
+    max(20px, env(safe-area-inset-left));
+  max-width: 720px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+/* Writing surface: serif body, comfortable measure, no chrome.
+   The textarea IS the page. */
+#capture {
+  flex: 1;
+  width: 100%;
+  resize: none;
+  background: transparent;
+  color: var(--fg);
+  border: none;
+  outline: none;
+  font-family: "Iowan Old Style", "Charter", "Georgia", "Cambria", "Times New Roman",
+    serif;
+  font-size: 20px;
+  line-height: 1.55;
+  letter-spacing: 0.005em;
+  padding: 6px 2px;
+  caret-color: var(--accent);
+  /* iOS quietly enforces 16px to skip the auto-zoom on focus — we're
+     already above that; this just locks it in across engines. */
+  -webkit-text-size-adjust: 100%;
+}
+
+#capture::placeholder {
+  color: var(--fg-faint);
+  font-style: italic;
+}
+
+#capture::selection {
+  background: rgba(217, 119, 87, 0.28);
+}
+
+#send {
+  width: 100%;
+  padding: 15px 20px;
+  min-height: 52px;
+  background: var(--accent);
+  color: #1a1714;
+  border: 1px solid rgba(0, 0, 0, 0.18);
+  border-radius: var(--radius);
+  font: inherit;
+  font-weight: 600;
+  font-size: 16px;
+  letter-spacing: 0.01em;
+  cursor: pointer;
+  touch-action: manipulation;
+  user-select: none;
+  transition: background-color 120ms ease, transform 120ms ease,
+    box-shadow 120ms ease;
+  box-shadow: var(--shadow-soft);
+}
+
+#send:hover {
+  background: #e08465;
+}
+
+#send:active {
+  background: var(--accent-press);
+  transform: translateY(1px);
+  box-shadow: none;
+}
+
+#send:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+#send:disabled {
+  background: var(--bg-elevated);
+  color: var(--fg-faint);
+  border-color: var(--border);
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+/* Toast: floats above the keyboard, pill-shaped, subtly blurred so it
+   reads as a separate plane from the writing surface. */
+#toast {
+  position: fixed;
+  left: 50%;
+  bottom: calc(96px + env(safe-area-inset-bottom));
+  transform: translate(-50%, 12px) scale(0.96);
+  background: rgba(42, 41, 38, 0.92);
+  -webkit-backdrop-filter: saturate(160%) blur(12px);
+  backdrop-filter: saturate(160%) blur(12px);
+  color: var(--fg);
+  padding: 11px 18px;
+  border-radius: 999px;
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 200ms ease, transform 220ms cubic-bezier(0.2, 0.9, 0.3, 1.2);
+  border: 1px solid var(--border);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  white-space: nowrap;
+}
+
+#toast.show {
+  opacity: 1;
+  transform: translate(-50%, 0) scale(1);
+}
+
+#toast.error {
+  background: rgba(58, 32, 28, 0.92);
+  border-color: #6a3a32;
+  color: var(--error);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #send,
+  #toast {
+    transition: opacity 120ms ease;
+    transform: none !important;
+  }
+}

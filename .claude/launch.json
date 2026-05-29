@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "pwa-dev",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "pwa", "run", "dev:client"],
+      "port": 5173
+    }
+  ]
+}

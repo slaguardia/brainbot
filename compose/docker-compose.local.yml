@@ -4,15 +4,36 @@
 #   docker compose -f docker-compose.yml -f docker-compose.local.yml up -d
 #
 # Differences vs the VPS path:
-#   - Exposes graphiti (8000) on 127.0.0.1 so the migrator + smoke_brain.py
-#     can reach it from the host.
+#   - Exposes the brain service (8100) on 127.0.0.1 so the host-run PWA
+#     backend and ad-hoc curl/python tests can reach it.
+#   - Exposes the FalkorDB Browser UI (3000) on 127.0.0.1 so you can
+#     visually inspect the graph at http://127.0.0.1:3000 (think pgAdmin
+#     for graphs). Connect with host=falkordb port=6379 from inside the
+#     browser's connection prompt.
 #   - No Caddy / TLS / bearer. The bearer header is enforced by Caddy on
-#     the VPS; locally you talk to graphiti directly over plain HTTP.
+#     the VPS; locally you talk to the brain directly over plain HTTP.
+#   - The pwa service is intentionally excluded here. Locally you run
+#     the PWA host-native (`cd pwa && npm run dev`) for HMR speed — the
+#     Dockerfile is for the VPS path only. The compose override below
+#     disables the pwa service for local use; otherwise `docker compose
+#     up` would try to build the image even though you don't want it.
 #
-# Do NOT layer this on the VPS — exposing graphiti to the host firewall
+# Do NOT layer this on the VPS — exposing the brain to the host firewall
 # there defeats the "only Caddy is public" posture.
 
 services:
-  graphiti:
+  falkordb:
     ports:
-      - "127.0.0.1:8000:8000"
+      - "127.0.0.1:3000:3000"
+
+  # Expose the brain service on the host so the host-run PWA backend (and
+  # ad-hoc curl/python tests) can reach it during local dev.
+  brain:
+    ports:
+      - "127.0.0.1:8100:8100"
+
+  # Disable the pwa service locally — `profiles: [vps-only]` keeps it
+  # out of the default `docker compose up` set. Run the PWA on the host
+  # with `cd pwa && npm run dev` instead.
+  pwa:
+    profiles: ["vps-only"]

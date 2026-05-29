@@ -1,0 +1,13 @@
+# PWA access whitelist for oauth2-proxy.
+#
+# Copy this file to `oauth2-proxy-emails.txt` (same directory) and list the
+# Google account emails allowed to sign in to the PWA — one per line.
+# Blank lines and lines starting with '#' are ignored by oauth2-proxy.
+#
+# To change who has access: edit oauth2-proxy-emails.txt and restart the
+# proxy:  docker compose restart oauth2-proxy
+#
+# The real file is gitignored (it's your live allow-list); only this
+# .example is tracked.
+
+you@example.com

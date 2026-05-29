@@ -6,7 +6,26 @@ services:
     networks:
       - brainnet
     volumes:
-      - falkordb-data:/data
+      # FalkorDB writes RDB snapshots to /var/lib/falkordb/data (its
+      # FALKORDB_DATA_PATH). The image has a /data → /var/lib/falkordb/data
+      # symlink for convenience but you have to mount the real path; mounting
+      # /data overlays the symlink itself and silently drops data on restart.
+      - falkordb-data:/var/lib/falkordb/data
+    # Force a save policy so even small datasets get persisted. Default
+    # redis save thresholds (10K changes / 60s) would lose Phase 1's
+    # entire seed on every container recreation.
+    command:
+      - "redis-server"
+      - "--loadmodule"
+      - "/var/lib/falkordb/bin/falkordb.so"
+      - "--protected-mode"
+      - "no"
+      - "--dir"
+      - "/var/lib/falkordb/data"
+      - "--save"
+      - "30 1"
+      - "--appendonly"
+      - "yes"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -15,35 +34,87 @@ services:
       start_period: 10s
     mem_limit: 2g
 
-  graphiti:
-    image: zepai/graphiti-mcp:latest
-    container_name: graphiti
+  # NOTE: the standalone Graphiti MCP server was removed in Phase 2. The brain
+  # service now imports graphiti-core directly and exposes its own MCP face at
+  # /mcp (tools: recall, capture), so the wrapper is no longer needed. History
+  # lives in git if it ever needs to come back.
+
+  brain:
+    # The brain service — the smart core. Constructs graphiti-core directly
+    # (no MCP server in the loop) and serves TWO faces on port 8100:
+    #   - MCP at /mcp        → Claude Code (.mcp.json points here)
+    #   - plain HTTP         → /health, POST /capture, GET /recall (PWA + hook)
+    # Consumers (PWA, Claude Code, future apps) all talk to this one service.
+    build:
+      context: ../brain
+    image: brainbot/brain:0.1
+    container_name: brain
+    restart: unless-stopped
+    networks:
+      - brainnet
+    env_file:
+      - .env
+    environment:
+      # Constants independent of .env. Secrets (ANTHROPIC/VOYAGE keys) come
+      # from .env via env_file. database == group_id is enforced in code.
+      FALKORDB_HOST: falkordb
+      FALKORDB_PORT: "6379"
+      BRAIN_GROUP_ID: brain
+    depends_on:
+      falkordb:
+        condition: service_healthy
+
+  pwa:
+    # Phase 2 capture surface. One-screen PWA. Proxies captures to the brain
+    # service (which decomposes + ingests). No persistent state.
+    #
+    # Auth lives at the edge: Caddy forward_auth → oauth2-proxy (Google OIDC +
+    # email whitelist). The PWA itself is unauthenticated inside brainnet and
+    # never receives a request that oauth2-proxy hasn't already cleared.
+    build:
+      context: ../pwa
+    image: brainbot/pwa:0.1
+    container_name: pwa
     restart: unless-stopped
     networks:
       - brainnet
     environment:
-      # FalkorDB connection
-      FALKORDB_URI: falkor://falkordb:6379
-      # LLM (Anthropic by default). Switch providers in graphiti-config.yaml.
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
-      # Embedder (Voyage by default; same parent as Anthropic, free tier)
-      VOYAGE_API_KEY: ${VOYAGE_API_KEY}
-      # Optional swaps — populate if your config.yaml points at them
-      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
-      OPENAI_API_URL: ${OPENAI_API_URL:-}
-      # Namespacing: single global group; see design-history.md
-      GRAPHITI_GROUP_ID: ${GRAPHITI_GROUP_ID:-brain}
-    volumes:
-      - ./graphiti-config.yaml:/app/config/config.yaml:ro
+      BRAIN_SERVICE_URL: http://brain:8100
+      PORT: "8787"
     depends_on:
-      falkordb:
+      brain:
         condition: service_healthy
-    healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://localhost:8000/health"]
-      interval: 15s
-      timeout: 5s
-      retries: 5
-      start_period: 20s
+
+  oauth2-proxy:
+    # Edge auth for the PWA. Caddy's forward_auth asks this for /oauth2/auth;
+    # only a valid, whitelisted Google session gets a 202 and is proxied through
+    # to pwa:8787. The whitelist is the mounted emails file — with
+    # --authenticated-emails-file set and --email-domain left UNSET, only those
+    # addresses are authorized (do NOT add --email-domain=*; that would allow any
+    # Google account and defeat the whitelist). No host port: only Caddy reaches
+    # it on brainnet.
+    image: quay.io/oauth2-proxy/oauth2-proxy:latest
+    container_name: oauth2-proxy
+    restart: unless-stopped
+    networks:
+      - brainnet
+    command:
+      - --http-address=0.0.0.0:4180
+      - --reverse-proxy=true
+      - --provider=google
+      - --authenticated-emails-file=/etc/oauth2-proxy/emails.txt
+      - --upstream=static://202
+      - --cookie-secure=true
+      - --set-xauthrequest=true
+      - --skip-provider-button=true
+      - --whitelist-domain=brain.${BRAIN_DOMAIN}
+    environment:
+      OAUTH2_PROXY_CLIENT_ID: ${GOOGLE_OAUTH_CLIENT_ID}
+      OAUTH2_PROXY_CLIENT_SECRET: ${GOOGLE_OAUTH_CLIENT_SECRET}
+      OAUTH2_PROXY_COOKIE_SECRET: ${OAUTH2_PROXY_COOKIE_SECRET}
+      OAUTH2_PROXY_REDIRECT_URL: https://brain.${BRAIN_DOMAIN}/oauth2/callback
+    volumes:
+      - ./oauth2-proxy-emails.txt:/etc/oauth2-proxy/emails.txt:ro
 
 networks:
   brainnet:

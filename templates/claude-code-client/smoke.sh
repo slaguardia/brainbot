@@ -5,7 +5,7 @@
 # installed per INSTALL.md.
 #
 # Usage:
-#   BRAIN_URL=http://127.0.0.1:8000 ./smoke.sh "your test query"
+#   BRAIN_URL=http://127.0.0.1:8100 ./smoke.sh "your test query"
 #   BRAIN_URL=https://brain.api.example.com BRAIN_BEARER_TOKEN=xxx ./smoke.sh "query"
 #
 # Exit 0 if the hook emitted a <relevant-memory> block; 1 otherwise.
@@ -14,7 +14,7 @@ set -u
 
 QUERY="${1:-test}"
 HOOK="${HOOK:-.claude/hooks/inject_memory.py}"
-BRAIN_URL="${BRAIN_URL:-http://127.0.0.1:8000}"
+BRAIN_URL="${BRAIN_URL:-http://127.0.0.1:8100}"
 
 if [ ! -x "$HOOK" ]; then
   echo "smoke: hook not found or not executable at $HOOK" >&2

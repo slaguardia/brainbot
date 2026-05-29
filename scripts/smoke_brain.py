@@ -12,8 +12,8 @@ pollutes your real `brain`. (Hyphen-free name is forced by RediSearch:
 leave the graph for inspection; default behavior drops it on success.
 
 Usage:
-    BRAIN_URL=http://127.0.0.1:8000 python scripts/smoke_brain.py
-    BRAIN_URL=http://127.0.0.1:8000 python scripts/smoke_brain.py --dedup
+    BRAIN_URL=http://127.0.0.1:8100 python scripts/smoke_brain.py
+    BRAIN_URL=http://127.0.0.1:8100 python scripts/smoke_brain.py --dedup
     BRAIN_URL=https://brain.api.example.com BRAIN_BEARER_TOKEN=... \\
         python scripts/smoke_brain.py [--dedup] [--keep]
 """
@@ -57,7 +57,7 @@ POLL_INTERVAL_S = int(os.environ.get("SMOKE_POLL_INTERVAL_S", "25"))
 def make_client() -> GraphitiClient:
     base_url = os.environ.get("BRAIN_URL")
     if not base_url:
-        sys.exit("BRAIN_URL not set (e.g. http://127.0.0.1:8000)")
+        sys.exit("BRAIN_URL not set (e.g. http://127.0.0.1:8100)")
     bearer = os.environ.get("BRAIN_BEARER_TOKEN")
     if base_url.startswith("https://") and not bearer:
         print(

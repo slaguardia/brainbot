@@ -1,10 +1,15 @@
 #!/usr/bin/env python3
-"""Drop arbitrary text or documents into the brain as episodes.
+"""Drop arbitrary text or documents into the brain.
 
 This is the primary ingest surface for the brain — point it at text on
-stdin, a file, or a directory and it posts add_memory calls to Graphiti.
-Graphiti's per-write entity extraction does the rest (typed entities,
-relations, bi-temporal dedup).
+stdin, a file, or a directory and it calls the brain's `capture` for each
+chunk. The brain decomposes the text into named-subject atomic facts and
+extracts each (typed entities, relations, bi-temporal dedup).
+
+Note: `capture` always decomposes (that's the brain's whole value-add — see
+brain/README.md). For long documents, use `--split headings` so each chunk
+is a reasonable size for decomposition; capture also awaits the full
+pipeline (seconds per chunk), so a directory ingest runs sequentially.
 
 The Notion migrator (migrate/notion_to_graphiti.py) is a specialized
 producer of episodes; this CLI is the general-purpose one. For a
@@ -29,10 +34,12 @@ Examples:
     cat raw.txt | scripts/ingest.py --name "Journal entry 2026-05-25"
 
 Required env:
-    BRAIN_URL                 e.g. http://127.0.0.1:8000 (local) or
+    BRAIN_URL                 e.g. http://127.0.0.1:8100 (local) or
                               https://brain.api.example.com (VPS)
     BRAIN_BEARER_TOKEN        bearer for Caddy (only on VPS)
-    GRAPHITI_GROUP_ID         optional, defaults to 'brain'
+
+The target graph is the brain's configured namespace (BRAIN_GROUP_ID on the
+brain service) — the client no longer chooses it per-call.
 """
 
 from __future__ import annotations
@@ -49,7 +56,7 @@ from typing import Iterator
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "migrate"))
 
-from graphiti_clients import GraphitiClient  # noqa: E402
+from graphiti_clients import BrainClient  # noqa: E402
 
 log = logging.getLogger("ingest")
 
@@ -144,39 +151,33 @@ def derive_source_description(path: Path | None, override: str | None) -> str:
 # ---------- the actual ingest -------------------------------------------
 
 
-def make_client() -> GraphitiClient:
+def make_client() -> BrainClient:
     base_url = os.environ.get("BRAIN_URL")
     if not base_url:
-        sys.exit("BRAIN_URL not set (e.g. http://127.0.0.1:8000)")
+        sys.exit("BRAIN_URL not set (e.g. http://127.0.0.1:8100)")
     bearer = os.environ.get("BRAIN_BEARER_TOKEN")
     if base_url.startswith("https://") and not bearer:
         log.warning(
             "BRAIN_BEARER_TOKEN is unset but BRAIN_URL is https — Caddy will 401."
         )
-    return GraphitiClient(
-        base_url=base_url,
-        bearer=bearer,
-        group_id=os.environ.get("GRAPHITI_GROUP_ID", "brain"),
-    )
+    return BrainClient(base_url=base_url, bearer=bearer)
 
 
 def ingest_one(
-    client: GraphitiClient,
+    client: BrainClient,
     name: str,
     body: str,
     source_description: str,
     dry_run: bool,
 ) -> None:
+    # name + source_description are kept for human-readable logging; the brain's
+    # capture() takes only the text (it derives its own episode names from the
+    # decomposition). They are not sent to the brain.
     if dry_run:
         print(f"DRY-RUN  {name}  ({len(body)} chars)  source={source_description}")
         return
-    client.add_memory(
-        name=name,
-        episode_body=body,
-        source="text",
-        source_description=source_description,
-    )
-    print(f"queued   {name}  ({len(body)} chars)")
+    result = client.capture(body)
+    print(f"captured {name}  ({len(body)} chars)  -> {result.get('episodes', '?')} episodes, {result.get('facts', '?')} facts")
 
 
 # ---------- CLI ---------------------------------------------------------

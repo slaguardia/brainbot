@@ -13,7 +13,7 @@ moving on. The smoke runs the real ingest.py subprocess (not an import)
 so it covers argv parsing + stdin handling end-to-end.
 
 Usage:
-    BRAIN_URL=http://127.0.0.1:8000 python scripts/smoke_ingest.py
+    BRAIN_URL=http://127.0.0.1:8100 python scripts/smoke_ingest.py
     python scripts/smoke_ingest.py --keep    # leave the graph populated for inspection
 """
 
@@ -80,7 +80,7 @@ def main() -> int:
 
     base_url = os.environ.get("BRAIN_URL")
     if not base_url:
-        sys.exit("BRAIN_URL not set (e.g. http://127.0.0.1:8000)")
+        sys.exit("BRAIN_URL not set (e.g. http://127.0.0.1:8100)")
     client = GraphitiClient(
         base_url=base_url,
         bearer=os.environ.get("BRAIN_BEARER_TOKEN"),

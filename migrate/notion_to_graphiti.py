@@ -36,7 +36,7 @@ Usage:
 
 Required env:
     NOTION_TOKEN              integration token, read access to the target
-    BRAIN_URL                 e.g. http://127.0.0.1:8000 (local) or
+    BRAIN_URL                 e.g. http://127.0.0.1:8100 (local) or
                               https://brain.api.example.com (VPS)
     BRAIN_BEARER_TOKEN        bearer for Caddy (only on the VPS path)
 """
@@ -64,12 +64,12 @@ class PlannedEpisode:
     body: str
     source_description: str
 
-    def to_arguments(self, group_id: str) -> dict[str, Any]:
+    def to_arguments(self) -> dict[str, Any]:
+        # Informational shape for dry-run logging. The brain's capture() takes
+        # only the text; name/source_description are kept for the log.
         return {
             "name": self.name,
             "episode_body": self.body,
-            "group_id": group_id,
-            "source": "text",
             "source_description": self.source_description,
         }
 
@@ -164,19 +164,13 @@ class NotionMigrator:
 
     def _dispatch(self, episode: PlannedEpisode) -> None:
         if self.dry_run:
-            logger.info(
-                "[dry-run] %s",
-                json.dumps(episode.to_arguments(self.graphiti.group_id), default=str),
-            )
+            logger.info("[dry-run] %s", json.dumps(episode.to_arguments(), default=str))
             return
-        self.graphiti.add_memory(
-            name=episode.name,
-            episode_body=episode.body,
-            source="text",
-            source_description=episode.source_description,
-        )
+        # The brain decomposes + extracts each episode body via capture(). Notion
+        # rows/sections are document-shaped, so each becomes one capture call.
+        self.graphiti.capture(episode.body)
         self.counts["migrated"] += 1
-        logger.info("queued %s", episode.name)
+        logger.info("captured %s", episode.name)
 
 
 def _split_blocks_by_h2(
@@ -233,13 +227,13 @@ def parse_since(value: str | None) -> datetime | None:
         sys.exit(f"--since must be ISO date (YYYY-MM-DD): {e}")
 
 
-def build_clients(dry_run: bool, group_id: str):
+def build_clients(dry_run: bool):
     from notion_clients import NotionClient  # type: ignore[import-not-found]
-    from graphiti_clients import GraphitiClient  # type: ignore[import-not-found]
+    from graphiti_clients import BrainClient  # type: ignore[import-not-found]
 
     notion = NotionClient(token=_require_env("NOTION_TOKEN"))
     if dry_run:
-        return notion, _NoOpGraphiti(group_id)
+        return notion, _NoOpBrain()
 
     brain_url = _require_env("BRAIN_URL")
     bearer = os.environ.get("BRAIN_BEARER_TOKEN")
@@ -249,12 +243,7 @@ def build_clients(dry_run: bool, group_id: str):
             "Caddy will 401. Set BRAIN_BEARER_TOKEN before re-running.",
             file=sys.stderr,
         )
-    graphiti = GraphitiClient(
-        base_url=brain_url,
-        bearer=bearer,
-        group_id=group_id,
-    )
-    return notion, graphiti
+    return notion, BrainClient(base_url=brain_url, bearer=bearer)
 
 
 def _require_env(key: str) -> str:

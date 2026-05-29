@@ -1,170 +1,78 @@
-"""Brain client — typed Python interface to the brain over HTTP.
+"""Brain client — thin typed HTTP interface to the brain service.
 
-This is the canonical Python client for consumer apps. The wire
-protocol underneath is MCP JSON-RPC (see docs/consumer-integration.md
-for the full picture), but you don't need to know that to use this —
-just construct a GraphitiClient and call its methods.
+The canonical Python client for consumer apps. The brain exposes three
+operations over plain HTTP/JSON — capture, recall, profile — plus a health
+probe. No MCP and no session handshake here: that face exists too, but it's
+for Claude Code / LLM harnesses. Typed consumers use these HTTP routes.
 
-Currently lives under migrate/ for historical reasons; will move to a
-top-level location (likely brain_client/) once the contract stabilizes.
-External consumers can import it via the path or copy this file into
-their own project — it's intentionally stdlib-plus-requests only.
+Stdlib + requests only, so an external consumer can copy this single file.
+(The filename is historical — it predates the brain-service rename; the class
+is `BrainClient`.)
 
-Exposes the brain's two most useful operations:
-  - add_memory(...)       — write an episode to the brain
-  - search_nodes(...)     — read entities matching a query
+  - capture(text)            -> dict   POST /capture   (decompose + extract; slow)
+  - recall(query, limit=20)  -> list   GET  /recall    (scored facts, best first)
+  - profile()                -> list   GET  /profile   (all current facts)
+  - health()                 -> dict   GET  /health
 
-Both go to https://{brain}/mcp via JSON-RPC 2.0 tools/call wrappers.
-The MCP session handshake (initialize → mcp-session-id header) is
-handled automatically on first call.
+See docs/consumer-api.md for the full per-operation spec.
 """
 
 from __future__ import annotations
 
-import json
-import uuid
 from typing import Any
 
 import requests
 
 
-class GraphitiClient:
-    def __init__(
-        self,
-        base_url: str,
-        bearer: str | None = None,
-        group_id: str = "brain",
-        timeout: int = 60,
-    ) -> None:
+class BrainClient:
+    def __init__(self, base_url: str, bearer: str | None = None, timeout: int = 60) -> None:
         self.base_url = base_url.rstrip("/")
-        self.group_id = group_id
         self.timeout = timeout
         self.session = requests.Session()
-        self.session.headers.update(
-            {
-                "Content-Type": "application/json",
-                "Accept": "application/json, text/event-stream",
-            }
-        )
+        self.session.headers["Accept"] = "application/json"
         if bearer:
             self.session.headers["Authorization"] = f"Bearer {bearer}"
-        self._initialized = False
 
-    def _endpoint(self) -> str:
-        # Server's streamable-HTTP route is /mcp (no trailing slash).
-        return f"{self.base_url}/mcp"
+    # ---- transport -----------------------------------------------------------
 
-    def _initialize(self) -> None:
-        """One-time MCP session handshake; caches mcp-session-id for the session."""
-        init_body = {
-            "jsonrpc": "2.0",
-            "id": "init",
-            "method": "initialize",
-            "params": {
-                "protocolVersion": "2025-03-26",
-                "capabilities": {},
-                "clientInfo": {"name": "brainbot-migrator", "version": "0.1"},
-            },
-        }
-        r = self.session.post(self._endpoint(), json=init_body, timeout=self.timeout)
-        r.raise_for_status()
-        session_id = r.headers.get("mcp-session-id")
-        if not session_id:
-            raise RuntimeError("MCP server did not return mcp-session-id header on initialize")
-        self.session.headers["Mcp-Session-Id"] = session_id
-        # MCP spec requires a notifications/initialized message after initialize.
-        notify = {"jsonrpc": "2.0", "method": "notifications/initialized", "params": {}}
-        self.session.post(self._endpoint(), json=notify, timeout=self.timeout)
-        self._initialized = True
-
-    def _call_tool(self, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
-        if not self._initialized:
-            self._initialize()
-        body = {
-            "jsonrpc": "2.0",
-            "id": str(uuid.uuid4()),
-            "method": "tools/call",
-            "params": {"name": name, "arguments": arguments},
-        }
-        r = self.session.post(self._endpoint(), json=body, timeout=self.timeout)
-        r.raise_for_status()
-        return _parse_mcp_response(r)
-
-    def add_memory(
-        self,
-        name: str,
-        episode_body: str,
-        source: str = "text",
-        source_description: str | None = None,
-    ) -> dict[str, Any]:
-        args: dict[str, Any] = {
-            "name": name,
-            "episode_body": episode_body,
-            "group_id": self.group_id,
-            "source": source,
-        }
-        if source_description:
-            args["source_description"] = source_description
-        return self._call_tool("add_memory", args)
-
-    def search_nodes(
-        self,
-        query: str,
-        max_nodes: int = 10,
-        entity_types: list[str] | None = None,
-    ) -> list[dict[str, Any]]:
-        args: dict[str, Any] = {
-            "query": query,
-            "group_ids": [self.group_id],
-            "max_nodes": max_nodes,
-        }
-        if entity_types:
-            args["entity_types"] = entity_types
-        result = self._call_tool("search_nodes", args)
-        return result.get("nodes", []) or []
-
-
-def _parse_mcp_response(response: requests.Response) -> dict[str, Any]:
-    """Unwrap an MCP JSON-RPC response.
-
-    The server may reply with plain JSON or with text/event-stream.
-    For tools/call we expect exactly one final response message.
-    """
-    content_type = response.headers.get("Content-Type", "")
-    if "text/event-stream" in content_type:
-        message = _extract_sse_final_message(response.text)
-    else:
-        message = response.json()
-
-    if "error" in message:
-        raise RuntimeError(f"MCP error: {message['error']}")
-
-    result = message.get("result", {})
-    content_blocks = result.get("content") or []
-    for block in content_blocks:
-        if block.get("type") == "text":
-            try:
-                return json.loads(block.get("text", "{}"))
-            except json.JSONDecodeError:
-                return {"text": block.get("text", "")}
-    return result
-
-
-def _extract_sse_final_message(stream_text: str) -> dict[str, Any]:
-    """Parse an SSE stream and return the last JSON-RPC message.
-
-    MCP streamable-HTTP responses are SSE-framed: each event has a
-    'data: <json>' line. We only need the final response message.
-    """
-    last_json: dict[str, Any] = {}
-    for line in stream_text.splitlines():
-        if not line.startswith("data:"):
-            continue
-        payload = line[len("data:"):].strip()
-        if not payload or payload == "[DONE]":
-            continue
+    def _request(self, method: str, path: str, **kw: Any) -> Any:
+        r = self.session.request(method, f"{self.base_url}{path}", timeout=self.timeout, **kw)
         try:
-            last_json = json.loads(payload)
-        except json.JSONDecodeError:
-            continue
-    return last_json
+            data: Any = r.json()
+        except ValueError:
+            data = None
+        if not r.ok:
+            detail = data.get("error") if isinstance(data, dict) else (r.text or "")
+            raise RuntimeError(f"brain {method} {path} -> HTTP {r.status_code}: {detail}")
+        return data
+
+    # ---- operations ----------------------------------------------------------
+
+    def capture(self, text: str) -> dict:
+        """Write a thought/note. The brain decomposes it and extracts each
+        fact server-side, so this returns after the pipeline finishes (seconds).
+        Returns {mode, episodes, topic, facts}."""
+        return self._request("POST", "/capture", json={"text": text})
+
+    def recall(self, query: str, limit: int = 20) -> list[dict]:
+        """Scored fact records for a question, best first. Each record is
+        {fact, name, score, valid_at, invalid_at}. `score` is an absolute
+        on-target cosine the brain reports but does NOT threshold — the caller
+        decides what's strong enough."""
+        return self._request("GET", "/recall", params={"q": query, "limit": limit}).get("facts", [])
+
+    def profile(self) -> list[dict]:
+        """Every currently-true fact about the user, newest first (unscored).
+        Each record is {fact, name, valid_at, invalid_at}."""
+        return self._request("GET", "/profile").get("facts", [])
+
+    def health(self) -> dict:
+        """Liveness probe -> {"ok": true}."""
+        return self._request("GET", "/health")
+
+
+# Backward-compat alias. The old `GraphitiClient` name referred to the retired
+# standalone Graphiti MCP client (add_memory/search_nodes/...). The brain's
+# contract is now capture/recall/profile; update call sites accordingly — the
+# old graph-introspection methods are intentionally not available here.
+GraphitiClient = BrainClient

@@ -160,7 +160,7 @@ After steps 1–3, verify the hook actually reaches the brain and returns
 hits. From inside the client repo:
 
 ```sh
-BRAIN_URL=http://127.0.0.1:8000 \
+BRAIN_URL=http://127.0.0.1:8100 \
   bash <path-to-brainbot>/templates/claude-code-client/smoke.sh "your test query"
 ```
 

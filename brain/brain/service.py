@@ -21,7 +21,7 @@ from datetime import datetime, timezone
 from anthropic import AsyncAnthropic
 from graphiti_core import Graphiti
 from graphiti_core.nodes import EpisodeType
-from graphiti_core.search.search_config_recipes import EDGE_HYBRID_SEARCH_RRF
+from graphiti_core.search.search_config_recipes import COMBINED_HYBRID_SEARCH_RRF
 from graphiti_core.search.search_filters import SearchFilters
 
 from .client import build_graphiti, cached_entity_types
@@ -67,35 +67,40 @@ class Brain:
         )
 
     async def capture(self, text: str) -> dict:
-        """Decompose + ingest. Returns a summary of what was written."""
+        """Rewrite + ingest as ONE episode. Returns a summary of what was written.
+
+        The rewrite produces faithful, rule-preserving, named-subject prose; the
+        override-tuned extractor pulls the facts from that single episode. No
+        per-fact fan-out (that over-atomized, was slow, and shattered rules into
+        instances — see ARCHITECTURE.md).
+        """
         text = text.strip()
         if not text:
             raise ValueError("empty capture")
 
         if not self.cfg.decompose_enabled:
             await self._add(name=text[:55], body=text, source_description="capture:raw")
-            return {"mode": "raw", "episodes": 1, "topic": None, "facts": 0}
+            return {"mode": "raw", "episodes": 1, "topic": None}
 
-        d = await decompose(self.anthropic, self.cfg.decompose_model, self.cfg.user_name, text)
+        r = await decompose(self.anthropic, self.cfg.decompose_model, self.cfg.user_name, text)
+        await self._add(name=r.topic, body=r.body, source_description="capture")
+        return {"mode": "rewrite", "episodes": 1, "topic": r.topic}
 
-        # Body episode first (preserves the coherent original meaning + is the
-        # vector-search anchor), then each atomic fact.
-        await self._add(name=d.topic, body=d.body, source_description="capture:body")
-        for fact in d.facts:
-            await self._add(name=fact[:55].rstrip(".") + "...", body=fact, source_description="capture:fact")
+    async def recall(self, query: str, limit: int = 20) -> dict:
+        """Targeted retrieval for a question. Returns BOTH:
 
-        return {"mode": "decomposed", "episodes": 1 + len(d.facts), "topic": d.topic, "facts": len(d.facts)}
+        - facts: scored entity-edge facts (precise, but positive-only — the
+          extractor drops negatives/policies, so these can miss "avoids X" or
+          gate rules). Each carries an absolute on-target cosine score.
+        - episodes: the relevant captured bodies (the faithful rewrites), which
+          DO contain negatives and rules. The complete unit.
 
-    async def recall(self, query: str, limit: int = 20) -> list[dict]:
-        """Targeted retrieval for a question. Returns scored fact records.
-
-        Hybrid search (RRF: BM25 + vector) selects candidates for breadth, then
-        each fact gets an absolute "on-target" cosine score = cosine(query
-        embedding, fact embedding). The brain reports the score; it does NOT
-        threshold — the app decides what's strong enough (see ARCHITECTURE.md).
-        All-low scores = the brain doesn't really know this.
+        Why both: the edge graph is a lossy positive-only index; the episode
+        bodies are the faithful record. A consumer that needs completeness reads
+        `episodes`; one that wants precise scored facts reads `facts`. See
+        ARCHITECTURE.md ("graphs store facts, not rules").
         """
-        cfg = EDGE_HYBRID_SEARCH_RRF.model_copy(deep=True)
+        cfg = COMBINED_HYBRID_SEARCH_RRF.model_copy(deep=True)
         cfg.limit = limit
         res = await self.graphiti.search_(
             query=query,
@@ -103,30 +108,32 @@ class Brain:
             group_ids=[self.cfg.group_id],
             search_filter=SearchFilters(),
         )
+
+        facts: list[dict] = []
         edges = list(res.edges)
-        if not edges:
-            return []
+        if edges:
+            # Absolute on-target score: search_ strips fact_embedding, so fetch
+            # them for the candidate uuids and cosine against the query.
+            query_emb = await self.graphiti.embedder.create(query)
+            emb_map = await self._fact_embeddings([e.uuid for e in edges])
+            scored = sorted(
+                ((_cosine(query_emb, emb_map.get(e.uuid)), e) for e in edges),
+                key=lambda t: t[0],
+                reverse=True,
+            )
+            facts = [
+                {
+                    "fact": e.fact,
+                    "name": e.name,
+                    "score": round(s, 4),
+                    "valid_at": e.valid_at.isoformat() if e.valid_at else None,
+                    "invalid_at": e.invalid_at.isoformat() if e.invalid_at else None,
+                }
+                for s, e in scored
+            ]
 
-        # Absolute on-target score. search_ strips fact_embedding from results,
-        # so fetch them for the candidate uuids, then cosine against the query.
-        query_emb = await self.graphiti.embedder.create(query)
-        emb_map = await self._fact_embeddings([e.uuid for e in edges])
-
-        scored: list[tuple[float, object]] = []
-        for e in edges:
-            scored.append((_cosine(query_emb, emb_map.get(e.uuid)), e))
-        scored.sort(key=lambda t: t[0], reverse=True)
-
-        return [
-            {
-                "fact": e.fact,
-                "name": e.name,
-                "score": round(score, 4),
-                "valid_at": e.valid_at.isoformat() if e.valid_at else None,
-                "invalid_at": e.invalid_at.isoformat() if e.invalid_at else None,
-            }
-            for score, e in scored
-        ]
+        episodes = [{"name": ep.name, "body": ep.content} for ep in (res.episodes or [])]
+        return {"facts": facts, "episodes": episodes}
 
     async def _fact_embeddings(self, uuids: list[str]) -> dict[str, list[float]]:
         if not uuids:
@@ -139,30 +146,24 @@ class Brain:
         return {r["uuid"]: r["emb"] for r in records if r.get("emb")}
 
     async def profile(self) -> list[dict]:
-        """Full-profile dump: every CURRENT fact about the user, unscored.
+        """Full-profile dump: every captured episode BODY (the faithful rewrites).
 
-        The blind-spot fix at current scale — the consumer reasons over the
-        whole profile, so nothing relevant can be missed (see ARCHITECTURE.md).
-        `expired_at IS NULL` excludes bi-temporally superseded facts; only
-        currently-true facts are returned. Newest first.
+        The episode body is the canonical record — it includes negatives and
+        rules (avoid-lists, gates) that the edge extractor drops. The graph is a
+        lossy positive-only index; for completeness we return the prose. At
+        current scale the consumer reasons over the whole set. Newest first.
         """
         records, _, _ = await self.graphiti.driver.execute_query(
-            "MATCH ()-[r:RELATES_TO]->() "
-            "WHERE r.group_id = $gid AND r.expired_at IS NULL "
-            "RETURN r.fact AS fact, r.name AS name, r.valid_at AS valid_at, "
-            "r.invalid_at AS invalid_at, r.created_at AS created_at "
-            "ORDER BY r.created_at DESC",
+            "MATCH (e:Episodic) WHERE e.group_id = $gid "
+            "RETURN e.name AS name, e.content AS body, e.source_description AS source, "
+            "e.created_at AS created_at "
+            "ORDER BY e.created_at DESC",
             gid=self.cfg.group_id,
         )
         return [
-            {
-                "fact": r.get("fact"),
-                "name": r.get("name"),
-                "valid_at": r.get("valid_at"),
-                "invalid_at": r.get("invalid_at"),
-            }
+            {"name": r.get("name"), "body": r.get("body"), "source": r.get("source")}
             for r in records
-            if r.get("fact")
+            if r.get("body")
         ]
 
 

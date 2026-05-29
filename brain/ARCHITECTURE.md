@@ -53,9 +53,9 @@ Line in one sentence: **the brain hands back what it knows; the app reasons and 
 
 | Operation | Status | Shape | Notes |
 |---|---|---|---|
-| `capture(text)` | built | text → episodes | decompose → graphiti-core `add_episode` with extraction tuning |
-| `recall(query)` | built | question → scored facts | targeted retrieval for a specific/gate question (precision). Scores TBD-built. |
-| full-profile dump | **decided, unbuilt** | (nothing) → all the user's facts | "return everything about the user" — the agent reasons over the whole profile. The blind-spot fix at current scale. Name/shape TBD (e.g. `recall` with no query, or a `/profile` route). |
+| `capture(text)` | built | text → **one** episode | LLM **rewrite** (faithful, rule-preserving, named-subject prose) → a single `add_episode` with extraction tuning. No per-fact fan-out. |
+| `recall(query)` | built | question → `{facts, episodes}` | `facts` = scored entity-edges (precise, **positive-only**); `episodes` = relevant faithful bodies (include negatives/rules). Read `episodes` for completeness. |
+| `profile()` | built | → all episode **bodies** | the full faithful record (the rewrites). The blind-spot fix + the negatives/policies fix. `GET /profile`, MCP `profile`. |
 
 Decision (settled): **there is no `ask` method.** Because the brain is a librarian (no synthesis), "ask the brain a question" *is* `recall` — the app sends its question as the query and reasons over the facts itself. A synthesizing `ask` would have pulled reasoning into the brain, which we explicitly don't want.
 
@@ -71,15 +71,40 @@ Two faces, one service: HTTP (`/capture`, `/recall`) for apps, MCP (`/mcp`) for 
   - *profile* questions ("what does the user value?") want **high recall** — take everything plausible.
 - **"The brain knows nothing" falls out for free:** if every returned fact scores low, the app concludes the brain is grasping. No separate "I don't know" mechanism needed.
 
-Implementation note (unbuilt): `recall` today returns facts with no score, via RRF (a *relative* rank). Delivering this contract means surfacing an **absolute similarity** per fact — verify graphiti's `search_` exposes per-edge similarity, or compute it. The score must mean "how on-target," not "rank N of K."
+Scores are computed as absolute cosine(query embedding, fact embedding) — `search_` strips `fact_embedding`, so we fetch it per candidate and compute it ourselves. The thresholding that consumes these scores lives in the **app's intelligence library** — app-side, not the brain's concern.
 
-The thresholding logic that consumes these scores lives in the **app's intelligence library** (see below) — app-side, possibly shared across apps, shape TBD. Not the brain's concern.
+### Why recall ALSO returns episode bodies (the big learning)
+
+The edge graph is a **lossy, positive-only index**: graphiti's extractor reliably pulls positive entity-facts ("targets X", "accepts Y") but **drops negatives and policies** ("avoids Z", "hard gate: anything outside the set is a skip"). Proven on the real target-role doc — the avoid-list and the vertical gate were perfectly preserved in the captured episode **body** but never became edges, so edge-only `recall`/`profile` silently missed them.
+
+Resolution: **the episode body (the rewrite) is the canonical faithful record; the edge graph is a secondary index.** So `recall` returns both (`facts` for precise scored positive-facts, `episodes` for completeness) and `profile` returns episode bodies, not edges. The graph still earns its keep — dedup, bi-temporal, scored targeted lookups, future relational queries — but it is *not* the source of returned content.
 
 ## How the brain works internally (current)
 
 - **Capture:** raw text → LLM decomposer (named-subject rewrite + atomic facts) → `add_episode` per fact, with `custom_extraction_instructions` that override graphiti's "never extract abstract concepts" default. `BRAIN_USER_NAME` binds first-person ("I") to the user.
 - **Storage:** graphiti-core called directly (not via an MCP server) over FalkorDB. We keep graphiti for **entity dedup** and **bi-temporal fact invalidation** — the two hardest things to rebuild and the project's real differentiators.
 - **Recall:** hybrid edge search (RRF) → facts.
+
+## Data model: episodes, facts, and the two hubs
+
+The brain stores two kinds of thing and links them with two kinds of edge:
+
+- **Episodes** — each capture becomes one episode holding the faithful rewritten text. The canonical record.
+- **Facts** — structured `subject → relationship → object` claims the extractor pulls out of episodes. A derived index over the episodes.
+
+Two edge types connect them, which produces **two natural hubs** in the graph:
+
+| Edge | Direction | Meaning | Hub it creates |
+|---|---|---|---|
+| `MENTIONS` | episode → entity | **provenance** — which capture a thing came from | the episode node (links to everything it produced) |
+| `RELATES_TO` | entity → entity | **knowledge** — the facts themselves | the owner node (subject of most facts) |
+
+So the graph typically shows two well-connected hubs: the most recent capture (its episode) and the owner. **This is by design, not clutter:**
+
+- The **episode hub** is the *source index* — trace any fact back to the capture it came from, and fetch the complete faithful body when the structured facts aren't enough.
+- The **owner hub** is the *knowledge index* — the web of what's true about the owner.
+
+As more is captured, each capture adds its own episode hub, and an entity that appears in several captures bridges those episodes — which is how the brain corroborates a fact across multiple sources. This brain is **single-user by design**, so the owner remaining a central hub is expected and correct, not a scaling problem.
 
 ## Scope discipline (what we are deliberately NOT doing yet)
 

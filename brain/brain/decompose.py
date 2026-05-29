@@ -1,10 +1,20 @@
-"""LLM decomposer — raw capture text -> graphiti-ready rewrite + atomic facts.
+"""LLM rewrite — raw capture text → faithful, extraction-friendly prose.
 
-Why this exists: graphiti's extractor works on named-subject, domain-explicit
-statements, not first-person preference prose. The decomposer rewrites input
-so the extractor can do its job, and emits atomic-fact sentences that each
-extract cleanly. Validated in the Phase 2 spike (scripts/spike_decompose.py
-was the prototype; this is the productionized version).
+NOT a summary, NOT a list of atomic facts. We used to explode input into
+atomic facts (one episode each); that over-atomized (shattered rules into
+instances, e.g. a location rule into city nodes), was dup-prone, and made
+capture catastrophically slow. Now that graphiti's extractor is tuned via
+custom_extraction_instructions, we just hand it ONE clean episode and let
+it pull the facts.
+
+The rewrite's job:
+  - name the subject (so facts attach to the user, not "I")
+  - PRESERVE rules as rules; do not enumerate illustrative example lists
+  - preserve strength (hard gate vs mild preference)
+  - keep all real detail; invent nothing
+
+(Module/function name kept as `decompose` for import stability; semantics
+are "rewrite". See brain/ARCHITECTURE.md.)
 """
 
 from __future__ import annotations
@@ -16,43 +26,46 @@ from anthropic import AsyncAnthropic
 
 
 @dataclass
-class Decomposition:
+class Rewrite:
     topic: str
     body: str
-    facts: list[str]
 
 
-SYSTEM_PROMPT = """You are preprocessing raw text that a person has captured into their personal knowledge graph (the "brain"). Your output gets fed to a downstream entity-extraction system that pulls out entities and relationships. Your job is to make that extraction comprehensive and unambiguous.
+SYSTEM_PROMPT = """You are preprocessing text a person captured into their personal knowledge graph. A downstream system will extract entities and relationships from your output, so your output must be faithful and extraction-friendly. Produce a REWRITE of the input — NOT a summary, NOT a bulleted list of atomic facts.
 
-Produce three things from the input:
+Produce two things:
 
-## 1. topic (short string)
-A 3-8 word sentence-case label usable as an episode title. E.g. "Target role goals and preferences".
+## topic
+A 3-8 word sentence-case label (e.g. "Target role goals and preferences").
 
-## 2. body (one paragraph)
-Rewrite the input as a single clean paragraph:
-- Replace first-person pronouns (I, me, my) with the writer's name: "{user_name}". Every sentence has an explicit named subject. Keep other named people as-is.
-- Disambiguate vague nouns by domain ("velocity" -> "iteration velocity at work" / "training velocity in his running"). This stops the brain conflating concepts across life domains.
-- First sentence names the domain ("{user_name} describes his goals for his next professional role.").
-- Preserve all factual content. No invented facts. No markdown — continuous prose.
+## body
+A clean rewrite of the input as continuous prose, following these rules:
 
-## 3. facts (list of atomic-fact sentences)
-Single self-contained sentences, one fact each, that the extractor will turn into clean subject-predicate-object triples:
-- Subject explicit and named (usually "{user_name}", or another named person/org).
-- One predicate per sentence (split compounds).
-- Object concrete and named ("iteration velocity" not "speed").
-- Include domain context when a concept could be confused across domains.
-- HIGH RECALL: extract every distinct preference, value, goal, constraint, opinion, attribute, history fact, relationship, or capability. A 100-word paragraph may yield 15-25 facts.
-- No facts not present in the input.
+1. **Named subject.** Replace first-person pronouns (I, me, my, mine) with the writer's name: "{user_name}". Every statement has an explicit named subject — never a bare pronoun. Keep other named people/orgs as-is.
+
+2. **Preserve rules as rules — do NOT shatter them into instances.** If the input states a rule, constraint, policy, or filter, keep it as ONE general statement. Example: "only consider X or Y; everything else is a skip" must stay a single rule, not become a separate fact per excluded thing.
+
+3. **Drop merely-illustrative examples; keep defining lists.** Distinguish two cases:
+   - *Illustrative* examples that just demonstrate a general rule (signaled by "etc.", "e.g.", "such as", "like") add no information the rule doesn't already imply — STATE THE RULE AND OMIT THE EXAMPLES. (e.g. "skip NY, DC, Denver, Austin, etc." → "skips locations outside the allowed set" — do NOT name the cities.)
+   - *Defining* lists that ARE the actual content (a closed allowed-set, a specific inventory) — KEEP them in full. (e.g. the specific target industries, or a tech stack the person actually uses.)
+   When unsure, ask: "is this item real information, or just an example of the rule?" Keep the former, drop the latter.
+
+4. **Preserve strength.** If something is a hard requirement, dealbreaker, or "gate, not a weight", say so explicitly in the prose. If it's a mild preference, keep it mild. Never flatten a hard constraint into a soft preference.
+
+5. **Preserve all real detail.** Keep numbers, names, qualifiers. Do not summarize specifics away. Invent nothing not present in the input.
+
+6. **Disambiguate vague concepts by domain** when a word could mean different things in different life areas (e.g. "velocity" → "iteration velocity at work").
+
+7. **Prose only.** Continuous sentences. No markdown, no bullets, no headings.
 
 ## Output
 ONLY a JSON object, no preamble, no code fences:
-{"topic": "...", "body": "...", "facts": ["...", "..."]}"""
+{"topic": "...", "body": "..."}"""
 
 
 async def decompose(
     client: AsyncAnthropic, model: str, user_name: str, raw_text: str
-) -> Decomposition:
+) -> Rewrite:
     system = SYSTEM_PROMPT.replace("{user_name}", user_name)
     msg = await client.messages.create(
         model=model,
@@ -69,8 +82,7 @@ async def decompose(
     if text.startswith("```"):
         text = "\n".join(text.splitlines()[1:-1]).strip()
     data = json.loads(text)
-    return Decomposition(
+    return Rewrite(
         topic=data.get("topic", "").strip() or "Capture",
         body=data.get("body", "").strip(),
-        facts=[f.strip() for f in (data.get("facts") or []) if f.strip()],
     )

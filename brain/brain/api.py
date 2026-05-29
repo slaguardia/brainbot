@@ -54,12 +54,15 @@ mcp = FastMCP(
 # ---- MCP tools (Claude Code) -------------------------------------------------
 
 @mcp.tool()
-async def recall(query: str, limit: int = 20) -> list[dict]:
-    """Search the user's personal brain for relevant facts.
+async def recall(query: str, limit: int = 20) -> dict:
+    """Search the user's personal brain. Returns `facts` (scored, precise
+    entity-facts — but positive-only) and `episodes` (the faithful captured
+    bodies, which include negatives and rules the facts may miss). For
+    completeness, read `episodes`.
 
     Args:
         query: what to look up (natural language).
-        limit: max facts to return.
+        limit: max results.
     """
     b = await brain()
     return await b.recall(query, limit=limit)
@@ -67,16 +70,17 @@ async def recall(query: str, limit: int = 20) -> list[dict]:
 
 @mcp.tool()
 async def capture(text: str) -> dict:
-    """Store a thought or note into the user's personal brain (decomposed and
-    extracted into structured facts)."""
+    """Store a thought or note into the user's personal brain (rewritten into
+    faithful prose and ingested as one episode)."""
     b = await brain()
     return await b.capture(text)
 
 
 @mcp.tool()
 async def profile() -> list[dict]:
-    """Return every current fact the brain knows about the user (the full
-    profile). Use when you need the complete picture rather than the answer to
+    """Return the full faithful record the brain holds about the user — every
+    captured episode body (rewrites). Use when you need the complete picture
+    (including the user's hard rules and avoid-lists) rather than the answer to
     one targeted question."""
     b = await brain()
     return await b.profile()
@@ -116,15 +120,23 @@ async def recall_http(request: Request) -> JSONResponse:
     except ValueError:
         limit = 20
     b = await brain()
-    facts = await b.recall(q, limit=limit)
-    return JSONResponse({"query": q, "count": len(facts), "facts": facts})
+    out = await b.recall(q, limit=limit)
+    return JSONResponse(
+        {
+            "query": q,
+            "facts": out["facts"],
+            "episodes": out["episodes"],
+            "fact_count": len(out["facts"]),
+            "episode_count": len(out["episodes"]),
+        }
+    )
 
 
 @mcp.custom_route("/profile", methods=["GET"])
 async def profile_http(_request: Request) -> JSONResponse:
     b = await brain()
-    facts = await b.profile()
-    return JSONResponse({"count": len(facts), "facts": facts})
+    episodes = await b.profile()
+    return JSONResponse({"count": len(episodes), "episodes": episodes})
 
 
 # The Starlette app FastMCP builds: serves /mcp (MCP) + the custom routes above.

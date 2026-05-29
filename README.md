@@ -115,19 +115,19 @@ docker compose ps
 
 ### 3. Smoke tests
 
-Two smokes, both isolated to a separate `smoketest` graph so they never touch your real `brain`:
+The smokes run against an isolated `smoketest` graph so they never touch your real `brain`. The brain writes to its configured namespace (there's no per-call `group_id`), so start the throwaway **smoke brain** — the local overlay's `smoke` profile runs a second brain on `:8101` with `BRAIN_GROUP_ID=smoketest`:
 
 ```sh
-# Brain API smoke (capture → recall)
-python scripts/smoke_brain.py
+docker compose -f docker-compose.yml -f docker-compose.local.yml --profile smoke up -d brain-smoke
 
-# Ingest CLI smoke (stdin, file, --split headings, dry-run)
-python scripts/smoke_ingest.py
+# Brain API contract smoke (capture → recall)
+BRAIN_URL=http://127.0.0.1:8101 python scripts/smoke_brain.py
+
+# Ingest CLI smoke (stdin, file, --split headings)
+BRAIN_URL=http://127.0.0.1:8101 python scripts/smoke_ingest.py
 ```
 
-> **Heads-up:** these smoke scripts (and `ingest.py`, `migrate/notion_to_graphiti.py`) still target the retired Graphiti tool surface (`add_memory`/`search_nodes`) and a `group_id`-parameterized API. They're being migrated to the brain's `capture`/`recall` contract — see the [reference client](./migrate/graphiti_clients.py) for the current shape.
-
-Both wipe the `smoketest` graph on success unless you pass `--keep`. The FalkorDB Browser graph dropdown will show `smoketest` while a smoke is running and the `brain` graph (your real data) untouched. The unusual graph name (no hyphen) is forced by RediSearch — `-` is the NOT operator in queries.
+Both drop the `smoketest` graph on success (pass `--keep` to inspect it in the FalkorDB Browser). Your real `brain` graph is untouched. The hyphen-free graph name is forced by RediSearch — `-` is the NOT operator in queries.
 
 ### 4. Drop content in
 

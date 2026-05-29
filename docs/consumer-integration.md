@@ -141,14 +141,16 @@ That's enough to be productive. Swap the URL for your brain endpoint and ship.
 
 ## How to test your integration
 
-Run against an isolated graph so you don't pollute the real brain. The smoke scripts show the pattern:
+Run against an isolated graph so you don't pollute the real brain. The brain has no per-call `group_id`, so isolation is a separate brain *instance* configured with `BRAIN_GROUP_ID=smoketest` (the local overlay's `smoke` profile runs one on `:8101`):
 
 ```sh
-python scripts/smoke_ingest.py          # ingest CLI end-to-end against the smoketest graph
-python scripts/reset_brain.py --graph smoketest --force   # wipe when done
+docker compose -f docker-compose.yml -f docker-compose.local.yml --profile smoke up -d brain-smoke
+BRAIN_URL=http://127.0.0.1:8101 python scripts/smoke_ingest.py   # ingest → recall, end-to-end
+# smoke_ingest.py drops the smoketest graph on success; or wipe manually:
+python scripts/reset_brain.py --graph smoketest
 ```
 
-For a non-trivial consumer, write a smoke in its own repo: capture a few known facts, assert `recall` returns them with a sane score, wipe at the end.
+For a non-trivial consumer, write a smoke in its own repo against that smoke brain: `capture` a few known facts, assert `recall` returns them with a sane score, drop the graph at the end.
 
 ---
 

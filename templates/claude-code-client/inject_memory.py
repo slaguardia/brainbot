@@ -5,8 +5,9 @@ Behavior:
 1. Read prompt from stdin (Claude Code passes hook input as JSON).
 2. If BRAIN_INJECT_SCOPE is set and cwd is not under that path, exit 0
    with no changes. If unset, the hook always runs.
-3. Call Graphiti's search_nodes tool over MCP JSON-RPC at /mcp/ with
-   a 2s socket budget (settings.json gives the hook 3s total).
+3. GET <BRAIN_URL>/recall?q=<prompt> on the brain service — one plain-HTTP
+   request, no MCP handshake. The brain does the search and returns ranked
+   facts. (Replaces the old graphiti MCP search_nodes path.)
 4. If hits returned, emit a hookSpecificOutput.additionalContext block on
    stdout that prepends a <relevant-memory> envelope to the prompt.
 5. On timeout or any error, log to .claude/logs/inject_memory.log under
@@ -15,13 +16,12 @@ Behavior:
 Uses only stdlib so the hook has no install step beyond copying the file.
 
 Required env (set in shell before launching claude):
-    BRAIN_URL              e.g. https://brain.example.com
+    BRAIN_URL              e.g. https://brain.api.example.com  (local: http://127.0.0.1:8100)
     BRAIN_BEARER_TOKEN     bearer for the Caddy vhost (omit for local)
 
 Optional env:
     BRAIN_INJECT_SCOPE     filesystem path; hook no-ops outside it
     BRAIN_INJECT_DISABLE   set to "1" to no-op (kill switch for sensitive sessions)
-    GRAPHITI_GROUP_ID      defaults to "brain"
 """
 
 from __future__ import annotations
@@ -33,11 +33,10 @@ import time
 import traceback
 import urllib.error
 import urllib.request
-import uuid
 from datetime import datetime
 from pathlib import Path
 
-SEARCH_TIMEOUT_S = 2.0  # cold TLS to a VPS routinely > 800ms; settings.json gives us 3s total
+REQUEST_TIMEOUT_S = 2.5  # single request now; settings.json gives the hook ~3s total
 RESULT_LIMIT = 5
 MAX_QUERY_BYTES = 2000
 
@@ -82,92 +81,47 @@ def _read_input() -> tuple[str, str]:
     return prompt, cwd
 
 
-def _mcp_call(tool_name: str, arguments: dict) -> dict:
+def _recall_url(prompt: str) -> str:
     base_url = os.environ.get("BRAIN_URL")
     if not base_url:
         raise RuntimeError("BRAIN_URL not set")
+    from urllib.parse import urlencode
 
-    body = json.dumps(
-        {
-            "jsonrpc": "2.0",
-            "id": str(uuid.uuid4()),
-            "method": "tools/call",
-            "params": {"name": tool_name, "arguments": arguments},
-        }
-    ).encode("utf-8")
+    qs = urlencode({"q": prompt, "limit": RESULT_LIMIT})
+    # The brain service exposes plain-HTTP /recall (no MCP handshake needed).
+    return f"{base_url.rstrip('/')}/recall?{qs}"
 
-    headers = {
-        "Content-Type": "application/json",
-        "Accept": "application/json, text/event-stream",
-    }
+
+def _headers() -> dict[str, str]:
+    headers = {"Accept": "application/json"}
     token = os.environ.get("BRAIN_BEARER_TOKEN")
     if token:
         headers["Authorization"] = f"Bearer {token}"
-
-    req = urllib.request.Request(
-        f"{base_url.rstrip('/')}/mcp/",
-        data=body,
-        method="POST",
-        headers=headers,
-    )
-    with urllib.request.urlopen(req, timeout=SEARCH_TIMEOUT_S) as resp:
-        content_type = resp.headers.get("Content-Type", "")
-        text = resp.read().decode("utf-8")
-
-    if "text/event-stream" in content_type:
-        message = _last_sse_message(text)
-    else:
-        message = json.loads(text) if text else {}
-
-    if "error" in message:
-        raise RuntimeError(f"MCP error: {message['error']}")
-
-    result = message.get("result", {})
-    for block in result.get("content") or []:
-        if block.get("type") == "text":
-            try:
-                return json.loads(block.get("text", "{}"))
-            except json.JSONDecodeError:
-                return {"text": block.get("text", "")}
-    return result
+    return headers
 
 
-def _last_sse_message(stream: str) -> dict:
-    last: dict = {}
-    for line in stream.splitlines():
-        if not line.startswith("data:"):
-            continue
-        payload = line[len("data:"):].strip()
-        if not payload or payload == "[DONE]":
-            continue
-        try:
-            last = json.loads(payload)
-        except json.JSONDecodeError:
-            continue
-    return last
+def _recall(prompt: str) -> tuple[list[dict], int]:
+    """GET the brain's /recall endpoint. Returns (facts, elapsed_ms).
 
-
-def _search_nodes(prompt: str) -> tuple[list[dict], int]:
-    group_id = os.environ.get("GRAPHITI_GROUP_ID", "brain")
+    One request, no MCP handshake — the brain service does the work and
+    returns ranked facts directly.
+    """
+    url = _recall_url(prompt)
     start = time.monotonic()
-    result = _mcp_call(
-        "search_nodes",
-        {
-            "query": prompt,
-            "group_ids": [group_id],
-            "max_nodes": RESULT_LIMIT,
-        },
-    )
+    req = urllib.request.Request(url, method="GET", headers=_headers())
+    with urllib.request.urlopen(req, timeout=REQUEST_TIMEOUT_S) as resp:
+        text = resp.read().decode("utf-8")
     elapsed_ms = int((time.monotonic() - start) * 1000)
-    return result.get("nodes", []) or [], elapsed_ms
+    data = json.loads(text) if text else {}
+    return data.get("facts", []) or [], elapsed_ms
 
 
-def _format_block(nodes: list[dict]) -> str:
+def _format_block(facts: list[dict]) -> str:
     lines = ["<relevant-memory>"]
-    for node in nodes[:RESULT_LIMIT]:
-        name = node.get("name") or node.get("uuid", "?")
-        summary = node.get("summary") or ""
-        lines.append(f"- {name}: {summary}".rstrip())
+    for f in facts[:RESULT_LIMIT]:
+        fact = (f.get("fact") or "").strip()
+        if fact:
+            lines.append(f"- {fact}")
     lines.append("</relevant-memory>")
     return "\n".join(lines)
 
@@ -186,20 +140,20 @@ def main() -> int:
         prompt = encoded[:MAX_QUERY_BYTES].decode("utf-8", errors="ignore")
 
     try:
-        nodes, elapsed_ms = _search_nodes(prompt)
+        facts, elapsed_ms = _recall(prompt)
     except urllib.error.URLError as e:
-        _log(f"search_nodes URLError: {e}")
+        _log(f"recall URLError: {e}")
         return 0
     except Exception:
-        _log(f"search_nodes exception:\n{traceback.format_exc()}")
+        _log(f"recall exception:\n{traceback.format_exc()}")
         return 0
 
-    if not nodes:
-        _log(f"no hits for prompt; no injection (search took {elapsed_ms}ms)")
+    if not facts:
+        _log(f"no hits for prompt; no injection (recall took {elapsed_ms}ms)")
         return 0
 
-    block = _format_block(nodes)
-    _log(f"injected {len(nodes)} hits in {elapsed_ms}ms")
+    block = _format_block(facts)
+    _log(f"injected {len(facts)} hits in {elapsed_ms}ms")
 
     output = {
         "hookSpecificOutput": {

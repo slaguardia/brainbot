@@ -60,6 +60,40 @@ For multi-step tasks, state a brief plan:
 
 Strong success criteria let you loop independently. Weak criteria ("make it work") require constant clarification.
 
+## 5. Fix It, Don't Ask Permission
+
+**Found a problem while working? Fix it. Don't ask "want me to fix that?"**
+
+Diagnosis already proved the problem — the fix should follow. Each "want me to..." wastes a turn and breaks flow.
+
+Default = fix it, within the scope §3 (Surgical Changes) defines:
+- A bug you hit while investigating.
+- Stale comments or broken imports your change creates or forces.
+- Callers, imports, or types your change requires updating.
+
+Ask first only for genuine decisions:
+- Multiple valid approaches with real tradeoffs.
+- Blast radius wide enough that scope is a judgment call (e.g. the issue spans four subsystems — one fix or all four?).
+- A new dependency, schema change, or convention not yet decided.
+- You're <80% sure the fix is correct.
+
+Still confirm before destructive or shared-state ops (`git push`, force-push, branch deletes, migrations). That's guarding exposure, not asking permission to fix — different category, different rule.
+
+Out-of-scope improvements (including pre-existing dead code, per §3): surface at end-of-task ("noticed X is also stale — want me to follow up?"), not as a mid-flow interruption.
+
+## 6. No Time Estimates, No Effort Grading
+
+**No time units. No effort grades. They're guesses dressed as data.**
+
+You have no concept of time, and your effort per change is almost always low — so don't estimate either. Avoid time units ("hours/days/weeks"), temporal proxies ("quick fix," "fast," "heavy lift," "non-trivial"), and small/medium/large grades (that's time in disguise).
+
+For "do this now or later?", surface what actually decides it:
+- **Verification burden**: what must be checked by hand, and under which states (e.g. logged-out vs signed-in, empty vs populated data, cold vs warm start).
+- **Side effects that survive `git revert`**: schema changes, data backfills, shipped/published contracts, third-party state.
+- **New dependencies**: libraries, schema additions, env vars, native code.
+
+Don't volunteer file counts, line counts, layers, or composite "complexity scores" — they're in the diff and don't change the decision. If asked explicitly, fine.
+
 ---
 
-**These guidelines are working if:** fewer unnecessary changes in diffs, fewer rewrites due to overcomplication, and clarifying questions come before implementation rather than after mistakes.
+**These guidelines are working if:** fewer unnecessary changes in diffs, fewer rewrites due to overcomplication, clarifying questions come before implementation rather than after mistakes, fewer permission-asking turns on fixes that were already clear, and scoping framed as verification burden instead of effort grades.

@@ -28,6 +28,23 @@ Four stages: **episode in → extraction → graph storage → retrieval out**. 
 
 ---
 
+## Episodes vs. facts (the 30-second version)
+
+The brain holds two layers, and it helps to know which is which before reading on:
+
+- An **episode** is one thing you captured — a passage of text, saved as-is. It's the **complete, trustworthy record** of what you said.
+- A **fact** is a single structured claim the brain *extracted* from an episode — like "X works at Y" — stored as a connection in the graph.
+
+**One episode produces many facts.** The clearest way to picture it: a **document and an index built from it.** The episode is the document (everything's there); the facts are the index (fast to search and link, but a summary — it leaves things out).
+
+Why keep both?
+- The **facts** let the brain search quickly, connect related things, merge duplicates, and track how things change over time.
+- The **episode** is the fallback when you need the *whole* truth — because an index can miss things, especially "don'ts" and rules (e.g. "avoid X", "only Y counts"). 
+
+Rule of thumb: **search with the facts; read the episode to be sure you have everything.**
+
+---
+
 ## Stage 1: The raw input ("an episode")
 
 The thing you write or capture is called an **episode**. It's just text plus a little metadata. There's no schema — you don't tell the system "this is a meeting" or "this is a contact." It figures that out.

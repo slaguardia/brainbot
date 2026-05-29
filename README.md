@@ -9,11 +9,11 @@ Concrete example: dump your work experience + the kind of roles you'd consider i
 Two first-party consumers ship with the project today, both as worked examples:
 
 - **Claude Code MCP** — terminal harness in any project repo. Reads from the brain ambiently via a `UserPromptSubmit` hook; writes session summaries back via `SessionEnd`. (Phase 1.)
-- **PWA** — phone + desktop surface for direct human use: chat, browse/edit the graph, capture thoughts in two seconds. (Phase 2, planned.)
+- **PWA** — a one-screen mobile capture surface: type a thought, tap send, it lands in the brain in two seconds. Google sign-in + email whitelist, enforced at the edge. (Phase 2.) Graph inspection/editing is done via the FalkorDB Browser, not the PWA.
 
 But these are just two of many possible consumers. The point of the project is the shared brain. Your job-fit scorer, your travel planner, your reading-list app — each one stays small and stateless because the brain holds the cross-app knowledge.
 
-Built on [Graphiti](https://github.com/getzep/graphiti) (bi-temporal property graph) backed by [FalkorDB](https://www.falkordb.com), behind Caddy on a small VPS.
+Built on [graphiti-core](https://github.com/getzep/graphiti) (bi-temporal property graph), constructed directly by a small Python **brain service** (no standalone Graphiti MCP server in the loop), backed by [FalkorDB](https://www.falkordb.com), behind Caddy on a small VPS.
 
 ## Why this exists
 
@@ -30,7 +30,7 @@ The full reasoning lives in [`architecture.md`](./architecture.md). Per-componen
 |---|---|---|
 | 0 — VPS + Docker substrate | ✅ done | Small VPS, Ubuntu LTS, UFW, Caddy, Tailscale |
 | 1 — Brain online + ingest + Claude Code reads it | 🟡 in progress | Stack runs end-to-end locally with native Anthropic + Voyage providers via a custom-built image. Generic text/document ingest CLI is working. Remaining: VPS deployment + Claude Code client wiring. See [`plans/phase-1-graph-online.md`](./plans/phase-1-graph-online.md) and [Known limits](#known-limits--setup-gotchas) below. |
-| 2 — PWA: chat + browse/edit + capture | 🟡 in plan, may be re-scoped | [`plans/phase-2-pwa-harness.md`](./plans/phase-2-pwa-harness.md) — the pivot toward "brain as service for many apps" may reduce what the PWA needs to do. |
+| 2 — PWA: one-screen capture + brain service | 🟡 mostly built | Re-scoped from chat/browse/edit down to a single capture screen (the pivot made the brain the product, not the UI). Shipped the `brain` service + capture PWA + Google edge auth. See [`plans/phase-2-pwa-harness.md`](./plans/phase-2-pwa-harness.md) + [`plans/phase-2-pwa-auth.md`](./plans/phase-2-pwa-auth.md). |
 | 3 — Write-back loop + capture polish | 🟡 in plan | [`plans/phase-3-writeback.md`](./plans/phase-3-writeback.md) |
 | 4 — Hardening + life expansion | 🟡 in plan | [`plans/phase-4-hardening.md`](./plans/phase-4-hardening.md) |
 
@@ -56,10 +56,12 @@ brainbot/
 │   ├── phase-2-pwa-harness.md
 │   ├── phase-3-writeback.md
 │   └── phase-4-hardening.md
-├── compose/                     — docker-compose, Dockerfile (custom Graphiti image), Caddyfile
+├── brain/                       — the brain service (FastAPI; constructs graphiti-core directly; capture + recall + MCP face)
+├── pwa/                         — Phase 2 one-screen capture PWA (thin proxy to the brain)
+├── compose/                     — docker-compose, Caddyfile, oauth2-proxy whitelist
 ├── scripts/
 │   ├── ingest.py                — drop arbitrary text or files into the brain as episodes (primary surface)
-│   ├── smoke_brain.py           — brain API contract smoke (add_memory → search → dedup)
+│   ├── smoke_brain.py           — brain API contract smoke (capture → recall)
 │   ├── smoke_ingest.py          — ingest CLI smoke
 │   └── reset_brain.py           — wipe a graph (defaults to the smoketest graph; safe)
 ├── migrate/                     — specialized producers when a source needs special handling (rare)
@@ -68,20 +70,20 @@ brainbot/
     └── claude-code-client/      — drop-in MCP config + UserPromptSubmit hook for any project repo
 ```
 
-Code lands incrementally — `pwa/` will be added in Phase 2.
 
 ## Running it (fresh install)
 
-The Phase 1 stack is two compose services: `falkordb` (graph store) and `graphiti` (the MCP + REST server that does entity extraction on every write). Caddy is VPS-only and sits in front of `graphiti` with TLS + bearer auth. No second store — Graphiti is the only persistent service in early phases.
+The stack is two compose services: `falkordb` (graph store) and `brain` (a FastAPI service that constructs graphiti-core directly and does the decompose + entity-extraction pipeline on every write). On the VPS, Caddy adds two vhosts — `brain.api.{domain}` (the brain API, bearer-authed) and `brain.{domain}` (the PWA, Google sign-in via oauth2-proxy). No second store — FalkorDB is the only persistent service.
 
 ### 1. Configure env
 
 ```sh
 cd compose
 cp .env.example .env
-# edit .env: set ANTHROPIC_API_KEY (LLM extraction) and VOYAGE_API_KEY (embeddings) —
-# these are the defaults baked into graphiti-config.yaml. Also set BRAIN_DOMAIN +
-# BRAIN_BEARER_TOKEN, and NOTION_TOKEN if you'll run the migrator.
+# edit .env: set ANTHROPIC_API_KEY (LLM extraction + decomposition) and
+# VOYAGE_API_KEY (embeddings) — the brain reads these directly (see brain/config.py).
+# For the VPS also set BRAIN_DOMAIN, BRAIN_BEARER_TOKEN, the Google OAuth client
+# vars + OAUTH2_PROXY_COOKIE_SECRET (PWA auth), and NOTION_TOKEN if you'll run the migrator.
 #
 # Voyage: you'll need a payment method on https://dashboard.voyageai.com/
 # even though Phase 1 fits inside the 200M-token free allowance. Without
@@ -101,28 +103,29 @@ docker compose -f docker-compose.yml -f docker-compose.local.yml up -d
 docker compose ps                       # both healthy?
 ```
 
-`graphiti` is at `http://127.0.0.1:8000`. `.env`'s `BRAIN_URL` should be `http://127.0.0.1:8000` for local runs.
+The `brain` service is at `http://127.0.0.1:8100` (the local overlay exposes it on the host; it also exposes the FalkorDB Browser at `http://127.0.0.1:3000`). `.env`'s `BRAIN_URL` should be `http://127.0.0.1:8100` for local runs.
 
-**VPS (with the Caddy vhost from `compose/Caddyfile` already serving `brain.{your-domain}`):**
+**VPS (with the Caddy vhosts from `compose/Caddyfile` already serving `brain.api.{your-domain}` + `brain.{your-domain}`):**
 ```sh
 docker compose up -d
 docker compose ps
 ```
 
-`.env`'s `BRAIN_URL` should be `https://brain.your-domain.com`.
+`.env`'s `BRAIN_URL` should be `https://brain.api.your-domain.com` (the API host; the bare `brain.` host is the Google-auth'd PWA).
 
 ### 3. Smoke tests
 
 Two smokes, both isolated to a separate `smoketest` graph so they never touch your real `brain`:
 
 ```sh
-# Brain API smoke (add_memory → search_nodes → optional dedup)
-python scripts/smoke_brain.py            # post episode + verify node
-python scripts/smoke_brain.py --dedup    # also post a follow-up + assert no dup nodes
+# Brain API smoke (capture → recall)
+python scripts/smoke_brain.py
 
 # Ingest CLI smoke (stdin, file, --split headings, dry-run)
 python scripts/smoke_ingest.py
 ```
+
+> **Heads-up:** these smoke scripts (and `ingest.py`, `migrate/notion_to_graphiti.py`) still target the retired Graphiti tool surface (`add_memory`/`search_nodes`) and a `group_id`-parameterized API. They're being migrated to the brain's `capture`/`recall` contract — see the [reference client](./migrate/graphiti_clients.py) for the current shape.
 
 Both wipe the `smoketest` graph on success unless you pass `--keep`. The FalkorDB Browser graph dropdown will show `smoketest` while a smoke is running and the `brain` graph (your real data) untouched. The unusual graph name (no hyphen) is forced by RediSearch — `-` is the NOT operator in queries.
 
@@ -157,7 +160,7 @@ See [`templates/claude-code-client/INSTALL.md`](templates/claude-code-client/INS
 
 ### 6. Building your own consumer
 
-The brain exposes its operations over **MCP JSON-RPC** at `/mcp` (the same endpoint Claude Code talks to). Any app — Python, TypeScript, a shell script — can hit it with a bearer token over HTTPS. The two tools you'll use 90% of the time are `search_nodes` (find entities matching a query) and `search_memory_facts` (find typed facts). See `migrate/graphiti_clients.py` for a minimal Python client doing the JSON-RPC + session handshake; reuse it from your own apps or port the pattern.
+The brain exposes a small contract — `capture`, `recall`, `profile` — over **plain HTTP/JSON** (`POST /capture`, `GET /recall`, `GET /profile`). Any app — Python, TypeScript, a shell script — can hit it with a bearer token over HTTPS at `brain.api.{domain}`; no protocol library needed. The same three operations are also exposed as **MCP tools** at `/mcp` for Claude Code and other LLM-tool-discovery harnesses. See [`docs/consumer-integration.md`](./docs/consumer-integration.md) and the reference client `migrate/graphiti_clients.py` (`BrainClient`); full spec in [`docs/consumer-api.md`](./docs/consumer-api.md).
 
 The brain doesn't enforce any schema on you — your job-fit scorer and your reading-list app can both query "what does the brain know about Acme" and get back the same Acme entity with the same dedupe'd context. That's the whole point.
 
@@ -165,21 +168,11 @@ The brain doesn't enforce any schema on you — your job-fit scorer and your rea
 
 These were all surfaced the first time someone (me) actually ran the Phase 1 smoke end-to-end against a clean machine. Calling them out so you can decide before investing time.
 
-### We build our own Graphiti MCP image (don't use `zepai/knowledge-graph-mcp:latest`)
+### graphiti-core is pip-installed, not a prebuilt image
 
-Upstream Zep publishes a Docker image at `zepai/knowledge-graph-mcp:latest`, and the upstream Phase 1 plan originally pointed at it. **We can't use it.** It ships with the `providers` extra of `mcp_server` omitted, so the anthropic / voyage / gemini / groq SDKs aren't installed inside the container, and the MCP server silently falls back to "no LLM configured" for any non-OpenAI provider. Startup logs it explicitly:
+Earlier iterations ran Zep's standalone Graphiti MCP server (`zepai/knowledge-graph-mcp:latest`), which was unusable: it ships without the provider extras, so the Anthropic/Voyage SDKs aren't present and it silently falls back to "no LLM configured" for any non-OpenAI provider. That whole class of problem is gone. The `brain` service pip-installs `graphiti-core[anthropic,falkordb,voyageai]==0.29.1` (pinned in `brain/pyproject.toml`) and constructs graphiti-core itself — the provider SDKs are always present, and there's no standalone MCP image or `graphiti-config.yaml` to build or mount. Model/provider settings live in `brain/config.py` (overridable via env; see `brain/README.md`).
 
-```
-Failed to create LLM client: Anthropic client not available in current graphiti-core version
-```
-
-Beyond that, the image's factory (`/app/mcp/src/services/factories.py`) constructs the OpenAI LLM client without plumbing the configured `api_url` through, so even the "point openai at Anthropic's OAI-compat endpoint" workaround doesn't work — and the OpenAI client uses `client.responses.parse()` for structured completions, which is OpenAI-only anyway.
-
-**What we do instead:** `compose/graphiti/Dockerfile` builds our own image from upstream's source at a pinned tag (`v0.29.1`), installing `mcp_server` with `--extra providers --extra azure`. This is literally what upstream's own `Dockerfile.standalone` does — the published image just isn't built from it (or is stale). `docker-compose.yml` references this build context, so the image is built locally on first `docker compose up`.
-
-**Extra wrinkle worked around:** `graphiti-core`'s `Graphiti.__init__` always instantiates an `OpenAIRerankerClient` cross-encoder for search reranking, which demands `OPENAI_API_KEY` at construction time even when it's never invoked. The MCP server doesn't expose a `cross_encoder=` override. Compose passes a placeholder `OPENAI_API_KEY` to let init succeed; the reranker won't be called unless you explicitly invoke reranked search. If/when you do, set a real key.
-
-**Tracking upstream:** We pin `GRAPHITI_REF` in `compose/docker-compose.yml`. Bump it when upstream cuts a release that includes a relevant fix. The known-relevant open issue is upstream [#1103](https://github.com/getzep/graphiti/issues/1103) — the MCP server's config schema defaults `temperature` to `None`, which Anthropic's API rejects with HTTP 400. Our `compose/graphiti-config.yaml` sets `temperature: 1.0` explicitly to dodge it.
+**One graphiti-core wrinkle still applies:** `Graphiti.__init__` instantiates an `OpenAIRerankerClient` cross-encoder that demands `OPENAI_API_KEY` at construction time even if you never invoke reranked search. `compose/.env` passes a placeholder so init succeeds; set a real key only if you turn on reranked search.
 
 ### `.env` location + shell env shadow (both structurally addressed)
 
@@ -195,25 +188,24 @@ Two related FalkorDB persistence gotchas:
 - The image's `FALKORDB_DATA_PATH` is `/var/lib/falkordb/data`. There's a `/data → /var/lib/falkordb/data` symlink for convenience, but if you mount a volume at `/data` you're overlaying the symlink itself, not the data dir — writes go to the container's ephemeral filesystem and disappear on restart. Mount at `/var/lib/falkordb/data` directly.
 - Redis default save thresholds (10K changes / 60s) never fire on a Phase 1-sized dataset, so even with the right mount, data doesn't get snapshotted before shutdown. Our compose passes explicit `--save 30 1` and `--appendonly yes` to force persistence.
 
-### Graphiti graph naming: `group_id`, not the configured `database`
+### Graph naming: `group_id` *is* the FalkorDB graph name
 
-`graphiti-config.yaml` has a `database.providers.falkordb.database` field that looks like it should name the FalkorDB graph. It doesn't — Graphiti uses the configured **`group_id`** as the graph name. (Our brain is in the `brain` graph because `GRAPHITI_GROUP_ID=brain`, even though `database` says `default_db`.) When poking around in the FalkorDB Browser, pick the graph that matches `group_id`.
+graphiti-core uses the configured **`group_id`** as the FalkorDB graph name. The brain sets it via `BRAIN_GROUP_ID` (default `brain`), so your data lives in the `brain` graph. When poking around in the FalkorDB Browser, pick the graph that matches `group_id`.
 
 ### RediSearch reserves `-` (smoke graph naming)
 
-You'd think a `smoke-test` group_id would be fine. It isn't — Graphiti runs the group_id through a RediSearch query, where `-` is the NOT operator. The episode silently fails to extract with `RediSearch: Syntax error at offset N near smoke`. Keep group_ids alphanumeric (our smoke uses `smoketest`).
+You'd think a `smoke-test` group_id would be fine. It isn't — graphiti-core runs the group_id through a RediSearch query, where `-` is the NOT operator. The episode silently fails to extract with `RediSearch: Syntax error at offset N near smoke`. Keep group_ids alphanumeric (our smoke uses `smoketest`).
 
 ### Voyage requires a payment method on file to run even the smoke test
 
-Voyage's free tier gives you 200M tokens/month free — but without a payment method on file, you're also rate-limited to **3 RPM / 10K TPM**. That sounds generous; it isn't. Graphiti's entity extraction makes a burst of embedding calls per episode (one per chunk / candidate entity), and a single `add_memory` call blows past 3 RPM in under a second. The smoke script's slower poll interval helps with our client-side search calls but does nothing for the server-side extraction pipeline.
+Voyage's free tier gives you 200M tokens/month free — but without a payment method on file, you're also rate-limited to **3 RPM / 10K TPM**. That sounds generous; it isn't. Entity extraction makes a burst of embedding calls per episode (one per chunk / candidate entity), and a single `capture` (which writes the body + N fact episodes) blows past 3 RPM in under a second. The smoke script's slower poll interval helps with our client-side search calls but does nothing for the server-side extraction pipeline.
 
 **You will need to add a card on the [Voyage dashboard](https://dashboard.voyageai.com/) before any episode actually extracts successfully.** The 200M free tokens are still free — the card just lifts the throttle. Expected real cost for Phase 1 sanity-checking is in the cents.
 
-If you prefer not to use Voyage at all, swap the embedder in `compose/graphiti-config.yaml` — `graphiti-core[openai]` and `graphiti-core[gemini]` are both supported by our custom image build.
+If you prefer not to use Voyage at all, set `BRAIN_EMBED_MODEL` to a different provider's model — `graphiti-core[openai]` and `graphiti-core[gemini]` extras are available (add them in `brain/pyproject.toml`).
 
 ### Other things that bit us once
 
-- Graphiti's config path inside the container is `/app/mcp/config/config.yaml`, not `/app/config/config.yaml`. Bind-mount target matters.
 - The MCP streamable-HTTP endpoint is `/mcp` (no trailing slash). Clients must initialize a session via an `initialize` JSON-RPC call before any tool call — the returned `mcp-session-id` header has to be echoed on every subsequent request. Our `migrate/graphiti_clients.py` does this; if you write a new client, mirror that pattern.
 - `scripts/smoke_brain.py` and `migrate/notion_to_graphiti.py` need `requests` (not yet pinned in a `requirements.txt`).
 - The first `docker compose up` will trigger a multi-minute image build (`uv sync` downloads the Python dep tree). Subsequent ups reuse the cached layer.

@@ -7,7 +7,7 @@ Behavior:
    with no changes. If unset, the hook always runs.
 3. GET <BRAIN_URL>/recall?q=<prompt> on the brain service — one plain-HTTP
    request, no MCP handshake. The brain does the search and returns ranked
-   facts. (Replaces the old graphiti MCP search_nodes path.)
+   chunks. (Replaces the old graphiti MCP search_nodes path.)
 4. If hits returned, emit a hookSpecificOutput.additionalContext block on
    stdout that prepends a <relevant-memory> envelope to the prompt.
 5. On timeout or any error, log to .claude/logs/inject_memory.log under
@@ -101,10 +101,11 @@ def _headers() -> dict[str, str]:
 
 
 def _recall(prompt: str) -> tuple[list[dict], int]:
-    """GET the brain's /recall endpoint. Returns (facts, elapsed_ms).
+    """GET the brain's /recall endpoint. Returns (chunks, elapsed_ms).
 
     One request, no MCP handshake — the brain service does the work and
-    returns ranked facts directly.
+    returns ranked chunks directly. Each chunk is
+    {"heading", "text", "score", "path"}.
     """
     url = _recall_url(prompt)
     start = time.monotonic()
@@ -113,15 +114,23 @@ def _recall(prompt: str) -> tuple[list[dict], int]:
         text = resp.read().decode("utf-8")
     elapsed_ms = int((time.monotonic() - start) * 1000)
     data = json.loads(text) if text else {}
-    return data.get("facts", []) or [], elapsed_ms
+    return data.get("chunks", []) or [], elapsed_ms
 
 
-def _format_block(facts: list[dict]) -> str:
+def _format_block(chunks: list[dict]) -> str:
     lines = ["<relevant-memory>"]
-    for f in facts[:RESULT_LIMIT]:
-        fact = (f.get("fact") or "").strip()
-        if fact:
-            lines.append(f"- {fact}")
+    for c in chunks[:RESULT_LIMIT]:
+        body = (c.get("text") or "").strip()
+        if not body:
+            continue
+        heading = (c.get("heading") or "").strip()
+        path = (c.get("path") or "").strip()
+        # heading + path give the chunk context; text carries the meaning.
+        title = " — ".join(p for p in (path, heading) if p)
+        if title:
+            lines.append(f"- {title}: {body}")
+        else:
+            lines.append(f"- {body}")
     lines.append("</relevant-memory>")
     return "\n".join(lines)
 
@@ -140,7 +149,7 @@ def main() -> int:
         prompt = encoded[:MAX_QUERY_BYTES].decode("utf-8", errors="ignore")
 
     try:
-        facts, elapsed_ms = _recall(prompt)
+        chunks, elapsed_ms = _recall(prompt)
     except urllib.error.URLError as e:
         _log(f"recall URLError: {e}")
         return 0
@@ -148,12 +157,12 @@ def main() -> int:
         _log(f"recall exception:\n{traceback.format_exc()}")
         return 0
 
-    if not facts:
+    if not chunks:
         _log(f"no hits for prompt; no injection (recall took {elapsed_ms}ms)")
         return 0
 
-    block = _format_block(facts)
-    _log(f"injected {len(facts)} hits in {elapsed_ms}ms")
+    block = _format_block(chunks)
+    _log(f"injected {len(chunks)} hits in {elapsed_ms}ms")
 
     output = {
         "hookSpecificOutput": {

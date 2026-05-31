@@ -69,7 +69,13 @@ class Config:
     # LLM (extraction + decomposition)
     llm_model: str = field(default_factory=lambda: os.environ.get("BRAIN_LLM_MODEL", "claude-haiku-4-5"))
     decompose_model: str = field(default_factory=lambda: os.environ.get("BRAIN_DECOMPOSE_MODEL", "claude-sonnet-4-5"))
-    llm_temperature: float = field(default_factory=lambda: float(os.environ.get("BRAIN_LLM_TEMPERATURE", "1.0")))
+    # Temperature 0 by default: greedy extraction is the most-likely, least-noisy
+    # reading for a knowledge graph and dampens run-to-run drift in the per-edge
+    # strength tags. (Multi-pass LLM extraction is never bit-reproducible even at
+    # 0 — the *shape* is stable across re-ingests; exact wording/counts vary.)
+    # Entity recall is driven by the extraction-instruction override below, not by
+    # temperature, so going greedy costs nothing there.
+    llm_temperature: float = field(default_factory=lambda: float(os.environ.get("BRAIN_LLM_TEMPERATURE", "0.0")))
     llm_max_tokens: int = field(default_factory=lambda: int(os.environ.get("BRAIN_LLM_MAX_TOKENS", "4096")))
 
     # Embedder

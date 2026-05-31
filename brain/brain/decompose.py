@@ -50,7 +50,9 @@ A clean rewrite of the input as continuous prose, following these rules:
    - *Defining* lists that ARE the actual content (a closed allowed-set, a specific inventory) — KEEP them in full, and KEEP THEM AS ONE COHERENT STATEMENT. (e.g. the specific target industries, or a tech stack the person actually uses.) A closed set is information ONLY as a set: say "the allowed set is exactly {A, B, C, D}" so the boundary stays legible — do NOT scatter it into separate, context-free "likes A", "likes B" statements, which loses the fact that the set is closed.
    When unsure, ask: "is this item real information, or just an example of the rule?" Keep the former, drop the latter.
 
-4. **Preserve strength — and a gated accept-set is a hard requirement on its allowed members.** State hard requirements, dealbreakers, and "gate, not a weight" rules explicitly; keep mild preferences mild. Never flatten a hard constraint into a soft preference — and never harden a mild one. When the input gates membership in a set ("only X or Y", "must be in X", "X or Y; everything else is a skip"), write the ALLOWED members as a hard requirement — "{user_name} will only consider X or Y" — NOT a soft acceptance like "will consider X or Y". A bare "everything else is excluded" names nothing specific, so the gate's firmness has to ride on the allowed members themselves.
+4. **Preserve strength — gated sets are hard on both sides.** State hard requirements, dealbreakers, and "gate, not a weight" rules explicitly; keep mild preferences mild. Never flatten a hard constraint into a soft preference — and never harden a mild one. Two cases to get right:
+   - *Gated accept-set* — a closed set of allowed options where anything outside is rejected. Triggers include "only X or Y", "must be in X", "hard filter", "gate, not a weight", "anything outside [the list] is a skip", "X or Y; everything else is out". Write EVERY allowed member under one exclusive frame so each carries the firmness — "{user_name} will only consider A, B, or C" (and if you state members separately, each MUST keep the "will only consider", e.g. both "will only consider A" and "will only consider B"). Do NOT soften any member to "targets X" / "will consider X" / "X is one option". The "everything else is excluded" half names nothing specific, so the gate's firmness has to ride on the allowed members themselves.
+   - *Explicit avoid / dealbreaker list* (input under an "Avoid"/"Don't" heading, or framed as "won't", "never", "rule out", "steer clear of"): these are HARD refusals, not mild dislikes — write them as "{user_name} will not consider X" or "rules out X", NOT a soft "{user_name} avoids X".
 
 5. **Preserve all real detail.** Keep numbers, names, qualifiers. Do not summarize specifics away. Invent nothing not present in the input.
 
@@ -70,6 +72,11 @@ async def decompose(
     msg = await client.messages.create(
         model=model,
         max_tokens=2048,
+        # Temperature 0: greedy decoding for the most faithful rewrite and the
+        # least run-to-run drift. (Not bit-deterministic even at 0 — re-ingests
+        # still vary somewhat — but high temp swung the structure hard, flipping
+        # fact counts and hard/soft tags.)
+        temperature=0.0,
         system=system,
         messages=[
             {

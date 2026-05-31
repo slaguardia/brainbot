@@ -44,6 +44,21 @@ def _cosine(a: list[float] | None, b: list[float] | None) -> float:
     return dot / (na * nb)
 
 
+def _dedupe_facts(facts: list[dict]) -> list[dict]:
+    """Drop exact-duplicate facts (same fact text, case-insensitive). graphiti
+    dedups edges against PRIOR episodes, not within one extraction batch, so a
+    single capture can emit the same claim more than once. Order-preserving, so it
+    keeps the first occurrence (highest-scored in recall, newest in profile)."""
+    seen: set[str] = set()
+    out: list[dict] = []
+    for f in facts:
+        key = (f.get("fact") or "").strip().lower()
+        if key and key not in seen:
+            seen.add(key)
+            out.append(f)
+    return out
+
+
 class Brain:
     def __init__(self, cfg: Config):
         self.cfg = cfg
@@ -155,6 +170,7 @@ class Brain:
                 for s, e in scored
             ]
 
+        facts = _dedupe_facts(facts)
         out: dict = {"facts": facts}
         if debug:
             out["episodes"] = [{"name": ep.name, "body": ep.content} for ep in (res.episodes or [])]
@@ -204,6 +220,7 @@ class Brain:
             for r in records
             if r.get("fact")
         ]
+        facts = _dedupe_facts(facts)
         if not facts:
             # The exact symptom of the stale-connection bug: a healthy graph with
             # data, but the long-lived connection returns nothing. Make it visible.

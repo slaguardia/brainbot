@@ -34,11 +34,22 @@ from .config import Config, DEFAULT_ENTITY_TYPES
 # values) to the extractor LLM. Plain `#` comments are invisible to it, so the
 # vocabulary has to live in the schema or the attributes come back null.
 class Asserts(BaseModel):
-    """A preference or aversion the owner holds: what they seek, want, value,
-    accept, or require — OR avoid, reject, exclude, dislike, or won't do. Apply
-    to EVERY such toward-or-away relationship. Do NOT apply to neutral biography
-    (what the owner has done, built, holds, or is skilled at — e.g. 'worked at X',
-    'holds clearance', 'excels at Y'); those are plain facts, not stances."""
+    """A stance the owner holds toward an EXTERNAL thing they're choosing about, in
+    ANY area of life (work, food, travel, health, media, money, people, …):
+    something they seek / want / value / accept / require, OR avoid / reject /
+    dislike / refuse. Cross-domain examples: a kind of role or company, a cuisine
+    or ingredient, a destination or airline, an author or genre, a training style.
+    Apply to every such toward-or-away preference.
+
+    Do NOT apply to facts about the owner THEMSELVES — their history, skills,
+    possessions, or self-description. Those are plain biography, not stances, and
+    must stay UNTAGGED. Examples across domains: 'worked as X', 'lived in Y',
+    'shipped / built W', 'holds [credential]', 'excels at / is good at [skill]',
+    'works with / uses [tool or technology]', 'speaks [language]', 'owns [thing]',
+    'is a [self-descriptor]'. The test: if the fact says who the owner IS, what
+    they HAVE, what they CAN DO, or what they HAVE DONE — rather than what they
+    want or won't accept in something they're choosing — it is NOT a stance; leave
+    it untagged."""
 
     polarity: Literal["positive", "negative"] = Field(
         description="positive if the owner seeks/values/accepts the target; "
@@ -46,10 +57,12 @@ class Asserts(BaseModel):
     )
     strength: Literal["hard", "soft"] = Field(
         description="How firmly this is held. Use 'hard' ONLY when the text marks it "
-        "non-negotiable — a gate, dealbreaker, requirement, or words like 'only', "
-        "'must', 'never', 'won't consider otherwise'. Use 'soft' for everything else: "
-        "preferences, likes, interests, leanings ('prefer', 'lean toward', "
-        "'interested in', 'nice to have'). When unsure, choose 'soft' — most stances "
+        "non-negotiable — a dealbreaker, requirement, or hard rule, or words like "
+        "'only', 'must', 'never', 'won't accept otherwise'. Use 'soft' for everything "
+        "else: preferences, likes, interests, leanings ('prefer', 'lean toward', "
+        "'interested in', 'nice to have'), and the owner's aspirations, values, and "
+        "life-goals — what drives them or what they're 'building toward' are motivations, "
+        "not hard rules, so 'soft'. When unsure, choose 'soft' — most stances "
         "are preferences, not dealbreakers."
     )
 

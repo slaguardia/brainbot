@@ -1,12 +1,14 @@
 // The learnings timeline view: an append-only story of how the brain's design
 // evolved, chapter by chapter. Static, hand-authored content — it mirrors
-// LEARNINGS.md at the repo root (keep them in sync). Reached via the
-// `#learnings` hash route; the router in main.ts toggles it against the capture
-// screen. No user input ever lands in this HTML, so innerHTML is safe.
+// LEARNINGS.md at the repo root (keep them in sync). A separate page from the
+// docs view, but shares its chrome (topbar + nav rail + article) and is reached
+// from the docs topbar's "Evolution" link. Routed at `#learnings` (and
+// `#learnings/ch<n>` deep links) by main.ts. innerHTML is safe — no user input.
 
 type Phase = { label: string; html: string };
 type Chapter = {
   n: string;
+  nav: string;
   title: string;
   status: "done" | "wip";
   phases: Phase[];
@@ -17,6 +19,7 @@ type Chapter = {
 const CHAPTERS: Chapter[] = [
   {
     n: "0",
+    nav: "0 · MCP server",
     title: "The off-the-shelf MCP server",
     status: "done",
     phases: [
@@ -29,6 +32,7 @@ const CHAPTERS: Chapter[] = [
   },
   {
     n: "1",
+    nav: "1 · Atomic fan-out",
     title: "Atomic-fact fan-out",
     status: "done",
     phases: [
@@ -41,6 +45,7 @@ const CHAPTERS: Chapter[] = [
   },
   {
     n: "2",
+    nav: "2 · Concepts",
     title: "Teaching the extractor to see concepts",
     status: "done",
     phases: [
@@ -53,6 +58,7 @@ const CHAPTERS: Chapter[] = [
   },
   {
     n: "3",
+    nav: "3 · Lossy patch",
     title: "The lossy-graph patch",
     status: "done",
     phases: [
@@ -65,6 +71,7 @@ const CHAPTERS: Chapter[] = [
   },
   {
     n: "4",
+    nav: "4 · Source of truth",
     title: "Graph as the single source of truth",
     status: "wip",
     phases: [
@@ -77,6 +84,10 @@ const CHAPTERS: Chapter[] = [
     note: "In progress — see plans/graph-as-source-of-truth.md. The next chapter gets written when this one breaks.",
   },
 ];
+
+const NAV = CHAPTERS.map(
+  (c) => `<a class="docs-nav-link" data-target="ch${c.n}" href="#learnings/ch${c.n}">${c.nav}</a>`,
+).join("");
 
 function renderChapter(c: Chapter): string {
   const phases = c.phases
@@ -99,33 +110,89 @@ function renderChapter(c: Chapter): string {
     </li>`;
 }
 
-const TIMELINE_HTML = `
+const LEARNINGS_HTML = `
   <div class="docs-topbar">
     <a class="docs-back" href="#" aria-label="Back to capture">
       <span class="docs-back-arrow" aria-hidden="true">←</span> Capture
     </a>
-    <span class="docs-title">How the brain evolved</span>
+    <span class="brand" aria-label="brain">brain</span>
+    <a class="docs-cross" href="#docs" aria-label="How the brain works">Docs&nbsp;→</a>
   </div>
 
-  <div class="docs-article">
-    <header class="docs-hero">
-      <h1>How the brain got smart</h1>
-      <p class="docs-lead">
-        The brain's value lives in its extraction and modeling layers — and those
-        were <em>learned</em>, not designed up front. This is the story, chapter by
-        chapter: what we believed, what broke, and what each break taught us.
-      </p>
-    </header>
+  <div class="docs-body">
+    <nav class="docs-nav" aria-label="Timeline chapters">${NAV}</nav>
 
-    <ol class="timeline">
-      ${CHAPTERS.map(renderChapter).join("")}
-    </ol>
+    <article class="docs-article">
+      <header class="docs-hero">
+        <h1>How the brain got smart</h1>
+        <p class="docs-lead">
+          The brain's value lives in its extraction and modeling layers — and those
+          were <em>learned</em>, not designed up front. This is the story, chapter by
+          chapter: what we believed, what broke, and what each break taught us.
+        </p>
+      </header>
 
-    <footer class="docs-foot">
-      <a class="docs-back" href="#"><span class="docs-back-arrow" aria-hidden="true">←</span> Back to capture</a>
-    </footer>
+      <ol class="timeline">
+        ${CHAPTERS.map(renderChapter).join("")}
+      </ol>
+
+      <footer class="docs-foot">
+        <a class="docs-back" href="#docs"><span class="docs-back-arrow" aria-hidden="true">←</span> Back to docs</a>
+      </footer>
+    </article>
   </div>`;
 
+let wired = false;
+
 export function mountLearnings(container: HTMLElement): void {
-  container.innerHTML = TIMELINE_HTML;
+  container.innerHTML = LEARNINGS_HTML;
+  if (wired) return;
+  wired = true;
+  wireNav(container);
+}
+
+// Chapter nav: smooth-scroll on click + scrollspy highlight, mirroring the docs
+// view. Same behaviour, scoped to `#learnings/ch<n>` deep links.
+function wireNav(container: HTMLElement): void {
+  const links = Array.from(container.querySelectorAll<HTMLAnchorElement>(".docs-nav-link"));
+  const byId = new Map(links.map((l) => [l.dataset.target ?? "", l]));
+  const items = Array.from(container.querySelectorAll<HTMLElement>(".tl-item"));
+  const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  for (const link of links) {
+    link.addEventListener("click", (e) => {
+      const id = link.dataset.target ?? "";
+      const target = document.getElementById(id);
+      if (!target) return;
+      e.preventDefault();
+      target.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "start" });
+      history.replaceState(null, "", `#learnings/${id}`);
+    });
+  }
+
+  const setActive = (id: string) => {
+    for (const l of links) l.classList.remove("active");
+    byId.get(id)?.classList.add("active");
+  };
+  const observer = new IntersectionObserver(
+    (entries) => {
+      const visible = entries
+        .filter((en) => en.isIntersecting)
+        .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)[0];
+      if (visible) setActive(visible.target.id);
+    },
+    { rootMargin: "-45% 0px -50% 0px", threshold: 0 },
+  );
+  for (const it of items) observer.observe(it);
+
+  const deep = location.hash.match(/^#learnings\/(.+)$/);
+  if (deep) {
+    const target = document.getElementById(deep[1]);
+    if (target) {
+      target.scrollIntoView({ behavior: "auto", block: "start" });
+      setActive(deep[1]);
+    }
+  } else {
+    setActive(items[0]?.id ?? "");
+  }
 }

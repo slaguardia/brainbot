@@ -35,6 +35,7 @@ const DOCS_HTML = `
       <span class="docs-back-arrow" aria-hidden="true">←</span> Capture
     </a>
     <span class="brand" aria-label="brain">brain</span>
+    <a class="docs-cross" href="#learnings" aria-label="How the brain evolved">Evolution&nbsp;→</a>
   </div>
 
   <div class="docs-body">

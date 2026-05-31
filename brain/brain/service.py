@@ -15,6 +15,7 @@ recall(query):
 from __future__ import annotations
 
 import asyncio
+import logging
 import math
 from datetime import datetime, timezone
 
@@ -27,6 +28,8 @@ from graphiti_core.search.search_filters import SearchFilters
 from .client import build_graphiti, cached_entity_types
 from .config import Config
 from .decompose import decompose
+
+logger = logging.getLogger(__name__)
 
 
 def _cosine(a: list[float] | None, b: list[float] | None) -> float:
@@ -50,6 +53,14 @@ class Brain:
 
     async def init(self) -> None:
         await self.graphiti.build_indices_and_constraints()
+        # Confirm the graph binding at boot. By construction database == group_id
+        # (see build_graphiti), so a mismatch means a regression — log loudly
+        # rather than silently serving the wrong graph. Resolves hypothesis #1
+        # (wrong-graph-bound-at-construction) for good.
+        bound = getattr(self.graphiti.driver, "_database", None)
+        if bound != self.cfg.group_id:
+            logger.error("brain graph binding MISMATCH: driver._database=%r group_id=%r", bound, self.cfg.group_id)
+        logger.info("brain ready: group_id=%s graph=%s", self.cfg.group_id, bound)
 
     async def close(self) -> None:
         await self.graphiti.driver.close()
@@ -138,6 +149,7 @@ class Brain:
             ]
 
         episodes = [{"name": ep.name, "body": ep.content} for ep in (res.episodes or [])]
+        logger.debug("recall gid=%s q=%r -> %d facts, %d episodes", gid, query, len(facts), len(episodes))
         return {"facts": facts, "episodes": episodes}
 
     async def _fact_embeddings(self, uuids: list[str]) -> dict[str, list[float]]:
@@ -168,11 +180,23 @@ class Brain:
             "ORDER BY e.created_at DESC",
             gid=gid,
         )
-        return [
+        out = [
             {"name": r.get("name"), "body": r.get("body"), "source": r.get("source")}
             for r in records
             if r.get("body")
         ]
+        if not out:
+            # The exact symptom of the stale-connection bug: a healthy graph with
+            # data, but the long-lived connection returns nothing. Make it visible.
+            logger.warning(
+                "profile returned 0 episodes for group_id=%s (graph=%s) — if data is expected, "
+                "suspect a dead pooled connection",
+                gid,
+                getattr(self.graphiti.driver, "_database", None),
+            )
+        else:
+            logger.debug("profile gid=%s -> %d episodes", gid, len(out))
+        return out
 
 
 async def _smoke() -> None:

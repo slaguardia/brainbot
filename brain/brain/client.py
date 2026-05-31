@@ -11,6 +11,7 @@ from __future__ import annotations
 from functools import lru_cache
 
 from pydantic import BaseModel
+from falkordb.asyncio import FalkorDB
 from graphiti_core import Graphiti
 from graphiti_core.driver.falkordb_driver import FalkorDriver
 from graphiti_core.llm_client.anthropic_client import AnthropicClient
@@ -34,12 +35,34 @@ def build_entity_types(types: dict[str, str] | None = None) -> dict[str, type[Ba
 
 def build_graphiti(cfg: Config) -> Graphiti:
     cfg.validate()
-    driver = FalkorDriver(
+    # Build the FalkorDB (redis.asyncio) client ourselves so we can harden the
+    # connection — FalkorDriver doesn't forward these kwargs — then inject it.
+    # This is the fix for the long-lived-singleton "recall silently returns 0"
+    # bug: a dead pooled connection used to persist until a manual process
+    # restart. health_check_interval pings idle connections before reuse so a
+    # dead one is recycled (our actual failure mode: an idle socket reaped while
+    # the FalkorDB server stayed healthy); keepalive + timeouts bound a hung
+    # socket. Recovery from a connection that fully dies is handled one level up
+    # by the singleton self-heal in api.py (rebuild on ConnectionError).
+    #
+    # Deliberately NO `retry=`: falkordb 1.6.1's cluster-detection probe copies
+    # these connection_kwargs into a *synchronous* redis client, so an async
+    # Retry object would be called sync and break construction. Do not re-add it.
+    falkor = FalkorDB(
         host=cfg.falkordb_host,
         port=cfg.falkordb_port,
         password=cfg.falkordb_password,
+        health_check_interval=cfg.falkordb_health_check_interval,
+        socket_keepalive=True,
+        socket_connect_timeout=cfg.falkordb_socket_connect_timeout,
+        socket_timeout=cfg.falkordb_socket_timeout,
+    )
+    driver = FalkorDriver(
+        falkor_db=falkor,
         # database == group_id: graphiti names the FalkorDB graph after the
-        # group_id, and the driver connects per-graph. They must match.
+        # group_id, and the driver connects per-graph. The injected client above
+        # supplies the connection; `database` still selects the graph (it is
+        # passed on every GRAPH.QUERY), so selection stays deterministic.
         database=cfg.group_id,
     )
     llm = AnthropicClient(

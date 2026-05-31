@@ -80,6 +80,24 @@ class Config:
     falkordb_port: int = field(default_factory=lambda: int(os.environ.get("FALKORDB_PORT", "6379")))
     falkordb_password: str | None = field(default_factory=lambda: os.environ.get("FALKORDB_PASSWORD") or None)
 
+    # Connection resilience for the long-lived driver. The brain is a process
+    # singleton: one redis.asyncio pool serves every request for the life of the
+    # process. Without these, a pooled connection that silently dies — a
+    # server-side idle drop, a NAT/firewall reaping the socket, a cancelled
+    # in-flight query — stays in the pool returning empty result-sets until the
+    # process is restarted. health_check pings idle connections before reuse so a
+    # dead one is recycled; the timeouts bound a hung socket instead of letting it
+    # desync. Tunable via env for server deployments with stricter network reaping.
+    falkordb_health_check_interval: int = field(
+        default_factory=lambda: int(os.environ.get("FALKORDB_HEALTH_CHECK_INTERVAL", "30"))
+    )
+    falkordb_socket_timeout: float = field(
+        default_factory=lambda: float(os.environ.get("FALKORDB_SOCKET_TIMEOUT", "30"))
+    )
+    falkordb_socket_connect_timeout: float = field(
+        default_factory=lambda: float(os.environ.get("FALKORDB_SOCKET_CONNECT_TIMEOUT", "10"))
+    )
+
     # Brain identity + namespace
     group_id: str = field(default_factory=lambda: os.environ.get("BRAIN_GROUP_ID", "brain"))
     user_name: str = field(default_factory=lambda: os.environ.get("BRAIN_USER_NAME", "the user"))

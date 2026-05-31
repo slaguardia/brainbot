@@ -15,13 +15,23 @@ Run: `uvicorn brain.api:app` (app = the Starlette app FastMCP builds).
 from __future__ import annotations
 
 import asyncio
+import logging
 
 from mcp.server.fastmcp import FastMCP
+from redis.exceptions import ConnectionError as RedisConnectionError, TimeoutError as RedisTimeoutError
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 from .config import Config
 from .service import Brain
+
+logger = logging.getLogger(__name__)
+
+# Connection-class failures that mean "the singleton's pool is bad", as opposed
+# to a normal empty result or a bad request. graphiti/redis already retries
+# transient blips internally (see build_graphiti); these surface only when a
+# connection stays dead, which is our cue to rebuild the singleton.
+_CONN_ERRORS = (RedisConnectionError, RedisTimeoutError)
 
 # Lazy singleton. FastMCP's `lifespan` runs inside the MCP session context,
 # not at ASGI startup, so it can't initialize state that the plain-HTTP
@@ -39,6 +49,52 @@ async def brain() -> Brain:
                 await b.init()
                 _brain = b
     return _brain
+
+
+async def _rebuild_brain(stale: Brain) -> Brain:
+    """Replace the singleton after a connection-class failure, so recovery no
+    longer needs a manual process restart. Dedups concurrent rebuilds: only the
+    caller still holding the `stale` instance rebuilds; others get the fresh one.
+    """
+    global _brain
+    async with _brain_lock:
+        if _brain is stale:
+            _brain = None
+            try:
+                await stale.close()
+            except Exception:
+                logger.warning("error closing stale brain during rebuild", exc_info=True)
+        if _brain is None:
+            b = Brain(Config())
+            await b.init()
+            _brain = b
+    return _brain
+
+
+async def _read(op):
+    """Run a READ op against the brain; on a connection-class error, rebuild the
+    singleton once and retry. Safe to retry — reads have no side effects."""
+    b = await brain()
+    try:
+        return await op(b)
+    except _CONN_ERRORS:
+        logger.warning("brain connection error on read; rebuilding singleton and retrying once", exc_info=True)
+        b = await _rebuild_brain(b)
+        return await op(b)
+
+
+async def _write(op):
+    """Run a WRITE op (capture); on a connection-class error, rebuild the
+    singleton so the NEXT request is healthy, then re-raise. We do NOT retry:
+    add_episode is non-idempotent (a fresh uuid per call), so an auto-retry could
+    double-write. The caller decides whether to retry."""
+    b = await brain()
+    try:
+        return await op(b)
+    except _CONN_ERRORS:
+        logger.warning("brain connection error on write; rebuilding singleton (not retrying)", exc_info=True)
+        await _rebuild_brain(b)
+        raise
 
 
 mcp = FastMCP(
@@ -64,16 +120,14 @@ async def recall(query: str, limit: int = 20) -> dict:
         query: what to look up (natural language).
         limit: max results.
     """
-    b = await brain()
-    return await b.recall(query, limit=limit)
+    return await _read(lambda b: b.recall(query, limit=limit))
 
 
 @mcp.tool()
 async def capture(text: str) -> dict:
     """Store a thought or note into the user's personal brain (rewritten into
     faithful prose and ingested as one episode)."""
-    b = await brain()
-    return await b.capture(text)
+    return await _write(lambda b: b.capture(text))
 
 
 @mcp.tool()
@@ -82,8 +136,7 @@ async def profile() -> list[dict]:
     captured episode body (rewrites). Use when you need the complete picture
     (including the user's hard rules and avoid-lists) rather than the answer to
     one targeted question."""
-    b = await brain()
-    return await b.profile()
+    return await _read(lambda b: b.profile())
 
 
 # ---- Plain HTTP routes (PWA backend, injection hook) ------------------------
@@ -105,8 +158,8 @@ async def capture_http(request: Request) -> JSONResponse:
     if not text:
         return JSONResponse({"error": "text is required"}, status_code=400)
     try:
-        b = await brain()
-        return JSONResponse(await b.capture(text, group_id=group_id), status_code=202)
+        result = await _write(lambda b: b.capture(text, group_id=group_id))
+        return JSONResponse(result, status_code=202)
     except ValueError as e:
         return JSONResponse({"error": str(e)}, status_code=400)
 
@@ -121,8 +174,7 @@ async def recall_http(request: Request) -> JSONResponse:
     except ValueError:
         limit = 20
     group_id = request.query_params.get("group_id") or None
-    b = await brain()
-    out = await b.recall(q, limit=limit, group_id=group_id)
+    out = await _read(lambda b: b.recall(q, limit=limit, group_id=group_id))
     return JSONResponse(
         {
             "query": q,
@@ -137,8 +189,7 @@ async def recall_http(request: Request) -> JSONResponse:
 @mcp.custom_route("/profile", methods=["GET"])
 async def profile_http(request: Request) -> JSONResponse:
     group_id = request.query_params.get("group_id") or None
-    b = await brain()
-    episodes = await b.profile(group_id=group_id)
+    episodes = await _read(lambda b: b.profile(group_id=group_id))
     return JSONResponse({"count": len(episodes), "episodes": episodes})
 
 

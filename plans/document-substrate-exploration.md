@@ -210,6 +210,173 @@ graph.
 
 ---
 
+## Tech stack (the build)
+
+Most of today's stack survives — this swaps the storage layer and a little glue,
+not the whole service. **Chosen lean (Steve confirmed 2026-05-31):** Postgres +
+pgvector, self-hosted on the VPS, DIY pipeline, keep distillation, embedder
+pluggable. Forks stay noted; the recommended path is marked ★.
+
+| Layer | Pick (★) | Notes / alternatives |
+|---|---|---|
+| Store | ★ **Postgres 16 + pgvector** | One engine: relational (sources/facts + `path`), vectors (HNSW), full-text (`tsvector`). Alt: SQLite + sqlite-vec + FTS5 (single-file, personal/local-first); Mongo + Atlas (loses SQL joins + `path LIKE`). |
+| Hosting | ★ **Self-host on VPS** (`pgvector/pgvector:pg16`) | Fits existing VPS + install/upgrade tooling; most control + learning. One alt worth weighing: **Supabase** — auth + RLS + auto-API hand you the human-edit surface nearly free (PWA writes source rows directly). |
+| Embeddings | **Pluggable** — Voyage today | Swap to OpenAI `text-embedding-3` or local (`bge`/`nomic` via Ollama / HF TEI). Orthogonal to the store. Embedding **dim must match the column** (`voyage-3`=1024, `text-embedding-3-small`=1536). |
+| Write-time LLM | ★ **Anthropic Claude** (keep distillation) | decompose + extract, unchanged. Dropping distillation (raw-RAG) removes the LLM from the write path — simpler, noisier recall. |
+| Service | ★ **Python + asyncpg** | Alembic migrations; RRF fusion ~20 lines app-side; FastAPI. (SQLAlchemy 2.0 + `pgvector` pkg if you prefer an ORM.) |
+| Ingest | **Notion migrator** | Now writes rows + **computes each page's `path` from the parent chain** — the one new bit of ingest logic; it captures the domain tree. |
+| Surface | **PWA** | Thin proxy as today; or direct-to-DB doc editing if Supabase. |
+
+### Concrete schema (DDL)
+
+```sql
+CREATE EXTENSION IF NOT EXISTS vector;     -- pgvector >= 0.7 for HNSW
+
+CREATE TABLE sources (
+    id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    kind       text NOT NULL,                        -- 'doc' | 'capture' | 'notion_page'
+    title      text,
+    raw_text   text NOT NULL,                        -- canonical, human-edited content
+    parent_id  uuid REFERENCES sources(id) ON DELETE CASCADE,
+    path       text NOT NULL DEFAULT '',             -- materialized ancestry: 'Career/Job Search/Target Role'
+    version    integer NOT NULL DEFAULT 1,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE facts (
+    id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    source_id      uuid NOT NULL REFERENCES sources(id) ON DELETE CASCADE,  -- cascade = wipe-replace for free
+    fact           text NOT NULL,
+    fact_embedding vector(1024) NOT NULL,            -- match the embedder's dim
+    polarity       text,                             -- 'positive' | 'negative'
+    strength       text,                             -- 'hard' | 'soft'
+    valid_at       timestamptz,                      -- when the fact became true; NO invalid_at — currency is by construction
+    created_at     timestamptz NOT NULL DEFAULT now(),
+    fts            tsvector GENERATED ALWAYS AS (to_tsvector('english', fact)) STORED
+);
+
+CREATE INDEX facts_embedding_hnsw ON facts USING hnsw (fact_embedding vector_cosine_ops);  -- semantic
+CREATE INDEX facts_fts_gin        ON facts USING gin  (fts);                                -- lexical (BM25-ish)
+CREATE INDEX sources_path_prefix  ON sources (path text_pattern_ops);                       -- domain scope (LIKE 'X/%')
+CREATE INDEX facts_source_id      ON facts (source_id);                                     -- wipe-replace + joins
+
+-- History (optional): on edit, snapshot OLD raw_text into doc_versions before
+-- overwriting — audit trail at the legible doc level, not in the facts.
+-- CREATE TABLE doc_versions (source_id uuid, version int, raw_text text, archived_at timestamptz);
+```
+
+Two decisions are visible right in the DDL: **`ON DELETE CASCADE`** makes
+wipe-replace a one-liner (`DELETE FROM facts WHERE source_id=$x`), and **there is
+no `invalid_at`** — the column graphiti needs for bi-temporal invalidation is
+simply gone, because re-derivation guarantees currency.
+
+### Pipeline shape — capture, edit, recall (~200 lines)
+
+The whole substrate. `embed()`, `extract()`, `decompose()` are the
+storage-agnostic LLM/embedding pieces carried over unchanged from today;
+everything else is this one file.
+
+```python
+# brain/store.py — the document substrate. asyncpg + an embedder + an extractor.
+from dataclasses import dataclass
+
+# ---- ingest: capture, edit, and re-ingest are ALL one operation ----------------
+
+async def upsert_source(db, *, kind, title, raw_text, parent_id=None, id=None) -> str:
+    """Create or replace a source, recompute its path, re-derive its facts.
+    New capture, a human edit in the PWA, and Notion re-sync are the same call."""
+    path = await _compute_path(db, parent_id, title)
+    src_id = await db.fetchval("""
+        INSERT INTO sources (id, kind, title, raw_text, parent_id, path)
+        VALUES (COALESCE($1, gen_random_uuid()), $2, $3, $4, $5, $6)
+        ON CONFLICT (id) DO UPDATE
+          SET raw_text=$4, title=$3, path=$6,
+              version=sources.version+1, updated_at=now()
+        RETURNING id
+    """, id, kind, title, raw_text, parent_id, path)
+    await _rederive_facts(db, src_id, raw_text)       # <-- wipe-replace lives here
+    return src_id
+
+async def _rederive_facts(db, src_id, raw_text):
+    """Wipe-replace core: drop this source's facts, re-extract, re-insert."""
+    await db.execute("DELETE FROM facts WHERE source_id=$1", src_id)   # currency by construction
+    body  = await decompose(raw_text)                 # faithful rewrite (skip for raw-RAG)
+    items = await extract(body)                        # -> [{fact, polarity, strength, valid_at}]
+    if not items:
+        return
+    embs = await embed([it["fact"] for it in items])   # batch embed
+    await db.executemany("""
+        INSERT INTO facts (source_id, fact, fact_embedding, polarity, strength, valid_at)
+        VALUES ($1, $2, $3, $4, $5, $6)
+    """, [(src_id, it["fact"], e, it.get("polarity"), it.get("strength"), it.get("valid_at"))
+          for it, e in zip(items, embs)])
+
+async def _compute_path(db, parent_id, title):
+    if parent_id is None:
+        return title or ""
+    parent = await db.fetchrow("SELECT path FROM sources WHERE id=$1", parent_id)
+    return f"{parent['path']}/{title}".strip("/")
+
+# ---- recall: hybrid semantic + lexical, RRF-fused, optional path scope ----------
+
+@dataclass
+class Fact:
+    fact: str; score: float; polarity: str | None; strength: str | None; path: str
+
+async def recall(db, query, *, scope=None, k=12) -> list[Fact]:
+    q_emb      = (await embed([query]))[0]
+    scope_like = f"{scope}%" if scope else "%"         # 'Career/%' or match-all
+    sem = await db.fetch("""
+        SELECT f.id, f.fact, f.polarity, f.strength, s.path,
+               row_number() OVER (ORDER BY f.fact_embedding <=> $1) AS rank
+        FROM facts f JOIN sources s ON s.id = f.source_id
+        WHERE s.path LIKE $3
+        ORDER BY f.fact_embedding <=> $1 LIMIT 50
+    """, q_emb, query, scope_like)
+    lex = await db.fetch("""
+        SELECT f.id, f.fact, f.polarity, f.strength, s.path,
+               row_number() OVER (ORDER BY ts_rank(f.fts, plainto_tsquery('english',$2)) DESC) AS rank
+        FROM facts f JOIN sources s ON s.id = f.source_id
+        WHERE f.fts @@ plainto_tsquery('english',$2) AND s.path LIKE $3
+        LIMIT 50
+    """, q_emb, query, scope_like)
+    return _dedupe(_rrf(sem, lex))[:k]
+
+def _rrf(*rankings, c=60):
+    """Reciprocal Rank Fusion — reproduces graphiti's COMBINED_HYBRID_SEARCH_RRF."""
+    score, row = {}, {}
+    for ranking in rankings:
+        for r in ranking:
+            score[r["id"]] = score.get(r["id"], 0) + 1.0 / (c + r["rank"])
+            row[r["id"]]   = r
+    order = sorted(score, key=score.get, reverse=True)
+    return [Fact(row[i]["fact"], score[i], row[i]["polarity"], row[i]["strength"], row[i]["path"])
+            for i in order]
+
+def _dedupe(facts):
+    """Per-source model: collapse the same point surfaced from different sources.
+    v1 = normalized-text collapse (cheap). Semantic collapse (cosine > 0.92) is a
+    refinement — carry the embedding on the row to do it."""
+    seen, kept = set(), []
+    for f in facts:
+        key = " ".join(f.fact.lower().split())
+        if key not in seen:
+            seen.add(key); kept.append(f)
+    return kept
+
+# profile(db, scope=None) is just: SELECT ... FROM facts JOIN sources WHERE path LIKE ...
+# (no invalid_at filter needed — every stored fact is current by construction).
+```
+
+The shape in one breath: **ingest is one function** (capture = edit = re-sync),
+**recall is two queries + RRF + a dedupe pass**, and the hard parts graphiti owns
+are either *gone* (invalidation) or *demoted to a cheap read-time pass* (dedup).
+With real error handling, batching, and a connection pool this lands around 200
+lines — small enough to own and debug, which graphiti and Mem0 are not.
+
+---
+
 ## Does a turnkey product exist? (landscape, May 2026)
 
 The reason the answer is clean: graphiti and the vector-first products run the

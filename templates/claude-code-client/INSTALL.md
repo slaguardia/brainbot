@@ -8,14 +8,13 @@ Nothing assumes a specific project layout or name.
 
 ## 0. Prerequisites
 
-> **Heads up:** The brain stack uses a custom-built Graphiti image (not
-> `zepai/knowledge-graph-mcp:latest`) and assumes Voyage with a payment
-> method on file. If you haven't stood up the stack yet, skim the
+> **Heads up:** The brain stack is a Postgres + pgvector document store with
+> the `brain` service in front (no graph DB) and assumes Voyage with a payment
+> method on file for embeddings. If you haven't stood up the stack yet, skim the
 > [README "Known limits"](../../README.md#known-limits--setup-gotchas)
-> section first — there are a couple of setup footguns documented there
-> that aren't obvious from the upstream Graphiti docs.
+> section first — there are a couple of setup footguns documented there.
 
-- Brain stack is up: FalkorDB + Graphiti + Caddy on your VPS.
+- Brain stack is up: Postgres + pgvector + brain + Caddy on your VPS.
 - `BRAIN_DOMAIN` and `BRAIN_BEARER_TOKEN` are exported in your shell
   before launching `claude`. A reasonable spot is `~/.zshrc` or a
   wrapper script that sources `compose/.env` from your brainbot
@@ -31,9 +30,10 @@ prompts.
 
 > **Note (Phase 2):** This used to point at the standalone Graphiti MCP
 > server. That's been retired — the **brain service** now exposes its own
-> MCP face at `/mcp` (tools: `recall`, `capture`) plus plain-HTTP routes.
-> The API also moved host: it's now `brain.api.{domain}/mcp` (the bare
-> `brain.{domain}` host is the human-facing PWA, Google-auth'd).
+> MCP face at `/mcp` (read-only tools: `recall`, `profile`, `map`) plus
+> plain-HTTP routes. Writes happen out-of-band via `POST /ingest {url}`, not
+> over MCP. The API also moved host: it's now `brain.api.{domain}/mcp` (the
+> bare `brain.{domain}` host is the human-facing PWA, Google-auth'd).
 
 Current Claude Code expects MCP servers in `.mcp.json`, not
 `settings.json`. Create `<client-repo>/.mcp.json`:
@@ -88,7 +88,8 @@ Verify in a fresh Claude Code session opened in the client repo:
 list the available MCP tools
 ```
 
-You should see `mcp__brain__recall` and `mcp__brain__capture`.
+You should see `mcp__brain__recall`, `mcp__brain__profile`, and
+`mcp__brain__map`.
 
 ## 2. Document the env requirement in the client repo's CLAUDE.md
 

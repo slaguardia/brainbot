@@ -239,4 +239,4 @@ For MCP, tool errors surface as the MCP result's error field (HTTP framing is ty
 - **TypeScript:** the minimal recipe in [`consumer-integration.md`](./consumer-integration.md#typescript--other-languages).
 - **Claude Code (MCP):** [`templates/claude-code-client/INSTALL.md`](../templates/claude-code-client/INSTALL.md) wires the brain's `/mcp` face into a project's `.mcp.json`.
 
-The contract version tracks the brain service, not an upstream image: the brain pins `graphiti-core==0.29.1` in `brain/pyproject.toml`, but the operations above (`capture`/`recall`/`profile`) are the brain's own surface and are stable across graphiti-core patches.
+The contract version tracks the brain service, not an upstream image. (Historically this contract ran on graphiti-core; the brain no longer depends on it — `brain/pyproject.toml` now pins `asyncpg`, `pgvector`, `voyageai`, `mcp`, and `uvicorn`, with no graphiti. The live contract is `recall` / `profile` / `map` plus `POST /ingest`; see the banner above and [`../brain/README.md`](../brain/README.md).)

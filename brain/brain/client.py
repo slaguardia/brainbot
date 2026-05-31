@@ -34,24 +34,37 @@ from .config import Config, DEFAULT_ENTITY_TYPES
 # values) to the extractor LLM. Plain `#` comments are invisible to it, so the
 # vocabulary has to live in the schema or the attributes come back null.
 class Asserts(BaseModel):
-    """A stance the owner holds toward a topic/thing — any thing the brain
-    should remember they seek, value, accept, avoid, reject, or refuse.
-    Apply whenever the fact expresses how the owner relates to the target."""
+    """A preference or aversion the owner holds: what they seek, want, value,
+    accept, or require — OR avoid, reject, exclude, dislike, or won't do. Apply
+    to EVERY such toward-or-away relationship. Do NOT apply to neutral biography
+    (what the owner has done, built, holds, or is skilled at — e.g. 'worked at X',
+    'holds clearance', 'excels at Y'); those are plain facts, not stances."""
 
     polarity: Literal["positive", "negative"] = Field(
         description="positive if the owner seeks/values/accepts the target; "
         "negative if the owner avoids/rejects/refuses it."
     )
     strength: Literal["hard", "soft"] = Field(
-        description="how strongly the owner holds the stance: hard if held as a "
-        "requirement or dealbreaker; soft if a mild preference."
+        description="How firmly this is held. Use 'hard' ONLY when the text marks it "
+        "non-negotiable — a gate, dealbreaker, requirement, or words like 'only', "
+        "'must', 'never', 'won't consider otherwise'. Use 'soft' for everything else: "
+        "preferences, likes, interests, leanings ('prefer', 'lean toward', "
+        "'interested in', 'nice to have'). When unsure, choose 'soft' — most stances "
+        "are preferences, not dealbreakers."
     )
 
 
-# Allow the generic Asserts edge between any two entities. Mapped broadly so it
+# Allow the generic stance edge between any two entities. Mapped broadly so it
 # applies across domains rather than locking it to specific entity pairs.
-DEFAULT_EDGE_TYPES: dict[str, type[BaseModel]] = {"Asserts": Asserts}
-DEFAULT_EDGE_TYPE_MAP: dict[tuple[str, str], list[str]] = {("Entity", "Entity"): ["Asserts"]}
+#
+# The type-name key MUST be SCREAMING_SNAKE_CASE. graphiti matches the LLM's
+# extracted `relation_type` against these keys by EXACT string, and its
+# extract_edges prompt mandates SCREAMING_SNAKE_CASE relation labels — so the LLM
+# emits "ASSERTS". Registering "Asserts" silently never matched, and the
+# polarity/strength attribute pass (which only runs on a matched custom type)
+# was skipped, leaving every fact's attributes null.
+DEFAULT_EDGE_TYPES: dict[str, type[BaseModel]] = {"ASSERTS": Asserts}
+DEFAULT_EDGE_TYPE_MAP: dict[tuple[str, str], list[str]] = {("Entity", "Entity"): ["ASSERTS"]}
 
 
 def build_entity_types(types: dict[str, str] | None = None) -> dict[str, type[BaseModel]]:

@@ -3,7 +3,10 @@
 pgvector's type adapter is registered on every connection (via the pool's
 `init` hook) so `vector(...)` columns round-trip as Python lists transparently.
 
-This module owns the pool only. The DDL / apply_schema lives in the next task.
+This module owns the pool AND the schema (`apply_schema`). The DDL is the one in
+the plan's "Tech stack" section: two tables (sources + chunks) plus the four
+indexes (HNSW, GIN, path-prefix, source/position). It is fully idempotent
+(IF NOT EXISTS everywhere), so apply_schema is safe to run on every startup.
 """
 
 from __future__ import annotations
@@ -13,7 +16,51 @@ import asyncio
 import asyncpg
 from pgvector.asyncpg import register_vector
 
-from .config import Config
+from .config import EMBED_DIM, Config
+
+
+# The full schema. Idempotent: CREATE EXTENSION/TABLE/INDEX ... IF NOT EXISTS.
+# The chunks.embedding column dim is `EMBED_DIM` (voyage-3-lite = 512) — the
+# single source of truth lives in config.py and is interpolated below so the
+# column dim and the embedder can never drift apart. {dim} is the ONLY value
+# substituted (a trusted int constant), so this f-string carries no SQL-injection
+# surface.
+_SCHEMA = """
+CREATE EXTENSION IF NOT EXISTS vector;
+
+CREATE TABLE IF NOT EXISTS sources (
+    id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    kind       text NOT NULL,
+    title      text,
+    raw_text   text NOT NULL,
+    parent_id  uuid REFERENCES sources(id) ON DELETE CASCADE,
+    path       text NOT NULL DEFAULT '',
+    version    integer NOT NULL DEFAULT 1,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS chunks (
+    id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    source_id  uuid NOT NULL REFERENCES sources(id) ON DELETE CASCADE,
+    heading    text,
+    text       text NOT NULL,
+    position   integer NOT NULL,
+    embedding  vector({dim}) NOT NULL,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    fts        tsvector GENERATED ALWAYS AS
+                 (to_tsvector('english', coalesce(heading,'') || ' ' || text)) STORED
+);
+
+CREATE INDEX IF NOT EXISTS chunks_embedding_hnsw
+    ON chunks USING hnsw (embedding vector_cosine_ops);
+CREATE INDEX IF NOT EXISTS chunks_fts_gin
+    ON chunks USING gin (fts);
+CREATE INDEX IF NOT EXISTS sources_path_prefix
+    ON sources (path text_pattern_ops);
+CREATE INDEX IF NOT EXISTS chunks_source_pos
+    ON chunks (source_id, position);
+""".format(dim=EMBED_DIM)
 
 _pool: asyncpg.Pool | None = None
 _pool_lock = asyncio.Lock()
@@ -44,3 +91,11 @@ async def close_pool() -> None:
     if _pool is not None:
         await _pool.close()
         _pool = None
+
+
+async def apply_schema(pool: asyncpg.Pool) -> None:
+    """Run the full DDL idempotently — extension, the sources + chunks tables, and
+    the four indexes (HNSW semantic, GIN lexical, path-prefix scope, source/position
+    for wipe-replace + ordered profile dumps). Safe to call on every startup."""
+    async with pool.acquire() as conn:
+        await conn.execute(_SCHEMA)

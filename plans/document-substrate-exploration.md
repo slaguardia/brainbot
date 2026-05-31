@@ -470,6 +470,54 @@ atlan mem0-alternatives; graphlit memory-framework survey; supermemory blog.)
 
 ---
 
+## Versus the "Claude + Obsidian" second brain
+
+The buzzy alternative — point Claude at an Obsidian vault through an MCP server and
+let a large context window do the rest — is part of the motivation for this
+project, so it's worth being clear-eyed. The two aren't the same category:
+**Obsidian + Claude is a turnkey consumer setup; this is retrieval
+infrastructure.** They optimize for different things, and they're *converging*.
+
+| Dimension | Claude + Obsidian (agentic read) | Brainbot (pgvector RAG) |
+|---|---|---|
+| **Retrieval** | agentic — filename/grep search, then read whole notes; big context covers it | precomputed hybrid (semantic + BM25 + RRF) → compact top-k |
+| **Faithfulness** | high — reads intact notes with full surrounding context | risk — distilled facts can drop nuance/negatives (LEARNINGS Ch.3); mitigate with provenance or raw-RAG |
+| **Semantic recall** | lexical: grep misses synonyms/paraphrase unless a vector plugin is added | embeddings catch conceptually-related content regardless of wording |
+| **Scale** | great at personal scale; degrades as the vault → tens of thousands (can't read all; keyword misses) | sub-linear search; scales to huge corpora — RAG's home turf |
+| **Cost / latency per query** | high — stuffs many full notes into context | low — small top-k |
+| **Editing / freshness** | edit a file = instantly live, zero reindex; Obsidian *is* the edit surface | edit → re-extract → re-embed (wipe-replace); an index step exists |
+| **Cross-note links** | human-curated wikilinks/backlinks = a real, meaningful knowledge graph the model can follow | flat facts; cross-domain links implicit |
+| **What you learn** | prompt/agent design + MCP — *not* RAG internals | the RAG pipeline itself (this project's whole point) |
+| **Product potential** | single-user personal workflow | generic, multi-user retrieval infra / API |
+| **Build effort** | ~zero (install MCP, point at vault) | real (pipeline, schema, eval) |
+
+**Honest verdict.** For an *effortless personal second brain today*, Obsidian +
+Claude probably wins — faithful whole-note reads, zero build, edit-in-place,
+human-curated links, and a big context window already covers personal scale. The
+buzz is earned. Brainbot wins on the axes that are *actually the goals here*:
+**learning RAG, cheap/fast per-query retrieval, scaling past one person, and
+product-grade infrastructure.** No contradiction — different optimization targets.
+Note the irony: Obsidian's backlinks give you the one genuine "graph" benefit (real
+human-authored cross-links) the graph DB never did — because they're curated, not
+LLM-extracted.
+
+**The trend worth naming.** As context windows grow and models get better at
+tool-use, agentic-read is a genuine challenger to RAG for *personal-scale* corpora;
+RAG's zone of necessity is shrinking toward large-scale / cost- / latency-sensitive
+cases. So building RAG here is justified by **learning + scale/product ambition**,
+not by "it beats Obsidian for my notes today." Keeping that honest keeps the
+project honestly motivated.
+
+**The synthesis (not either/or).** These are different *layers*: Obsidian owns
+storage + editing; RAG owns retrieval + serving. The source-of-truth model already
+mirrors Obsidian's "edit the doc" philosophy — so the endgame could **use an
+Obsidian vault as the human edit surface and `sources` content, with this pipeline
+as the retrieval/serving layer for agents.** That takes the buzz seriously without
+giving up the RAG learning or the product infra. It's the natural generalization of
+"Notion is the first migrator" — Obsidian is just another source.
+
+---
+
 ## Embeddings note
 
 **Storage and embedding are orthogonal.** pgvector *stores and searches* vectors;

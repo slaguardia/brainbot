@@ -1,8 +1,24 @@
 # Brainbot docs
 
-Working docs for the current implementation. Each file explains how one piece works today and why it's shaped that way.
+> **Live backend: Postgres + pgvector (document substrate).** The brain is now a
+> document store — **sources** (canonical docs) split into embedded **chunks**,
+> read via `recall` / `profile` / `map`. There is **no graphiti, no FalkorDB, no
+> write-time LLM**. The current shape is described in
+> [`../brain/ARCHITECTURE.md`](../brain/ARCHITECTURE.md),
+> [`../brain/README.md`](../brain/README.md), and
+> [`../plans/document-substrate-exploration.md`](../plans/document-substrate-exploration.md).
+>
+> Several docs below still describe the earlier **graph design** (graphiti-core
+> over FalkorDB) as if live. They are being migrated; until then, treat any doc
+> that calls graphiti/FalkorDB the backend as **historical**, not current. The
+> reason the graph was dropped: `recall` never traversed it, so its only real
+> value (dedup + bi-temporal) didn't earn the engine — and the source-of-truth
+> model dissolves even that. [`rag-primer.md`](./rag-primer.md) remains useful as
+> RAG theory.
 
-These are not historical — they describe the system as it is, and get updated when the system changes. If a decision gets reversed, the old version goes away with it. Each doc ends with a brief "alternatives considered" section so the tradeoff is legible without needing a separate history file.
+Working docs for the implementation. Each file explains one piece and why it's
+shaped that way. Each ends with a brief "alternatives considered" section so the
+tradeoff is legible without a separate history file.
 
 ## Start here
 

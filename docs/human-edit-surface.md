@@ -1,5 +1,13 @@
 # Human-edit surface
 
+> **Largely answered by the document substrate.** This explored a graph
+> browser/editor for hand-curating nodes/edges. The live model makes that
+> unnecessary: **sources are canonical and human-edited**, and chunks are derived
+> (re-derived on edit via wipe-replace). The human edits the legible *source* (a
+> doc / Notion page) — never the machine layer. The graph-editor framing below is
+> historical. See [`../brain/ARCHITECTURE.md`](../brain/ARCHITECTURE.md) and
+> [`../plans/document-substrate-exploration.md`](../plans/document-substrate-exploration.md).
+
 The PWA exposes a real **graph browser and editor** as a peer to chat and capture. Episodes, entities, and edges are directly viewable and editable. Edits hit Graphiti as mutations.
 
 ## Why this exists

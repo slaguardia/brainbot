@@ -1,12 +1,18 @@
 # brainbot PWA
 
-Phase 2 surface: one-screen mobile capture. Textarea + send button → `POST /api/capture`, which the thin Node server proxies to the brain service's `POST /capture` (decompose + ingest). The PWA holds no brain logic.
+One-screen mobile app. **Free-text capture is currently disabled:** with the
+document-substrate cutover the brain's write path is source ingest (Notion pages
+/ docs), not a `/capture` endpoint. The send button is disabled and shows a short
+note; the backend serves static assets only and answers the legacy
+`POST /api/capture` with `410 Gone` (no broken proxy, no console error). The
+in-PWA "how the brain works" docs and the evolution timeline still serve. The
+PWA holds no brain logic.
 
 ## Layout
 
-- `src/main.ts` — client logic (textarea, button, optimistic toast, fetch)
+- `src/main.ts` — client logic (hash router for the docs/evolution views; capture send is disabled)
 - `src/style.css` — dark, mobile-first
-- `src/server/index.ts` — Node HTTP server: serves `dist/` and proxies `POST /api/capture` → the brain service's `/capture`
+- `src/server/index.ts` — Node HTTP server: serves `dist/`; the `/api/capture` proxy is disabled (returns 410)
 - `public/manifest.webmanifest`, `public/sw.js` — PWA install bits
 
 ## Dev
@@ -22,22 +28,23 @@ npm run dev:client
 npm run dev
 ```
 
-Backend env (the server reads only these two; defaults work for local dev):
+Backend env (defaults work for local dev):
 
 ```
-BRAIN_SERVICE_URL=http://127.0.0.1:8100   # the brain service's /capture endpoint
 PORT=8787
 ```
 
-Auth is not handled here — it lives at the edge (oauth2-proxy in front of Caddy on the VPS). Local `npm run dev` is unauthenticated.
+(With capture disabled the server no longer talks to the brain, so there's no
+`BRAIN_SERVICE_URL`.) Auth is not handled here — it lives at the edge
+(oauth2-proxy in front of Caddy on the VPS). Local `npm run dev` is
+unauthenticated.
 
 ## Smoke
 
 1. `npm run dev`
 2. Open http://localhost:5173
-3. Type "PWA smoke check" → Send.
-4. Toast appears in <100ms; the textarea clears.
-5. Within a few seconds the episode shows up in FalkorDB Browser (http://127.0.0.1:3000, graph `brain`).
+3. The capture screen loads with a disabled send button and a short "capture paused" note — no request fires, no console error.
+4. Visit `#docs` and `#learnings` — the in-PWA explainer and evolution timeline render.
 
 ## Build & run (prod / Docker)
 

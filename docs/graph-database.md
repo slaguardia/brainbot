@@ -1,5 +1,11 @@
 # Graph database
 
+> **Historical (graph design).** Describes the earlier graphiti-over-FalkorDB
+> build. **FalkorDB is no longer used** — the live backend is Postgres + pgvector
+> (sources + embedded chunks). See
+> [`../brain/ARCHITECTURE.md`](../brain/ARCHITECTURE.md) and
+> [`../plans/document-substrate-exploration.md`](../plans/document-substrate-exploration.md).
+
 The graph lives in [**FalkorDB**](https://www.falkordb.com), a Redis module that speaks Cypher.
 
 ## Why FalkorDB

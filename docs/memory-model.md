@@ -1,5 +1,11 @@
 # Memory model
 
+> **Historical (graph design).** Describes the earlier graphiti-over-FalkorDB
+> build. The **live backend is now Postgres + pgvector** — sources split into
+> embedded chunks, no graph, no extraction LLM. See
+> [`../brain/ARCHITECTURE.md`](../brain/ARCHITECTURE.md) and
+> [`../plans/document-substrate-exploration.md`](../plans/document-substrate-exploration.md).
+
 Brainbot stores memory as an **episode-shaped graph**: entities, edges, and bi-temporal facts. Not a turn-shaped vector store of chat history.
 
 ## How it works

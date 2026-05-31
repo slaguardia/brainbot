@@ -1,14 +1,23 @@
 # Brainbot — Architecture & Phased Build Plan
 
-A self-hosted personal knowledge service. The brain is the only thing that holds structured truth about you; everything else — terminal harnesses, mobile apps, narrow scoring agents — is a thin consumer that calls in. One graph, N consumers.
+A self-hosted personal knowledge service. The brain is the only thing that holds structured truth about you; everything else — terminal harnesses, mobile apps, narrow scoring agents — is a thin consumer that calls in. One brain, N consumers.
+
+> **Architecture note (document-substrate cutover).** The brain is now a
+> **Postgres + pgvector document store** — sources (canonical docs) split into
+> embedded chunks, read via `recall` / `profile` / `map`. The earlier graph
+> design (graphiti-core over FalkorDB) was dropped because `recall` never
+> traversed the graph; its only real value (dedup + bi-temporal) is dissolved by
+> the source-of-truth model. Rationale: [`plans/document-substrate-exploration.md`](./plans/document-substrate-exploration.md).
+> Some prose below still describes the historical graph build and is being
+> migrated; the Stack and key-decisions tables reflect the current substrate.
 
 **Dual purpose:** this is a daily-driver tool *and* a portfolio piece. Every architectural decision should be defensible to a senior-eng interviewer. The writeup is half the deliverable. Per-component working docs (current state, tradeoffs, alternatives considered) live in [`docs/`](./docs/README.md).
 
 ## Goal
 
-One self-hosted brain (Graphiti on FalkorDB) reached over HTTP + MCP by any number of small consumer apps. Each consumer stays stateless and narrow because the cross-app knowledge lives in the brain.
+One self-hosted brain (Postgres + pgvector) reached over HTTP + MCP by any number of small consumer apps. Each consumer stays stateless and narrow because the cross-app knowledge lives in the brain.
 
-The brain itself is graph-shaped end to end. There is no markdown substrate, no file watcher, no derived projection of the data — Graphiti is the source of truth. Consumers read what the brain knows; consumers don't keep their own parallel state.
+The brain is a document store: **sources are canonical**, and their text is split into embedded **chunks** for retrieval. Sources are the source of truth; chunks are a derived, disposable index — re-derived (wipe-replace) whenever a source is ingested or edited, so currency is guaranteed by construction. Consumers read what the brain knows (`recall` / `profile` / `map`); they don't keep their own parallel state, and they never write back.
 
 ### First-party consumers shipped with the project
 
@@ -26,7 +35,7 @@ Apps you build later, each calling the brain over HTTP/MCP. Examples worth build
 - Calendar prep that pulls everything you've ever captured about attendees
 - Passive CRM that builds itself from "had coffee with X" captures
 
-The brain doesn't care which consumer is asking. There's no schema migration, no per-app namespace, no profile config — just `capture(text)`, `recall(query)`, and `profile()` over the same `brain` group.
+The brain doesn't care which consumer is asking. There's no schema migration, no per-app namespace, no profile config — just `recall(query, scope)`, `profile(scope)`, and `map(scope)` over the same source tree (writes arrive via `ingest`).
 
 ## Non-goals
 
@@ -58,22 +67,23 @@ The risk is real and acknowledged in the [extraction-quality](#extraction-qualit
 
 | Decision | Why |
 |---|---|
-| **graphiti-core (Apache 2.0) for the graph engine** | Bi-temporal property graph, schema-flexible (string-typed nodes/edges, no migrations), LLM extraction on every write. The brain service constructs graphiti-core **in-process** — the standalone Graphiti MCP server was dropped because it hid the extraction levers a personal brain needs (see `brain/README.md`). |
-| **FalkorDB as the graphiti-core backend** | Redis-module, ~6× more memory-efficient than Neo4j. Fits comfortably on a small VPS. The only persistent store. |
-| **A smart `brain` service, thin consumers** | The brain (FastAPI, graphiti-core in-process) owns all the smarts: the decompose→extract capture pipeline and the recall scoring. Consumers (the PWA, Claude Code, your apps) stay dumb. The PWA is just a one-screen capture client that proxies to the brain's `/capture`. |
-| **Narrow contract: capture / recall / profile** | The brain exposes three operations, not the full graph-introspection toolset. Bulk graph editing/browsing isn't a consumer concern — use the FalkorDB Browser. The file-canonical alternative for human editing was considered and parked — see [docs/human-edit-surface.md](./docs/human-edit-surface.md). |
-| **Two front doors** | Plain HTTP/JSON for typed consumers (the default); MCP at `/mcp` for Claude Code and other LLM-tool-discovery harnesses. Same three operations behind both. |
-| **No second store** | FalkorDB (via graphiti-core) is the only persistent store in early phases. No Postgres, no SQLite. Logs go to stderr. If observability or queueing later genuinely demand a second store, it gets added then — not preemptively. |
+| **Postgres + pgvector as the substrate** | One engine for relational (`sources`/`chunks` + a materialized `path`), vectors (HNSW), and full-text (`tsvector`). A document/vector RAG store — which is what the brain's reads actually are. Replaces the earlier graphiti-on-FalkorDB design (which never traversed the graph; see [`plans/document-substrate-exploration.md`](./plans/document-substrate-exploration.md)). |
+| **Sources canonical, chunks derived** | A source (doc/capture/Notion page) owns its chunks; ingest/edit does wipe-replace (`DELETE` chunks → re-embed → re-`INSERT`). Currency is guaranteed by construction — no bi-temporal invalidation, no write-time entity resolution. |
+| **No write-time LLM** | Ingest is split + embed + insert. Embedding (Voyage) is the only external call and the embedder is pluggable. No extraction, no decomposition, no schema-tagging. |
+| **A smart `brain` service, thin consumers** | The brain (FastMCP + asyncpg in-process) owns the substrate: ingest, hybrid recall, and profile assembly. Consumers (the PWA, Claude Code, your apps) stay dumb and read-only. |
+| **Narrow contract: recall / profile / map** | The brain exposes three reads plus `ingest`, not a full DB-introspection toolset. The human edits the legible *source* (a doc/Notion page), never the machine-derived chunks — the answer to [docs/human-edit-surface.md](./docs/human-edit-surface.md). |
+| **Two front doors** | Plain HTTP/JSON for typed consumers (the default); MCP at `/mcp` for Claude Code and other LLM-tool-discovery harnesses. Same three reads behind both. |
+| **One store** | Postgres + pgvector is the only persistent store. Logs go to stderr. If observability or queueing later genuinely demand a second store, it gets added then — not preemptively. |
 
 ## Surfaces
 
-The PWA is **one screen: capture.** The original three-mode vision (chat + browse/edit + capture) was dropped in the pivot — once the brain became a service for many consumers, a privileged human UI stopped being the point. Browsing/editing the graph is done with the FalkorDB Browser; a conversational consumer, if ever worth building, is a separate app.
+The PWA was **one screen: capture.** With the document-substrate cutover the brain's write path is **ingest a source** (a Notion page / doc), not a free-text `/capture` — so the PWA's send control is disabled pending a source-editing surface (the human edits the legible *source*, per [docs/human-edit-surface.md](./docs/human-edit-surface.md)). Inspecting the brain is done with plain SQL against Postgres or the `recall`/`profile`/`map` reads; a conversational consumer, if ever worth building, is a separate app.
 
 | Surface | What it's for | Primary use |
 |---|---|---|
-| **PWA capture** | Single-purpose append: textarea, send, optimistic ack in <100ms; proxies to the brain's `/capture`. Google sign-in + email whitelist at the edge. | "Save this thought before it leaves my head" — from the phone home screen |
-| **Claude Code** | Ambient memory in any project repo. `UserPromptSubmit` hook `recall`s relevant context and prepends it to every prompt; `SessionEnd` writes a session summary back via `capture`. | terminal work that should remember across sessions |
-| **Your consumers** | Any app calling `capture`/`recall`/`profile` over HTTP (job-fit scorer, calendar prep, …). | app-specific intelligence backed by the shared brain |
+| **PWA** | The capture screen's send is currently disabled (the `/capture` endpoint is gone with the substrate cutover; the write path is source ingest). The in-PWA "how the brain works" docs and evolution timeline still serve. | a source-editing surface is the planned re-enable |
+| **Claude Code** | Ambient memory in any project repo. `UserPromptSubmit` hook `recall`s relevant context and prepends it to every prompt. | terminal work that should remember across sessions |
+| **Your consumers** | Any app calling `recall`/`profile`/`map` over HTTP (job-fit scorer, calendar prep, …). | app-specific intelligence backed by the shared brain |
 
 ## Architecture
 
@@ -90,13 +100,13 @@ flowchart TB
     OAUTH["oauth2-proxy<br/>Google OIDC + email whitelist"]
 
     subgraph DockerNet["docker compose internal network (no public ports)"]
-      PWA_BE["PWA backend (Node)<br/>thin proxy → /capture"]
-      BRAIN["brain service (FastAPI)<br/>graphiti-core in-process<br/>HTTP: /capture /recall /profile<br/>MCP: /mcp (capture·recall·profile)"]
-      FALKOR[("FalkorDB<br/>property graph + vector<br/>SOURCE OF TRUTH")]
+      PWA_BE["PWA backend (Node)<br/>static assets<br/>(capture proxy disabled)"]
+      BRAIN["brain service (FastMCP + asyncpg)<br/>HTTP: /ingest /recall /profile /map<br/>MCP: /mcp (recall·profile·map)"]
+      PG[("Postgres + pgvector<br/>sources (canonical) + chunks<br/>HNSW · tsvector · path scope")]
     end
   end
 
-  ANTH["Anthropic API<br/>Sonnet (decompose) · Haiku (extraction)"]
+  NOTION["Notion API<br/>page fetch (ingest)"]
   VOY["Voyage API<br/>embeddings"]
 
   PWA_UI -->|"HTTPS brain.{domain}"| CADDY
@@ -105,30 +115,35 @@ flowchart TB
   CADDY -->|"forward_auth (PWA host)"| OAUTH
   OAUTH -->|authenticated| PWA_BE
   CADDY -->|"bearer (API host)"| BRAIN
-  PWA_BE -->|POST /capture| BRAIN
-  BRAIN --> FALKOR
-  BRAIN --> ANTH
+  BRAIN --> PG
+  BRAIN -->|"/ingest"| NOTION
   BRAIN --> VOY
 ```
 
-### Data flow — capture + recall
+### Data flow — ingest + recall
 
 ```
-1. Phone, on the train: open the PWA → type a thought → tap send.
-   POST /api/capture → PWA backend proxies to the brain's POST /capture.
-   The brain decomposes the text + extracts each fact (a few seconds).
-   The UI shows a "captured" toast immediately (optimistic) — it does not wait.
+1. Ingest a source:
+   POST /ingest {url} → the brain fetches the Notion page (title + blocks
+   flattened to markdown + the materialized path from the parent chain),
+   UPSERTs the source row, wipe-replaces its chunks, and embeds them (Voyage).
+   Re-posting the same URL is idempotent and always current.
 
 2. Later, any consumer asks a question:
-   GET /recall?q=... → the brain runs hybrid search over FalkorDB (graphiti-core),
-   scores each fact against the query, returns the ranked facts.
-   The consumer's own LLM filters/synthesizes from there.
+   GET /recall?q=&scope=... → the brain runs hybrid search over Postgres
+   (cosine via pgvector + full-text via tsvector, fused with RRF), returns the
+   top-k chunks. The consumer's own LLM filters/synthesizes from there.
 
-3. Need the whole picture, not one answer:
-   GET /profile → every currently-true fact about the user, newest first.
+3. Need the whole picture for a domain, not one answer:
+   GET /profile?scope=<path> → every chunk under the path prefix, assembled
+   into one structured Context with provenance.
+
+4. Don't know the scope yet:
+   GET /map?scope= → the (path, title) source tree.
 ```
 
-The brain's `/capture` awaits the full decompose+extract pipeline; the PWA acks optimistically so the user never waits on it. An async queue is a later option (Phase 3) if very large captures need it — not before.
+Ingest re-embeds the whole source on each call (wipe-replace); section-aware
+diff-and-re-embed is a later optimization, not before it's needed.
 
 ### Data flow — Claude Code in a project repo
 
@@ -138,28 +153,27 @@ The brain's `/capture` awaits the full decompose+extract pipeline; the PWA acks 
    → prepends a <relevant-memory> block. The user never types "search the brain";
    it's ambient.
 
-2. Use the session normally. SessionEnd fires when the session closes →
-   summarizes the transcript with Haiku → capture's it back to the brain.
-
-3. Tomorrow, in any repo: ask "what did I work on yesterday?" →
-   the inject hook surfaces yesterday's session summary.
+2. Use the session normally. Reads are read-only — consumers never write back to
+   the brain. (Writes arrive only via source ingest. The old SessionEnd
+   capture-back hook is retired with the /capture endpoint; if a session should
+   be remembered, it enters as a source through the human.)
 ```
 
 ## Stack
 
 | Component | Choice | Notes |
 |---|---|---|
-| **Graph engine** | graphiti-core (Apache 2.0), pinned `==0.29.1` | Constructed in-process by the brain service. https://github.com/getzep/graphiti |
-| **Graph DB** | FalkorDB | Redis-module backend for graphiti-core |
-| **Brain service** | Python + FastAPI (`brain/`) | Constructs graphiti-core directly; serves `capture`/`recall`/`profile` over HTTP + an MCP face at `/mcp` |
-| **MCP** | The brain's own MCP face (`/mcp`) | Replaces the retired standalone Graphiti MCP server; for Claude Code |
-| **PWA frontend** | Vanilla TS + Vite (`pwa/`) | One screen (capture). No meta-framework — a single page + one route doesn't justify one |
-| **PWA backend** | TypeScript, raw `node:http` | Thin proxy: `POST /api/capture` → brain `/capture`. No brain logic |
-| **Auth** | Bearer token at Caddy for the brain API; Google sign-in + email whitelist (oauth2-proxy at the edge) for the PWA | Per-identity access + easy revocation on phones; internal services (brain, FalkorDB) never publish ports. |
+| **Store** | Postgres 16 + pgvector (`pgvector/pgvector:pg16`) | One engine: relational (`sources`/`chunks` + `path`), vectors (HNSW), full-text (`tsvector`). The only persistent store. |
+| **Data model** | `sources` (canonical) + `chunks` (derived, embedded sections) | `sources.path` is the materialized ancestry (domain tree); `chunks.embedding` is `vector(512)` with a generated `fts tsvector`; `ON DELETE CASCADE` = wipe-replace for free. |
+| **Brain service** | Python + asyncpg + FastMCP (`brain/`) | One asyncpg pool; serves `ingest`/`recall`/`profile`/`map` over HTTP + an MCP face at `/mcp`. Run by `uvicorn brain.api:app` on :8100. |
+| **MCP** | The brain's own MCP face (`/mcp`) | Tools `recall`/`profile`/`map` for Claude Code. |
+| **PWA frontend** | Vanilla TS + Vite (`pwa/`) | One screen. Send is disabled (the `/capture` write path is gone); the docs/evolution views still serve. |
+| **PWA backend** | TypeScript, raw `node:http` | Static-asset server; the `/api/capture` proxy is disabled with the endpoint. No brain logic. |
+| **Ingest** | Notion fetch (`brain/notion.py`) | `fetch_page(url) → {title, text, path}`: blocks flattened to markdown + the materialized `path` from the parent chain. |
+| **Embedder** | Voyage (`voyage-3-lite`, `BRAIN_EMBED_MODEL`) | 512-dim vectors for hybrid recall. Pluggable; the column dim must match the model. |
+| **Write-time LLM** | none | Ingest is split + embed + insert. No extraction/decomposition/schema-tagging. |
+| **Auth** | Bearer token at Caddy for the brain API; Google sign-in + email whitelist (oauth2-proxy at the edge) for the PWA | Per-identity access + easy revocation on phones; internal services (brain, postgres) never publish ports. |
 | **Deployment** | Single docker-compose on a small VPS | All services on one box. Iteration: `git pull && docker compose up -d --build`. |
-| **Extraction model** | Claude Haiku (`BRAIN_LLM_MODEL`, native Anthropic SDK) | Cheap; runs on every episode write during extraction. Swap via env. |
-| **Decomposition model** | Claude Sonnet (`BRAIN_DECOMPOSE_MODEL`) | Rewrites raw capture into named-subject atomic facts; quality matters more here. |
-| **Embedder** | Voyage (`voyage-3-lite`, `BRAIN_EMBED_MODEL`) | Vector embeddings for hybrid recall. |
 | **TLS / domain** | Caddy + Let's Encrypt | UFW restricts to 80/443; fail2ban handles abuse |
 
 ## Phased plan

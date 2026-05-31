@@ -1,5 +1,12 @@
 # A plain-English primer on RAG (and where brainbot fits)
 
+> **Backend update.** The RAG/GraphRAG theory here is evergreen, but brainbot no
+> longer uses Graphiti/FalkorDB: it's now **naive (vector) RAG on Postgres +
+> pgvector** — sources split into embedded chunks, hybrid cosine + full-text
+> recall fused with RRF. So where this primer says "what brainbot uses" for the
+> GraphRAG column, read the **vanilla/naive RAG** column instead. Why the graph
+> was dropped: [`../plans/document-substrate-exploration.md`](../plans/document-substrate-exploration.md).
+
 A study guide for anyone (including future-you) trying to understand what RAG is, what GraphRAG adds, what all these tool names mean, and how this project relates to other note-taking tools you've used.
 
 No prior knowledge assumed. Lots of analogies. Skim the headings if you only need part of it.

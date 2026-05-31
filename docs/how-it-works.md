@@ -1,5 +1,13 @@
 # How it all fits together
 
+> **Historical (graph design).** This walkthrough describes the earlier
+> graphiti-over-FalkorDB build. The **live backend is now Postgres + pgvector**:
+> sources split into embedded chunks, read via `recall` / `profile` / `map`, with
+> no extraction LLM and no graph. For how the brain works today see
+> [`../brain/ARCHITECTURE.md`](../brain/ARCHITECTURE.md) and
+> [`../plans/document-substrate-exploration.md`](../plans/document-substrate-exploration.md).
+> Kept for context on what changed.
+
 A walkthrough of one piece of data — from raw text you type, to nodes and edges in the graph, to what comes back when you (or Claude Code) ask a question. If the other docs explain *what each piece is*, this one explains *what actually happens*.
 
 ## The pipeline at a glance

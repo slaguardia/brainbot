@@ -1,5 +1,13 @@
 # Consumer API reference
 
+> **Historical (graph contract).** This documents the old
+> `capture` / `recall` / `profile`-over-graphiti contract (`POST /capture`,
+> scored facts, episode bodies). The **live contract is now**
+> `recall(query, scope)` / `profile(scope)` / `map(scope)` returning chunks and a
+> `Context`, plus `POST /ingest {url}` — over Postgres + pgvector, no graph. The
+> current spec is in [`../brain/README.md`](../brain/README.md) and
+> [`../brain/ARCHITECTURE.md`](../brain/ARCHITECTURE.md).
+
 Exhaustive reference for every operation the brain exposes. The doc you keep open in another tab while writing a consumer.
 
 For the narrative (how-to, gotchas, the *why*), see [`consumer-integration.md`](./consumer-integration.md). This doc is the **spec**, not the tutorial.

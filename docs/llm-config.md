@@ -1,5 +1,11 @@
 # LLM config
 
+> **Historical (graph design).** The document substrate has **no write-time
+> LLM** — ingest is split + embed + insert, and the embedder (Voyage) is the only
+> external call. The extraction/decomposition LLM call sites below no longer
+> exist. See [`../brain/README.md`](../brain/README.md) and
+> [`../brain/ARCHITECTURE.md`](../brain/ARCHITECTURE.md).
+
 Two LLM call sites, configured separately.
 
 ## Extraction (Graphiti)

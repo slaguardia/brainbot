@@ -1,5 +1,13 @@
 # What's actually valuable here
 
+> **Dated framing (graph era).** Written when the brain was "a debugged Graphiti
+> deploy." The brain is now a **Postgres + pgvector document substrate** built and
+> owned in-repo (no graphiti, no FalkorDB) — so the value story shifts from
+> "wrapping Graphiti" to "owning a hand-built RAG pipeline." The accounting below
+> is kept for context; see
+> [`../plans/document-substrate-exploration.md`](../plans/document-substrate-exploration.md)
+> (the "RAG: the hood is open" angle) for the current framing.
+
 An honest accounting of what this project is worth and to whom — written so we don't accidentally start believing our own framing.
 
 ## The brutal version

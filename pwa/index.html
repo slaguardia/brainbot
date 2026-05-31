@@ -20,13 +20,17 @@
       </header>
       <textarea
         id="capture"
-        autofocus
         placeholder="Thought, note, anything…"
         autocomplete="off"
         autocorrect="on"
         spellcheck="true"
       ></textarea>
-      <button id="send" type="button">Send to brain</button>
+      <button id="send" type="button" disabled>Capture disabled</button>
+      <p id="capture-note" class="cap-note">
+        Free-text capture is paused. The brain now ingests <strong>sources</strong>
+        (Notion pages / docs) rather than raw text — a source-editing surface is
+        coming. See <a href="#docs">docs</a> for how the brain works today.
+      </p>
     </main>
     <div id="docs-view" hidden></div>
     <div id="learnings-view" hidden></div>

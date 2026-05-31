@@ -1,5 +1,6 @@
-# Brain service image. Constructs graphiti-core directly and serves
-# capture + recall over HTTP. Runs on the brainnet alongside falkordb.
+# Brain service image. A Postgres + pgvector document store (asyncpg
+# in-process; no graph DB) serving ingest + recall/profile/map over HTTP +
+# MCP. Runs on the brainnet alongside postgres.
 FROM python:3.11-slim-bookworm
 
 RUN apt-get update && apt-get install -y --no-install-recommends \

@@ -45,8 +45,9 @@ services:
         condition: service_healthy
 
   pwa:
-    # Phase 2 capture surface. One-screen PWA. Proxies captures to the brain
-    # service (which decomposes + ingests). No persistent state.
+    # One-screen PWA. Free-text capture is currently DISABLED (the brain's write
+    # path is source ingest, not /capture), so the backend serves static assets
+    # only — no brain proxy. The in-PWA docs/evolution views still serve.
     #
     # Auth lives at the edge: Caddy forward_auth → oauth2-proxy (Google OIDC +
     # email whitelist). The PWA itself is unauthenticated inside brainnet and
@@ -59,7 +60,6 @@ services:
     networks:
       - brainnet
     environment:
-      BRAIN_SERVICE_URL: http://brain:8100
       PORT: "8787"
     depends_on:
       brain:

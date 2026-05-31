@@ -1,11 +1,11 @@
-// Tiny Node server: serves the built static assets (in prod) and proxies
-// POST /api/capture to the brain service, which does the decompose + ingest.
+// Tiny Node server: serves the built static assets (in prod).
 //
-// The PWA backend is intentionally dumb now — all brain smarts (decomposition,
-// extraction tuning, direct graphiti-core access) live in the Python brain
-// service. This is the "thin consumer, smart brain" split the project is built
-// around. We used to talk MCP JSON-RPC straight to graphiti; that path (and
-// brain.ts) is gone.
+// The PWA is a thin consumer of the Python brain service. Free-text capture is
+// currently DISABLED: with the document-substrate cutover the brain's write path
+// is source ingest (Notion pages / docs), not a /capture endpoint — so this
+// backend no longer proxies anything. POST /api/capture returns 410 Gone rather
+// than calling a brain endpoint that no longer exists. (When a source-editing
+// surface lands, the proxy comes back here.)
 //
 // In dev, Vite serves the client on :5173 and proxies /api/* to this
 // process on :8787. In prod, this process serves both.
@@ -16,7 +16,6 @@ import { extname, join, normalize, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const PORT = Number(process.env.PORT ?? 8787);
-const BRAIN_SERVICE_URL = (process.env.BRAIN_SERVICE_URL ?? "http://127.0.0.1:8100").replace(/\/$/, "");
 
 const HERE = fileURLToPath(new URL(".", import.meta.url));
 // In prod, dist-server/server/index.js sits next to ../../dist/ (Vite build output).
@@ -35,73 +34,21 @@ const MIME: Record<string, string> = {
   ".ico": "image/x-icon",
 };
 
-async function readBody(req: IncomingMessage, limit = 64 * 1024): Promise<string> {
-  return new Promise((resolveBody, rejectBody) => {
-    let size = 0;
-    const chunks: Buffer[] = [];
-    req.on("data", (c: Buffer) => {
-      size += c.length;
-      if (size > limit) {
-        rejectBody(new Error("payload too large"));
-        req.destroy();
-        return;
-      }
-      chunks.push(c);
-    });
-    req.on("end", () => resolveBody(Buffer.concat(chunks).toString("utf8")));
-    req.on("error", rejectBody);
-  });
-}
-
 function json(res: ServerResponse, status: number, body: unknown) {
   res.writeHead(status, { "Content-Type": "application/json; charset=utf-8" });
   res.end(JSON.stringify(body));
 }
 
-async function handleCapture(req: IncomingMessage, res: ServerResponse): Promise<void> {
-  let raw: string;
-  try {
-    raw = await readBody(req);
-  } catch (err) {
-    json(res, 413, { error: (err as Error).message });
-    return;
-  }
-  let payload: { text?: unknown };
-  try {
-    payload = JSON.parse(raw) as { text?: unknown };
-  } catch {
-    json(res, 400, { error: "invalid JSON" });
-    return;
-  }
-  const text = typeof payload.text === "string" ? payload.text.trim() : "";
-  if (!text) {
-    json(res, 400, { error: "text is required" });
-    return;
-  }
-
-  // Proxy to the brain service, which decomposes + ingests. Capture is slow
-  // (decompose + N extraction passes), but the PWA client acks optimistically,
-  // so the user never waits on this round-trip.
-  const startedAt = Date.now();
-  console.error(`[capture] start chars=${text.length}`);
-  try {
-    const upstream = await fetch(`${BRAIN_SERVICE_URL}/capture`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text }),
-    });
-    const result = (await upstream.json().catch(() => ({}))) as Record<string, unknown>;
-    if (!upstream.ok) {
-      console.error(`[capture] done  ms=${Date.now() - startedAt} status=err http=${upstream.status}`);
-      json(res, 502, { error: "brain write failed", detail: result });
-      return;
-    }
-    console.error(`[capture] done  ms=${Date.now() - startedAt} status=ok ${JSON.stringify(result)}`);
-    json(res, 202, { ok: true, ...result });
-  } catch (err) {
-    console.error(`[capture] done  ms=${Date.now() - startedAt} status=err ${(err as Error).message}`);
-    json(res, 502, { error: "brain unreachable", detail: (err as Error).message });
-  }
+// Capture is retired with the document-substrate cutover (the brain's write path
+// is source ingest, not /capture). Answer the legacy route with a clear 410 so a
+// stale client gets an honest signal rather than a hung proxy to a dead endpoint.
+function captureGone(res: ServerResponse): void {
+  json(res, 410, {
+    error: "capture is disabled",
+    detail:
+      "The brain now ingests sources (Notion pages / docs), not free text. " +
+      "A source-editing surface is planned.",
+  });
 }
 
 async function serveStatic(req: IncomingMessage, res: ServerResponse): Promise<void> {
@@ -150,7 +97,7 @@ const server = createServer((req, res) => {
   }
   const url = new URL(req.url, "http://localhost");
   if (req.method === "POST" && url.pathname === "/api/capture") {
-    void handleCapture(req, res);
+    captureGone(res);
     return;
   }
   if (req.method === "GET" && url.pathname === "/api/health") {
@@ -165,5 +112,5 @@ const server = createServer((req, res) => {
 });
 
 server.listen(PORT, () => {
-  console.error(`[pwa] listening on :${PORT} brain_service=${BRAIN_SERVICE_URL}`);
+  console.error(`[pwa] listening on :${PORT} (capture disabled — static serving only)`);
 });

@@ -1,67 +1,16 @@
 import { mountDocs } from "./docs";
 import { mountLearnings } from "./learnings";
 
-const textarea = document.getElementById("capture") as HTMLTextAreaElement;
-const sendBtn = document.getElementById("send") as HTMLButtonElement;
-const toast = document.getElementById("toast") as HTMLDivElement;
 const captureView = document.getElementById("capture-view") as HTMLElement;
 const docsView = document.getElementById("docs-view") as HTMLDivElement;
 const learningsView = document.getElementById("learnings-view") as HTMLDivElement;
 
-let toastTimer: number | undefined;
-
-function syncSendEnabled() {
-  sendBtn.disabled = textarea.value.trim().length === 0;
-}
-syncSendEnabled();
-textarea.addEventListener("input", syncSendEnabled);
-
-function showToast(message: string, kind: "ok" | "error" = "ok") {
-  toast.textContent = message;
-  toast.classList.toggle("error", kind === "error");
-  toast.classList.add("show");
-  if (toastTimer) window.clearTimeout(toastTimer);
-  toastTimer = window.setTimeout(() => toast.classList.remove("show"), 1800);
-}
-
-function send() {
-  const text = textarea.value.trim();
-  if (!text) return;
-
-  // Optimistic: clear UI and ack before the network round-trip. The
-  // brain accepts the write quickly but extraction takes 1–3s; we are
-  // not waiting on either here.
-  textarea.value = "";
-  textarea.focus();
-  syncSendEnabled();
-  showToast("captured");
-
-  void fetch("/api/capture", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ text }),
-  })
-    .then((res) => {
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    })
-    .catch(() => {
-      // Restore the text so the user can retry. Don't auto-resend —
-      // they may have typed more in the meantime.
-      textarea.value = textarea.value ? `${text}\n\n${textarea.value}` : text;
-      syncSendEnabled();
-      showToast("send failed — retry", "error");
-    });
-}
-
-sendBtn.addEventListener("click", send);
-
-textarea.addEventListener("keydown", (e) => {
-  // Cmd/Ctrl+Enter sends. Plain Enter inserts a newline (normal textarea behavior).
-  if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-    e.preventDefault();
-    send();
-  }
-});
+// Free-text capture is disabled with the document-substrate cutover: the brain's
+// write path is now source ingest (Notion pages / docs), not a /capture endpoint.
+// The send button is disabled in the markup and there is no POST here — so the UI
+// has no broken request and no console error. The capture screen stays as the
+// landing view (with a note) until a source-editing surface lands; the docs and
+// evolution views below are unaffected.
 
 // Hash router: `#docs` (and `#docs/<section>`) shows the documentation view,
 // `#learnings` shows the evolution timeline; anything else is the capture
@@ -84,12 +33,10 @@ function route() {
   docsView.hidden = !onDocs;
   learningsView.hidden = !onLearnings;
   captureView.hidden = onDocs || onLearnings;
-  if (onDocs || onLearnings) {
+  if ((onDocs || onLearnings) && !/^#(docs|learnings)\//.test(location.hash)) {
     // Land at the top for a plain entry, but let a `#docs/<section>` deep link
     // keep the scroll position docs.ts set on mount.
-    if (!/^#(docs|learnings)\//.test(location.hash)) window.scrollTo(0, 0);
-  } else {
-    textarea.focus();
+    window.scrollTo(0, 0);
   }
 }
 window.addEventListener("hashchange", route);
@@ -98,7 +45,7 @@ route();
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
     void navigator.serviceWorker.register("/sw.js").catch(() => {
-      // SW failure is non-fatal — capture still works.
+      // SW failure is non-fatal — the docs/evolution views still work offline.
     });
   });
 }

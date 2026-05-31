@@ -1,5 +1,12 @@
 # Embedder
 
+> **Backend changed (graph → document substrate).** The embedder choice (Voyage,
+> pluggable) still holds, but it now vectorizes **chunks** stored in Postgres +
+> pgvector and the **recall query** — not graphiti nodes/edges in FalkorDB. The
+> Graphiti/FalkorDB plumbing in the diagrams below is historical; the embedder's
+> role and alternatives are unchanged. See
+> [`../brain/README.md`](../brain/README.md).
+
 How brainbot turns text into vectors, what provider it uses today, and the two alternatives that stay on the table.
 
 ## What the embedder does

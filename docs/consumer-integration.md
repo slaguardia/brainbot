@@ -1,5 +1,11 @@
 # Consumer integration guide
 
+> **Historical (graph contract).** Uses the old `capture`/`recall`/`profile`
+> contract and the FalkorDB Browser. The **live backend is Postgres + pgvector**
+> and the reads are `recall(query, scope)` / `profile(scope)` / `map(scope)` (plus
+> `POST /ingest`). See [`../brain/README.md`](../brain/README.md) and
+> [`../brain/ARCHITECTURE.md`](../brain/ARCHITECTURE.md) for the current contract.
+
 How your app talks to the brain. Read top to bottom if you've never used the brain; otherwise skip to the section you need. The exhaustive per-operation spec lives in [`consumer-api.md`](./consumer-api.md) — this is the tutorial.
 
 The brain exposes **three operations** — `capture`, `recall`, `profile` — over two front doors:

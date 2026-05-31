@@ -1,5 +1,17 @@
 # brainbot
 
+> **Live backend: Postgres + pgvector (document substrate).** The brain is now a
+> document store — **sources** (canonical docs / Notion pages) are split into
+> embedded **chunks**, read via `recall(query, scope)` / `profile(scope)` /
+> `map(scope)`, and written via `POST /ingest {url}`. There is **no graphiti, no
+> FalkorDB, and no write-time LLM** (embedding is the only external call at
+> ingest). The current shape is in [`brain/README.md`](./brain/README.md),
+> [`brain/ARCHITECTURE.md`](./brain/ARCHITECTURE.md), and
+> [`plans/document-substrate-exploration.md`](./plans/document-substrate-exploration.md).
+> Much of the prose below still describes the earlier graph build (graphiti-core
+> over FalkorDB) — treat any graph/FalkorDB/`capture` reference as **historical**
+> until this README is fully migrated.
+
 A self-hosted personal knowledge service. **Plug-and-play intelligence for any app you build.**
 
 You dump arbitrary text — work history, preferences, meeting notes, journal entries, anything — into the brain. The brain extracts typed entities and relationships, dedupes them across sources, and exposes them over HTTP/MCP. Then any app you build can consult the brain as ground truth.

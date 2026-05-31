@@ -272,6 +272,19 @@ main {
   box-shadow: none;
 }
 
+/* Capture-disabled note: short explainer under the (disabled) send button while
+   free-text capture is paused for the document-substrate cutover. */
+.cap-note {
+  margin: 14px 2px 0;
+  color: var(--fg-faint);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.cap-note a {
+  color: var(--link);
+}
+
 /* Toast: scout's panel toast with a glowing status dot. */
 #toast {
   position: fixed;

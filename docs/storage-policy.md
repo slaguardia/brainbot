@@ -1,5 +1,11 @@
 # Storage policy
 
+> **Superseded.** This stated FalkorDB was the only store. The live backend is
+> now **Postgres + pgvector** — it *is* the relational + vector store this doc
+> said wasn't there. The "one store" principle holds; the store changed. See
+> [`../brain/ARCHITECTURE.md`](../brain/ARCHITECTURE.md) and
+> [`../plans/document-substrate-exploration.md`](../plans/document-substrate-exploration.md).
+
 Graphiti (FalkorDB) is the **only persistent store** in Phases 1–3. No Postgres, no SQLite, no relational anything.
 
 ## What this means concretely

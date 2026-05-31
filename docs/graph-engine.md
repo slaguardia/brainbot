@@ -1,5 +1,11 @@
 # Graph engine
 
+> **Historical (graph design).** Describes the earlier graphiti-over-FalkorDB
+> build. The **live backend is now Postgres + pgvector** — sources split into
+> embedded chunks, no graph engine, no extraction LLM. See
+> [`../brain/ARCHITECTURE.md`](../brain/ARCHITECTURE.md) and
+> [`../plans/document-substrate-exploration.md`](../plans/document-substrate-exploration.md).
+
 Brainbot uses [**Graphiti**](https://github.com/getzep/graphiti) (Apache 2.0) as the extraction and storage layer over the graph DB.
 
 ## What Graphiti does

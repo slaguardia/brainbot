@@ -2,8 +2,6 @@
 
 Phase 2 surface: one-screen mobile capture. Textarea + send button → `POST /api/capture`, which the thin Node server proxies to the brain service's `POST /capture` (decompose + ingest). The PWA holds no brain logic.
 
-See [`../plans/phase-2-pwa-harness.md`](../plans/phase-2-pwa-harness.md) for scope and rationale.
-
 ## Layout
 
 - `src/main.ts` — client logic (textarea, button, optimistic toast, fetch)
@@ -57,5 +55,5 @@ Open the deployed URL in Safari → Share → Add to Home Screen. Launch from th
 ## Known gaps
 
 - **Icons not committed.** `manifest.webmanifest` references `/icon-192.png` and `/icon-512.png`; drop real PNGs into `public/` before shipping the iOS install flow. The SW cache treats them as optional so dev works without them.
-- **Google sign-in at the edge.** Caddy gates the PWA host (`brain.<domain>`) via `oauth2-proxy` (Google OIDC + email whitelist) — first launch bounces through Google once, then the session cookie persists. The whitelist is `compose/oauth2-proxy-emails.txt`; setup is in [`../plans/phase-2-pwa-auth.md`](../plans/phase-2-pwa-auth.md). The app itself holds no auth code; local `npm run dev` is unauthenticated.
+- **Google sign-in at the edge.** Caddy gates the PWA host (`brain.<domain>`) via `oauth2-proxy` (Google OIDC + email whitelist) — first launch bounces through Google once, then the session cookie persists. The whitelist is `compose/oauth2-proxy-emails.txt`. The app itself holds no auth code; local `npm run dev` is unauthenticated.
 - **No offline capture queue.** Optimistic toast + retry covers flaky-network. Real offline lands later.

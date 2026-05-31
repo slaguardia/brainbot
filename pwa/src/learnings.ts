@@ -81,7 +81,7 @@ const CHAPTERS: Chapter[] = [
       { label: "Settled", html: "“Wall vs. weight” is just the <code>strength</code> value (the consumer decides what to do with it). No rule-nodes — the consuming LLM reasons over facts. And the first consumer (scout) must migrate off text-bodies <em>last</em>, only once the graph is faithful." },
     ],
     principle: "Most “fundamental limits” are untuned defaults — make the source of truth trustworthy instead of routing around it.",
-    note: "In progress — see plans/graph-as-source-of-truth.md. The next chapter gets written when this one breaks.",
+    note: "Superseded — this graph-as-source-of-truth direction was reconsidered; the brain is pivoting to a document substrate (see LEARNINGS Chapter 6). The next chapter gets written when this one breaks.",
   },
 ];
 

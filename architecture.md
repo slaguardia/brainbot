@@ -155,7 +155,7 @@ The brain's `/capture` awaits the full decompose+extract pipeline; the PWA acks 
 | **MCP** | The brain's own MCP face (`/mcp`) | Replaces the retired standalone Graphiti MCP server; for Claude Code |
 | **PWA frontend** | Vanilla TS + Vite (`pwa/`) | One screen (capture). No meta-framework — a single page + one route doesn't justify one |
 | **PWA backend** | TypeScript, raw `node:http` | Thin proxy: `POST /api/capture` → brain `/capture`. No brain logic |
-| **Auth** | Bearer token at Caddy for the brain API; Google sign-in + email whitelist (oauth2-proxy at the edge) for the PWA | Per-identity access + easy revocation on phones; internal services (brain, FalkorDB) never publish ports. See [plans/phase-2-pwa-auth.md](plans/phase-2-pwa-auth.md). |
+| **Auth** | Bearer token at Caddy for the brain API; Google sign-in + email whitelist (oauth2-proxy at the edge) for the PWA | Per-identity access + easy revocation on phones; internal services (brain, FalkorDB) never publish ports. |
 | **Deployment** | Single docker-compose on a small VPS | All services on one box. Iteration: `git pull && docker compose up -d --build`. |
 | **Extraction model** | Claude Haiku (`BRAIN_LLM_MODEL`, native Anthropic SDK) | Cheap; runs on every episode write during extraction. Swap via env. |
 | **Decomposition model** | Claude Sonnet (`BRAIN_DECOMPOSE_MODEL`) | Rewrites raw capture into named-subject atomic facts; quality matters more here. |
@@ -183,19 +183,12 @@ Detail: [`plans/phase-1-graph-online.md`](./plans/phase-1-graph-online.md)
 ### Phase 2 — brain service + one-screen capture PWA
 **Outcome:** Re-scoped from the original three-mode (chat + browse/edit + capture) vision. The pivot made the brain the product, so Phase 2 shipped the standalone `brain` service (FastAPI, graphiti-core in-process) and a single-screen capture PWA that proxies to it, Google-auth'd at the edge. Chat and browse/edit were dropped (FalkorDB Browser covers inspection).
 
-Detail: [`plans/phase-2-pwa-harness.md`](./plans/phase-2-pwa-harness.md), [`plans/phase-2-pwa-auth.md`](./plans/phase-2-pwa-auth.md)
-
 **Definition of done — the smoke test:** capture a thought on the phone → tap send → "captured" toast in <100ms → the episode lands in the brain (visible in the FalkorDB Browser within seconds).
 
-### Phase 3 — Write-back loop + capture surface polish
-**Outcome:** Sessions feed the brain. Capturing a thought is a 2-second action from anywhere (PWA capture screen, iOS Shortcut → capture endpoint, Claude Code session summaries).
+### Next — document-substrate refactor (supersedes the old Phase 3–4)
+**Reconsidered:** the graph isn't earning its keep — `recall()` never traverses, so its only real value was dedup + bi-temporal, not relationships. The go-forward is a document substrate: source-of-truth docs + derived section-chunks on pgvector, with the brain as a reusable intelligence library (`recall` / `profile` / `map`). The old write-back and hardening work folds into that.
 
-Detail: [`plans/phase-3-writeback.md`](./plans/phase-3-writeback.md)
-
-**Definition of done:** continuity across sessions and surfaces is real, not aspirational.
-
-### Phase 4 — Hardening + life expansion
-Detail: [`plans/phase-4-hardening.md`](./plans/phase-4-hardening.md)
+Detail: [`plans/document-substrate-exploration.md`](./plans/document-substrate-exploration.md); rationale in [`LEARNINGS.md`](./LEARNINGS.md) Chapter 6.
 
 ## Extraction quality (the real risk)
 
@@ -218,7 +211,7 @@ If these hedges fail and the graph noticeably degrades, the fallback is honest: 
 1. **Ingestion model cost ceiling.** The brain calls an LLM at every episode write to extract entities (plus one decomposition call per capture). At expected volume with Haiku, probably <$5/mo. Confirm by counting expected captures per week × tokens-per-episode.
 2. **~~PWA framework: Svelte vs Next.~~** Resolved: vanilla TS + Vite. A one-screen capture app + one backend route doesn't justify a meta-framework.
 3. **~~Mutation API granularity.~~** Moot for now — the browse/edit UI was dropped in the pivot; the brain's contract is capture/recall/profile, and a human-edit surface is parked (see [docs/human-edit-surface.md](./docs/human-edit-surface.md)).
-4. **~~Cookie-based auth on the PWA.~~** Resolved: Google sign-in + email whitelist enforced at the edge by oauth2-proxy (session cookie, no bearer on the phone). See [plans/phase-2-pwa-auth.md](plans/phase-2-pwa-auth.md).
+4. **~~Cookie-based auth on the PWA.~~** Resolved: Google sign-in + email whitelist enforced at the edge by oauth2-proxy (session cookie, no bearer on the phone).
 
 ## Honest tradeoffs (signed off)
 

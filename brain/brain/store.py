@@ -29,11 +29,14 @@ and passed in.
 from __future__ import annotations
 
 import asyncio
+import logging
 from dataclasses import asdict, dataclass
 
 import asyncpg
 
 from .embed import embed
+
+logger = logging.getLogger(__name__)
 
 # RRF constant — the rank-fusion damping (graphiti's COMBINED_HYBRID_SEARCH_RRF
 # uses the canonical 60). Larger c flattens the contribution of top ranks.
@@ -43,6 +46,13 @@ _RRF_C = 60
 # lexical selects, fuse, then slice to k. Wide enough that fusion has signal,
 # small enough to stay cheap.
 _ARM_LIMIT = 50
+
+# Embed-input char budget. voyage-3-lite caps a single input near ~32K tokens; at
+# a conservative ~4 chars/token that's ~110K chars (≈28K tokens, with headroom).
+# Phase 1 stores the whole page as one chunk, so a very large page is truncated to
+# this before embedding to keep /ingest working — section-splitting is the real
+# later fix.
+_EMBED_CHAR_BUDGET = 110_000
 
 
 @dataclass
@@ -97,7 +107,21 @@ async def upsert_source(
     # the store — never leave a source with stale or zero chunks. The whole page
     # is one chunk in Phase 1; the heading gives the embedding a little context.
     page_text = raw_text or ""
-    [embedding] = await asyncio.to_thread(embed, [f"{title}\n{page_text}"])
+    embed_input = f"{title}\n{page_text}"
+    if len(embed_input) > _EMBED_CHAR_BUDGET:
+        # A large page would blow Voyage's single-input token cap and 500 /ingest.
+        # Truncate to the budget so ingest keeps working (whole-page is Phase 1;
+        # section-splitting is the real later fix).
+        logger.warning(
+            "upsert_source: embed input %d chars exceeds budget %d; truncating "
+            "(source title=%r path=%r)",
+            len(embed_input),
+            _EMBED_CHAR_BUDGET,
+            title,
+            path,
+        )
+        embed_input = embed_input[:_EMBED_CHAR_BUDGET]
+    [embedding] = await asyncio.to_thread(embed, [embed_input])
 
     async with pool.acquire() as conn:
         async with conn.transaction():
@@ -142,30 +166,37 @@ async def recall(
 ) -> list[Chunk]:
     """'Look something up.' Top-k sections matching `query`, optionally within a
     path subtree. Runs a semantic select (cosine distance) and a lexical select
-    (`ts_rank`), each capped at ~50 and prefix-scoped by `sources.path`, then
-    fuses them with RRF and returns the top-k `Chunk`s."""
+    (`ts_rank`), each capped at ~50 and scoped to `sources.path` (the exact node
+    or its proper subtree), then fuses them with RRF and returns the top-k
+    `Chunk`s."""
     [q_emb] = await asyncio.to_thread(embed, [query], "query")
-    scope_like = f"{scope}%" if scope else "%"
+
+    # Scope = the exact node OR its proper subtree (never a bare prefix, which
+    # over-matches sibling paths). $2 carries the scope when present; when scope
+    # is None there's no path filter, so $2 is the arm limit instead.
+    sem_scope = "" if scope is None else "WHERE (s.path = $2 OR s.path LIKE $2 || '/%')"
+    lex_scope = "" if scope is None else "AND (s.path = $2 OR s.path LIKE $2 || '/%')"
+    limit_ph = "$2" if scope is None else "$3"
+    sem_args = [q_emb, _ARM_LIMIT] if scope is None else [q_emb, scope, _ARM_LIMIT]
+    lex_args = [query, _ARM_LIMIT] if scope is None else [query, scope, _ARM_LIMIT]
 
     async with pool.acquire() as conn:
         semantic = await conn.fetch(
-            """
+            f"""
             SELECT c.id,
                    c.heading,
                    c.text,
                    s.path,
                    row_number() OVER (ORDER BY c.embedding <=> $1) AS rank
             FROM chunks c JOIN sources s ON s.id = c.source_id
-            WHERE s.path LIKE $2
+            {sem_scope}
             ORDER BY c.embedding <=> $1
-            LIMIT $3
+            LIMIT {limit_ph}
             """,
-            q_emb,
-            scope_like,
-            _ARM_LIMIT,
+            *sem_args,
         )
         lexical = await conn.fetch(
-            """
+            f"""
             SELECT c.id,
                    c.heading,
                    c.text,
@@ -174,12 +205,11 @@ async def recall(
                        ORDER BY ts_rank(c.fts, plainto_tsquery('english', $1)) DESC
                    ) AS rank
             FROM chunks c JOIN sources s ON s.id = c.source_id
-            WHERE c.fts @@ plainto_tsquery('english', $1) AND s.path LIKE $2
-            LIMIT $3
+            WHERE c.fts @@ plainto_tsquery('english', $1)
+              {lex_scope}
+            LIMIT {limit_ph}
             """,
-            query,
-            scope_like,
-            _ARM_LIMIT,
+            *lex_args,
         )
     return _rrf(semantic, lexical)[:k]
 
@@ -227,17 +257,16 @@ async def profile(
     documented here and left as a stub: `_token_estimate` only trips when a future
     multi-section corpus exceeds `budget`.
     """
-    scope_like = f"{scope}%"
     async with pool.acquire() as conn:
         rows = await conn.fetch(
             """
             SELECT s.path, s.id AS source_id, s.title, s.updated_at,
                    c.heading, c.text, c.position
             FROM chunks c JOIN sources s ON s.id = c.source_id
-            WHERE s.path LIKE $1
+            WHERE (s.path = $1 OR s.path LIKE $1 || '/%')
             ORDER BY s.path, c.position
             """,
-            scope_like,
+            scope,
         )
 
     bundle = _assemble(rows)
@@ -334,15 +363,16 @@ async def map_(pool: asyncpg.Pool, scope: str | None = None) -> list[dict]:
     """Domain discovery: the `(path, title)` source tree under the prefix (or all
     sources), ordered by path — so a consumer that doesn't know its scope can find
     it."""
-    scope_like = f"{scope}%" if scope else "%"
+    # Scope = the exact node OR its proper subtree; no path filter when scope is None.
+    scope_clause = "" if scope is None else "WHERE (path = $1 OR path LIKE $1 || '/%')"
     async with pool.acquire() as conn:
         rows = await conn.fetch(
-            """
+            f"""
             SELECT path, title
             FROM sources
-            WHERE path LIKE $1
+            {scope_clause}
             ORDER BY path
             """,
-            scope_like,
+            *([scope] if scope is not None else []),
         )
     return [{"path": r["path"] or "", "title": r["title"] or ""} for r in rows]

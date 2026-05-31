@@ -103,8 +103,12 @@ async def recall_route(request: Request) -> JSONResponse:
     scope = request.query_params.get("scope") or None
     k = _int_param(request, "k", 12)
 
-    pool = await get_pool()
-    chunks = await recall(pool, q, scope=scope, k=k)
+    try:
+        pool = await get_pool()
+        chunks = await recall(pool, q, scope=scope, k=k)
+    except Exception as e:  # noqa: BLE001 — embed/db failure: surface, don't 500
+        logger.exception("recall failed")
+        return JSONResponse({"error": f"recall failed: {e}"}, status_code=502)
     return JSONResponse({"chunks": [c.to_dict() for c in chunks]})
 
 
@@ -118,8 +122,12 @@ async def profile_route(request: Request) -> JSONResponse:
         )
     budget = _int_param(request, "budget", 20_000)
 
-    pool = await get_pool()
-    ctx = await profile(pool, scope, budget=budget)
+    try:
+        pool = await get_pool()
+        ctx = await profile(pool, scope, budget=budget)
+    except Exception as e:  # noqa: BLE001 — embed/db failure: surface, don't 500
+        logger.exception("profile failed")
+        return JSONResponse({"error": f"profile failed: {e}"}, status_code=502)
     return JSONResponse(ctx.to_dict())
 
 
@@ -127,8 +135,12 @@ async def profile_route(request: Request) -> JSONResponse:
 async def map_route(request: Request) -> JSONResponse:
     """GET /map?scope= — the (path, title) source tree under the scope (or all)."""
     scope = request.query_params.get("scope") or None
-    pool = await get_pool()
-    tree = await map_(pool, scope)
+    try:
+        pool = await get_pool()
+        tree = await map_(pool, scope)
+    except Exception as e:  # noqa: BLE001 — db failure: surface, don't 500
+        logger.exception("map failed")
+        return JSONResponse({"error": f"map failed: {e}"}, status_code=502)
     return JSONResponse({"sources": tree})
 
 
@@ -150,8 +162,12 @@ async def recall_tool(query: str, scope: str | None = None, k: int = 12) -> dict
     """Targeted hybrid retrieval — top-k sections matching `query`, optionally
     within a path subtree (`scope`, e.g. 'Career/Job Search'). Returns
     {"chunks": [{heading, text, score, path}, ...]}."""
-    pool = await get_pool()
-    chunks = await recall(pool, query, scope=scope, k=k)
+    try:
+        pool = await get_pool()
+        chunks = await recall(pool, query, scope=scope, k=k)
+    except Exception as e:  # noqa: BLE001 — embed/db failure: clear tool error
+        logger.exception("recall (mcp) failed")
+        raise RuntimeError(f"recall failed: {e}") from e
     return {"chunks": [c.to_dict() for c in chunks]}
 
 
@@ -160,8 +176,12 @@ async def profile_tool(scope: str, budget: int = 20_000) -> dict:
     """Domain dump — every section under the `scope` path prefix, assembled into
     structured markdown. Returns the Context contract
     {"text", "sources", "truncated"}."""
-    pool = await get_pool()
-    ctx = await profile(pool, scope, budget=budget)
+    try:
+        pool = await get_pool()
+        ctx = await profile(pool, scope, budget=budget)
+    except Exception as e:  # noqa: BLE001 — embed/db failure: clear tool error
+        logger.exception("profile (mcp) failed")
+        raise RuntimeError(f"profile failed: {e}") from e
     return ctx.to_dict()
 
 
@@ -169,8 +189,12 @@ async def profile_tool(scope: str, budget: int = 20_000) -> dict:
 async def map_tool(scope: str | None = None) -> dict:
     """Domain discovery — the (path, title) source tree under `scope` (or all
     sources). Returns {"sources": [{path, title}, ...]}."""
-    pool = await get_pool()
-    tree = await map_(pool, scope)
+    try:
+        pool = await get_pool()
+        tree = await map_(pool, scope)
+    except Exception as e:  # noqa: BLE001 — db failure: clear tool error
+        logger.exception("map (mcp) failed")
+        raise RuntimeError(f"map failed: {e}") from e
     return {"sources": tree}
 
 

@@ -25,7 +25,7 @@ from graphiti_core.nodes import EpisodeType
 from graphiti_core.search.search_config_recipes import COMBINED_HYBRID_SEARCH_RRF
 from graphiti_core.search.search_filters import SearchFilters
 
-from .client import build_graphiti, cached_entity_types
+from .client import build_graphiti, cached_entity_types, cached_edge_types, cached_edge_type_map
 from .config import Config
 from .decompose import decompose
 
@@ -49,6 +49,8 @@ class Brain:
         self.cfg = cfg
         self.graphiti: Graphiti = build_graphiti(cfg)
         self.entity_types = cached_entity_types()
+        self.edge_types = cached_edge_types()
+        self.edge_type_map = cached_edge_type_map()
         self.anthropic = AsyncAnthropic(api_key=cfg.anthropic_api_key)
 
     async def init(self) -> None:
@@ -74,6 +76,8 @@ class Brain:
             reference_time=datetime.now(timezone.utc),
             group_id=group_id,
             entity_types=self.entity_types,
+            edge_types=self.edge_types,
+            edge_type_map=self.edge_type_map,
             custom_extraction_instructions=self.cfg.extraction_instructions,
         )
 
@@ -101,19 +105,20 @@ class Brain:
         await self._add(name=r.topic, body=r.body, source_description="capture", group_id=gid)
         return {"mode": "rewrite", "episodes": 1, "topic": r.topic}
 
-    async def recall(self, query: str, limit: int = 20, group_id: str | None = None) -> dict:
-        """Targeted retrieval for a question. Returns BOTH:
+    async def recall(
+        self, query: str, limit: int = 20, group_id: str | None = None, debug: bool = False
+    ) -> dict:
+        """Targeted retrieval for a question. Returns scored graph facts.
 
-        - facts: scored entity-edge facts (precise, but positive-only — the
-          extractor drops negatives/policies, so these can miss "avoids X" or
-          gate rules). Each carries an absolute on-target cosine score.
-        - episodes: the relevant captured bodies (the faithful rewrites), which
-          DO contain negatives and rules. The complete unit.
+        Each fact is an entity-edge fact carrying an absolute on-target cosine
+        score plus its `polarity`/`strength` (the two dimensions the extractor
+        tags; null on facts it didn't tag). The graph is the source of truth —
+        the consumer's LLM reasons over the facts.
 
-        Why both: the edge graph is a lossy positive-only index; the episode
-        bodies are the faithful record. A consumer that needs completeness reads
-        `episodes`; one that wants precise scored facts reads `facts`. See
-        ARCHITECTURE.md ("graphs store facts, not rules").
+        debug=False (default): facts only. debug=True re-includes the source
+        episode bodies/refs under `episodes`, for human tracing/provenance only
+        — not a knowledge surface (the graph is). A label can't stop an LLM
+        reading inlined body text, so by default the bodies leave the payload.
         """
         gid = group_id or self.cfg.group_id
         cfg = COMBINED_HYBRID_SEARCH_RRF.model_copy(deep=True)
@@ -142,15 +147,19 @@ class Brain:
                     "fact": e.fact,
                     "name": e.name,
                     "score": round(s, 4),
+                    "polarity": e.attributes.get("polarity"),
+                    "strength": e.attributes.get("strength"),
                     "valid_at": e.valid_at.isoformat() if e.valid_at else None,
                     "invalid_at": e.invalid_at.isoformat() if e.invalid_at else None,
                 }
                 for s, e in scored
             ]
 
-        episodes = [{"name": ep.name, "body": ep.content} for ep in (res.episodes or [])]
-        logger.debug("recall gid=%s q=%r -> %d facts, %d episodes", gid, query, len(facts), len(episodes))
-        return {"facts": facts, "episodes": episodes}
+        out: dict = {"facts": facts}
+        if debug:
+            out["episodes"] = [{"name": ep.name, "body": ep.content} for ep in (res.episodes or [])]
+        logger.debug("recall gid=%s q=%r -> %d facts (debug=%s)", gid, query, len(facts), debug)
+        return out
 
     async def _fact_embeddings(self, uuids: list[str]) -> dict[str, list[float]]:
         if not uuids:
@@ -162,41 +171,51 @@ class Brain:
         )
         return {r["uuid"]: r["emb"] for r in records if r.get("emb")}
 
-    async def profile(self, group_id: str | None = None) -> list[dict]:
-        """Full-profile dump: every captured episode BODY (the faithful rewrites).
+    async def profile(self, group_id: str | None = None) -> dict:
+        """Full-profile dump from the GRAPH: every CURRENT fact, flat.
 
-        The episode body is the canonical record — it includes negatives and
-        rules (avoid-lists, gates) that the edge extractor drops. The graph is a
-        lossy positive-only index; for completeness we return the prose. At
-        current scale the consumer reasons over the whole set. Newest first.
+        Returns all live `RELATES_TO` facts — `invalid_at`/`expired_at` IS NULL,
+        i.e. not bi-temporally superseded — each carrying its `polarity` and
+        `strength` (the two dimensions the extractor now tags). The graph is the
+        source of truth; the consumer's LLM reasons over the facts. A flat list,
+        no grouping, no synthesis (ARCHITECTURE.md principles #4, #6). Newest
+        first. `polarity`/`strength` fall back to null on facts the extractor
+        didn't tag.
 
         group_id overrides the target graph (defaults to the configured one).
         """
         gid = group_id or self.cfg.group_id
         records, _, _ = await self.graphiti.driver.execute_query(
-            "MATCH (e:Episodic) WHERE e.group_id = $gid "
-            "RETURN e.name AS name, e.content AS body, e.source_description AS source, "
-            "e.created_at AS created_at "
-            "ORDER BY e.created_at DESC",
+            "MATCH ()-[r:RELATES_TO]->() "
+            "WHERE r.group_id = $gid AND r.invalid_at IS NULL AND r.expired_at IS NULL "
+            "RETURN r.fact AS fact, r.name AS name, r.polarity AS polarity, "
+            "r.strength AS strength, r.valid_at AS valid_at, r.created_at AS created_at "
+            "ORDER BY r.created_at DESC",
             gid=gid,
         )
-        out = [
-            {"name": r.get("name"), "body": r.get("body"), "source": r.get("source")}
+        facts = [
+            {
+                "fact": r.get("fact"),
+                "polarity": r.get("polarity"),
+                "strength": r.get("strength"),
+                "valid_at": r.get("valid_at"),
+                "name": r.get("name"),
+            }
             for r in records
-            if r.get("body")
+            if r.get("fact")
         ]
-        if not out:
+        if not facts:
             # The exact symptom of the stale-connection bug: a healthy graph with
             # data, but the long-lived connection returns nothing. Make it visible.
             logger.warning(
-                "profile returned 0 episodes for group_id=%s (graph=%s) — if data is expected, "
+                "profile returned 0 facts for group_id=%s (graph=%s) — if data is expected, "
                 "suspect a dead pooled connection",
                 gid,
                 getattr(self.graphiti.driver, "_database", None),
             )
         else:
-            logger.debug("profile gid=%s -> %d episodes", gid, len(out))
-        return out
+            logger.debug("profile gid=%s -> %d facts", gid, len(facts))
+        return {"facts": facts}
 
 
 async def _smoke() -> None:

@@ -110,17 +110,19 @@ mcp = FastMCP(
 # ---- MCP tools (Claude Code) -------------------------------------------------
 
 @mcp.tool()
-async def recall(query: str, limit: int = 20) -> dict:
-    """Search the user's personal brain. Returns `facts` (scored, precise
-    entity-facts — but positive-only) and `episodes` (the faithful captured
-    bodies, which include negatives and rules the facts may miss). For
-    completeness, read `episodes`.
+async def recall(query: str, limit: int = 20, debug: bool = False) -> dict:
+    """Search the user's personal brain. Returns `facts` — scored entity-facts,
+    each carrying `polarity` (positive/negative) and `strength` (hard/soft) so a
+    negative or hard-held fact is legible without reading prose. The graph is the
+    source of truth; reason over these facts.
 
     Args:
         query: what to look up (natural language).
         limit: max results.
+        debug: when true, also returns `episodes` (the source captured bodies)
+            for human tracing/provenance only — not a knowledge surface.
     """
-    return await _read(lambda b: b.recall(query, limit=limit))
+    return await _read(lambda b: b.recall(query, limit=limit, debug=debug))
 
 
 @mcp.tool()
@@ -131,11 +133,12 @@ async def capture(text: str) -> dict:
 
 
 @mcp.tool()
-async def profile() -> list[dict]:
-    """Return the full faithful record the brain holds about the user — every
-    captured episode body (rewrites). Use when you need the complete picture
-    (including the user's hard rules and avoid-lists) rather than the answer to
-    one targeted question."""
+async def profile() -> dict:
+    """Return the full record the brain holds about the user as a flat list of
+    `facts` from the graph — every current fact, each carrying `polarity`
+    (positive/negative) and `strength` (hard/soft). Use when you need the
+    complete picture (including the user's hard-held facts and avoidances)
+    rather than the answer to one targeted question."""
     return await _read(lambda b: b.profile())
 
 
@@ -174,23 +177,20 @@ async def recall_http(request: Request) -> JSONResponse:
     except ValueError:
         limit = 20
     group_id = request.query_params.get("group_id") or None
-    out = await _read(lambda b: b.recall(q, limit=limit, group_id=group_id))
-    return JSONResponse(
-        {
-            "query": q,
-            "facts": out["facts"],
-            "episodes": out["episodes"],
-            "fact_count": len(out["facts"]),
-            "episode_count": len(out["episodes"]),
-        }
-    )
+    debug = (request.query_params.get("debug") or "").strip().lower() in ("1", "true", "yes", "on")
+    out = await _read(lambda b: b.recall(q, limit=limit, group_id=group_id, debug=debug))
+    payload = {"query": q, "facts": out["facts"], "fact_count": len(out["facts"])}
+    if debug:
+        payload["episodes"] = out["episodes"]
+        payload["episode_count"] = len(out["episodes"])
+    return JSONResponse(payload)
 
 
 @mcp.custom_route("/profile", methods=["GET"])
 async def profile_http(request: Request) -> JSONResponse:
     group_id = request.query_params.get("group_id") or None
-    episodes = await _read(lambda b: b.profile(group_id=group_id))
-    return JSONResponse({"count": len(episodes), "episodes": episodes})
+    out = await _read(lambda b: b.profile(group_id=group_id))
+    return JSONResponse({"count": len(out["facts"]), "facts": out["facts"]})
 
 
 # The Starlette app FastMCP builds: serves /mcp (MCP) + the custom routes above.

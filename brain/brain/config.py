@@ -32,6 +32,8 @@ DO extract as Topic entities (in addition to all other entity types) any specifi
 - Categories, fields, or kinds of things the owner likes, dislikes, seeks, or avoids.
 - Named technologies, tools, works, products, or techniques, even when not notable enough for a Wikipedia article.
 
+EXTRACT NEGATIVES AS FIRST-CLASS FACTS. What the owner avoids, rejects, excludes, dislikes, refuses, or will not do is exactly as important to record as what they seek, value, or accept. Do NOT drop a relationship just because it is negative. "The owner avoids/rejects/will-not X" must become a fact about X just as readily as "the owner seeks/values/accepts X" would — both are stances the owner holds, and the brain must remember both. Preserve the polarity (toward vs. away) in the relationship.
+
 The guiding test is NOT "could this have a Wikipedia article?" but "is this a specific thing the owner would want their brain to remember and connect to other things?" If yes, extract it.
 
 Still DO NOT extract: bare unqualified generic words (e.g. "things", "stuff", "time", "people", "work"), pronouns, temporal information (dates, times, durations), or sentence fragments that wouldn't stand alone as a node name."""

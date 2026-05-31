@@ -69,12 +69,7 @@ brainbot/
 ├── pwa/                         — Phase 2 one-screen capture PWA (thin proxy to the brain)
 ├── compose/                     — docker-compose, Caddyfile, oauth2-proxy whitelist
 ├── scripts/
-│   ├── ingest.py                — drop arbitrary text or files into the brain as episodes (primary surface)
-│   ├── smoke_brain.py           — brain API contract smoke (capture → recall)
-│   ├── smoke_ingest.py          — ingest CLI smoke
-│   └── reset_brain.py           — wipe a graph (defaults to the smoketest graph; safe)
-├── migrate/                     — specialized producers when a source needs special handling (rare)
-│   └── notion_to_graphiti.py    — historical example; not actively developed
+│   └── smoke_substrate.py       — live end-to-end smoke (ingest → recall/profile/map)
 └── templates/
     └── claude-code-client/      — drop-in MCP config + UserPromptSubmit hook for any project repo
 ```
@@ -163,44 +158,28 @@ docker compose ps
 
 `.env`'s `BRAIN_URL` should be `https://brain.api.your-domain.com` (the API host; the bare `brain.` host is the Google-auth'd PWA).
 
-### 3. Smoke tests
+### 3. Smoke test
 
-The smokes run against your normal brain but isolate to a `smoketest` graph via the brain's optional `group_id` — so they never touch your real `brain` data:
+The live end-to-end smoke ingests a Notion page, then exercises `recall` / `profile` / `map` and asserts the page's chunk comes back:
 
 ```sh
-# Brain API contract smoke (capture → recall)
-BRAIN_URL=http://127.0.0.1:8100 python scripts/smoke_brain.py
-
-# Ingest CLI smoke (stdin, file, --split headings)
-BRAIN_URL=http://127.0.0.1:8100 python scripts/smoke_ingest.py
+BRAIN_URL=http://127.0.0.1:8100 python scripts/smoke_substrate.py
 ```
 
-Both drop the `smoketest` graph on success (pass `--keep` to inspect it in the FalkorDB Browser). Your real `brain` graph is untouched. The hyphen-free graph name is forced by RediSearch — `-` is the NOT operator in queries.
+It needs `NOTION_TOKEN` (the page must be shared with that integration) and the brain running with `VOYAGE_API_KEY` + `PG_DSN`. See the script header for the full env list and how to override the page.
 
 ### 4. Drop content in
 
-The native input is text. Anything can be an episode — paste a journal entry, drop a markdown doc, pipe a meeting transcript. The ingest CLI handles the mechanics:
+The input is a Notion page. The brain fetches it, stores the whole page as one embedded chunk, and serves it back via `recall`:
 
 ```sh
-# stdin → one episode
-echo "Met Beatrice at Globex. She's their new VP platform." | python scripts/ingest.py
-
-# single file → one episode (name = filename stem)
-python scripts/ingest.py notes/2026-05-25-meeting.md
-
-# directory → one episode per file
-python scripts/ingest.py journal/
-
-# long markdown → split on H1/H2 into separate episodes
-python scripts/ingest.py docs/spec.md --split headings
-
-# preview without writing
-python scripts/ingest.py notes/ --dry-run
+# ingest a Notion page (whole page → one embedded chunk)
+curl -X POST http://127.0.0.1:8100/ingest \
+  -H 'Content-Type: application/json' \
+  -d '{"url": "https://www.notion.so/Some-Page-<id>"}'
 ```
 
-Entities, relations, and bi-temporal facts get extracted automatically. You don't tell the brain what's important — it figures that out from the content.
-
-**Specialized sources (rare; deprioritized).** When a specific source has structure worth preserving in a way the generic CLI can't (e.g., Notion database row → episode-per-row with property labels), it can live as a sibling file under `migrate/`. The repo ships one historical example, `migrate/notion_to_graphiti.py`, but the working assumption is that generic ingest + per-app HTTP clients covers the practical surface. Don't build new producers preemptively.
+Re-ingesting the same page wipes-and-replaces its chunk, so the page stays the source of truth.
 
 ### 5. Wire Claude Code (optional)
 
@@ -208,7 +187,7 @@ See [`templates/claude-code-client/INSTALL.md`](templates/claude-code-client/INS
 
 ### 6. Building your own consumer
 
-The brain exposes a small contract — `capture`, `recall`, `profile` — over **plain HTTP/JSON** (`POST /capture`, `GET /recall`, `GET /profile`). Any app — Python, TypeScript, a shell script — can hit it. **If your consumer runs on the same VPS** (e.g. Scout), call `http://brain:8100` directly over `brainnet` — no auth needed; **from off-box**, use `https://brain.api.{domain}` + the bearer token. (See [How access works](#how-access-works-security-model).) The same three operations are also exposed as **MCP tools** at `/mcp` for Claude Code and other LLM-tool-discovery harnesses. See [`docs/consumer-integration.md`](./docs/consumer-integration.md) and the reference client `migrate/graphiti_clients.py` (`BrainClient`); full spec in [`docs/consumer-api.md`](./docs/consumer-api.md).
+The brain exposes a small contract — `capture`, `recall`, `profile` — over **plain HTTP/JSON** (`POST /capture`, `GET /recall`, `GET /profile`). Any app — Python, TypeScript, a shell script — can hit it. **If your consumer runs on the same VPS** (e.g. Scout), call `http://brain:8100` directly over `brainnet` — no auth needed; **from off-box**, use `https://brain.api.{domain}` + the bearer token. (See [How access works](#how-access-works-security-model).) The same three operations are also exposed as **MCP tools** at `/mcp` for Claude Code and other LLM-tool-discovery harnesses. See [`docs/consumer-integration.md`](./docs/consumer-integration.md); full spec in [`docs/consumer-api.md`](./docs/consumer-api.md).
 
 The brain doesn't enforce any schema on you — your job-fit scorer and your reading-list app can both query "what does the brain know about Acme" and get back the same Acme entity with the same dedupe'd context. That's the whole point.
 
@@ -254,6 +233,6 @@ If you prefer not to use Voyage at all, set `BRAIN_EMBED_MODEL` to a different p
 
 ### Other things that bit us once
 
-- The MCP streamable-HTTP endpoint is `/mcp` (no trailing slash). Clients must initialize a session via an `initialize` JSON-RPC call before any tool call — the returned `mcp-session-id` header has to be echoed on every subsequent request. Our `migrate/graphiti_clients.py` does this; if you write a new client, mirror that pattern.
-- `scripts/smoke_brain.py` and `migrate/notion_to_graphiti.py` need `requests` (not yet pinned in a `requirements.txt`).
+- The MCP streamable-HTTP endpoint is `/mcp` (no trailing slash). Clients must initialize a session via an `initialize` JSON-RPC call before any tool call — the returned `mcp-session-id` header has to be echoed on every subsequent request.
+- `scripts/smoke_substrate.py` needs `requests` (not yet pinned in a `requirements.txt`).
 - The first `docker compose up` will trigger a multi-minute image build (`uv sync` downloads the Python dep tree). Subsequent ups reuse the cached layer.

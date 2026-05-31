@@ -481,6 +481,8 @@ infrastructure.** They optimize for different things, and they're *converging*.
 | Dimension | Claude + Obsidian (agentic read) | Brainbot (pgvector RAG) |
 |---|---|---|
 | **Retrieval** | agentic — filename/grep search, then read whole notes; big context covers it | precomputed hybrid (semantic + BM25 + RRF) → compact top-k |
+| **Consumption model** | interactive, human-in-the-loop, client-bound (a person at a Claude client, machine on) | always-on headless service; apps (scout, cron, agents) hit `recall()` 24/7, no human present |
+| **Auto-update** | manual — you edit notes; no scheduled ingest of external sources | scheduled sync (e.g. Notion API on `last_edited_time`) keeps the brain current on its own |
 | **Faithfulness** | high — reads intact notes with full surrounding context | risk — distilled facts can drop nuance/negatives (LEARNINGS Ch.3); mitigate with provenance or raw-RAG |
 | **Semantic recall** | lexical: grep misses synonyms/paraphrase unless a vector plugin is added | embeddings catch conceptually-related content regardless of wording |
 | **Scale** | great at personal scale; degrades as the vault → tens of thousands (can't read all; keyword misses) | sub-linear search; scales to huge corpora — RAG's home turf |
@@ -515,6 +517,58 @@ Obsidian vault as the human edit surface and `sources` content, with this pipeli
 as the retrieval/serving layer for agents.** That takes the buzz seriously without
 giving up the RAG learning or the product infra. It's the natural generalization of
 "Notion is the first migrator" — Obsidian is just another source.
+
+---
+
+## Why a service, not a workflow
+
+The sharpest product differentiator vs Claude + Obsidian isn't the substrate or the
+retrieval method — it's the **consumption model**, an axis orthogonal to everything
+above. *Who consumes the brain, and when?*
+
+- **Claude + Obsidian** = pull, interactive, **human-in-the-loop, client-bound.** A
+  person sits at a Claude client, on a machine that's on, and asks. Nothing happens
+  when they're away. A human using an AI to browse their notes — a *workflow*.
+- **Brainbot** = **always-on, headless, machine-in-the-loop.** A `recall()` endpoint
+  that scout, a cron job, or a future agent hits at 3am — no human, no desktop
+  client — and gets current intelligence. A *service*.
+
+Litmus scenario: *scout, running server-side at 3am, needs the user's job
+preferences.* Obsidian + Claude has no answer (laptop asleep, no session open); this
+is the exact thing brainbot exists to serve. It's the "out of sight, out of mind —
+my apps just work off it" promise, made concrete.
+
+**Orthogonal to substrate.** Storage and consumption are independent choices — you
+could put a service in front of markdown files, or query Postgres interactively. To
+get always-on, service-grade integration over Obsidian you'd have to host the vault
+and build a retrieval service over it… which is *this project with markdown as the
+store.* Obsidian doesn't give you the service layer; you'd build it regardless.
+
+**Auto-update is the other half — and Notion fits it where Obsidian can't.** "Always
+working off current intelligence" needs the brain to *refresh itself*, not just
+serve. The source decides whether that's possible headlessly:
+
+- **Obsidian** — local, app-bound files; no cloud API to pull from without a machine
+  running the app. Not a natural auto-sync source.
+- **Notion** — cloud-hosted with a first-class public API; content is reachable
+  programmatically, always, no local machine involved. The natural auto-sync source.
+  Sync design: incremental pull on each page's `last_edited_time` → re-ingest only
+  changed pages (the wipe-replace-per-source op); walk the parent chain to set each
+  source's `path` (the domain tree, for free); walk the block tree for clean text;
+  respect rate limits (~a few req/s) and paginate. Webhooks may allow push where
+  supported, but polling on `last_edited_time` is the dependable baseline.
+
+**The synthesis.** Because consumption is orthogonal to substrate, the endgame is
+*both*: an Obsidian vault or Notion as the **human edit surface + source**, brainbot
+as the **headless service** that indexes it and serves machines. Obsidian/Notion for
+humans; brainbot for apps — Obsidian becomes "just another migrator," like Notion.
+
+**The honest cost.** "Apps consume it automatically" is paid for by *operating
+infrastructure* — a Postgres service, a scheduled sync worker, uptime, the ingest
+pipeline. Obsidian + Claude is near-zero-ops (it's just a laptop). The trade —
+zero-ops personal tool → run a small service so your apps get current intelligence
+for free — is right for a product with consumers like scout, and overkill for a solo
+note-reader. Which is, once more, why the two setups don't really compete.
 
 ---
 

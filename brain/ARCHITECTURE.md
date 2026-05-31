@@ -54,8 +54,8 @@ Line in one sentence: **the brain hands back what it knows; the app reasons and 
 | Operation | Status | Shape | Notes |
 |---|---|---|---|
 | `capture(text)` | built | text → **one** episode | LLM **rewrite** (faithful, rule-preserving, named-subject prose) → a single `add_episode` with extraction tuning. No per-fact fan-out. |
-| `recall(query)` | built | question → `{facts, episodes}` | `facts` = scored entity-edges (precise, **positive-only**); `episodes` = relevant faithful bodies (include negatives/rules). Read `episodes` for completeness. |
-| `profile()` | built | → all episode **bodies** | the full faithful record (the rewrites). The blind-spot fix + the negatives/policies fix. `GET /profile`, MCP `profile`. |
+| `recall(query)` | built | question → scored `facts` | scored entity-edges, each carrying `polarity` (positive/negative) and `strength` (hard/soft) — negatives and gates are facts now, so the facts are complete. Episode bodies are returned **only** behind `debug=true`: provenance for human tracing, not a knowledge surface. |
+| `profile()` | built | → flat list of current `facts` | every current fact, each with `polarity`/`strength` — not episode bodies. The blind-spot fix + the negatives/policies fix. `GET /profile`, MCP `profile`. |
 
 Decision (settled): **there is no `ask` method.** Because the brain is a librarian (no synthesis), "ask the brain a question" *is* `recall` — the app sends its question as the query and reasons over the facts itself. A synthesizing `ask` would have pulled reasoning into the brain, which we explicitly don't want.
 
@@ -73,11 +73,11 @@ Two faces, one service: HTTP (`/capture`, `/recall`) for apps, MCP (`/mcp`) for 
 
 Scores are computed as absolute cosine(query embedding, fact embedding) — `search_` strips `fact_embedding`, so we fetch it per candidate and compute it ourselves. The thresholding that consumes these scores lives in the **app's intelligence library** — app-side, not the brain's concern.
 
-### Why recall ALSO returns episode bodies (the big learning)
+### How we got here: graph as the single source of truth (historical note)
 
-The edge graph is a **lossy, positive-only index**: graphiti's extractor reliably pulls positive entity-facts ("targets X", "accepts Y") but **drops negatives and policies** ("avoids Z", "hard gate: anything outside the set is a skip"). Proven on the real target-role doc — the avoid-list and the vertical gate were perfectly preserved in the captured episode **body** but never became edges, so edge-only `recall`/`profile` silently missed them.
+The graph is the **single source of truth**; reads come from facts. It wasn't always so. We briefly returned episode bodies because graphiti's extractor only pulled positive entity-facts ("targets X", "accepts Y") and dropped negatives and policies ("avoids Z", "hard gate: anything outside the set is a skip") — proven on the real target-role doc, where the avoid-list and the vertical gate survived in the episode **body** but never became edges. Returning bodies patched the symptom but quietly made the *text* the source of truth, bypassing the graph.
 
-Resolution: **the episode body (the rewrite) is the canonical faithful record; the edge graph is a secondary index.** So `recall` returns both (`facts` for precise scored positive-facts, `episodes` for completeness) and `profile` returns episode bodies, not edges. The graph still earns its keep — dedup, bi-temporal, scored targeted lookups, future relational queries — but it is *not* the source of returned content.
+**Path A** fixed the cause instead: extraction now captures negatives and gates as first-class facts, each carrying `polarity` (positive/negative) and `strength` (hard/soft). So "avoids X", "excludes Y", and hard gates *are* facts. With the facts complete, reads come from the graph again — `recall` and `profile` return facts, and episode bodies surface only as `debug=true` provenance. The graph still earns its keep on dedup, bi-temporal, scored lookups, and future relational queries. Full timeline in [`../LEARNINGS.md`](../LEARNINGS.md) Ch 3–4.
 
 ## How the brain works internally (current)
 
@@ -89,8 +89,8 @@ Resolution: **the episode body (the rewrite) is the canonical faithful record; t
 
 The brain stores two kinds of thing and links them with two kinds of edge:
 
-- **Episodes** — each capture becomes one episode holding the faithful rewritten text. The canonical record.
-- **Facts** — structured `subject → relationship → object` claims the extractor pulls out of episodes. A derived index over the episodes.
+- **Episodes** — each capture becomes one episode holding the faithful rewritten text. Stored as **provenance**: the audit trail and re-extraction source. Still kept, but **not** the returned knowledge surface — consumers read facts.
+- **Facts** — structured `subject → relationship → object` claims the extractor pulls out of episodes, each carrying `polarity`/`strength`. The **source of truth** for reads (negatives and gates included).
 
 Two edge types connect them, which produces **two natural hubs** in the graph:
 
@@ -101,7 +101,7 @@ Two edge types connect them, which produces **two natural hubs** in the graph:
 
 So the graph typically shows two well-connected hubs: the most recent capture (its episode) and the owner. **This is by design, not clutter:**
 
-- The **episode hub** is the *source index* — trace any fact back to the capture it came from, and fetch the complete faithful body when the structured facts aren't enough.
+- The **episode hub** is the *provenance index* — trace any fact back to the capture it came from, and fetch the complete faithful body for human auditing or re-extraction (exposed only via `debug=true`).
 - The **owner hub** is the *knowledge index* — the web of what's true about the owner.
 
 As more is captured, each capture adds its own episode hub, and an entity that appears in several captures bridges those episodes — which is how the brain corroborates a fact across multiple sources. This brain is **single-user by design**, so the owner remaining a central hub is expected and correct, not a scaling problem.
@@ -132,9 +132,9 @@ Two additive changes; everything else (capture, basic recall, both faces) is alr
 - Files: `service.py`, `client.py` (expose embedder). Verify: on-topic → high; nothing-known → all low.
 
 **Item 2 — full-profile dump.** A dedicated `profile` op (not overloaded `recall` — "everything" vs "search" are different semantics):
-1. `service.py` `profile()`: Cypher `MATCH ()-[r:RELATES_TO]->() WHERE r.group_id=$gid AND r.expired_at IS NULL RETURN fact, name, valid_at, invalid_at` ordered by `created_at` desc. `expired_at IS NULL` = current facts only (excludes bi-temporally superseded).
-2. `api.py`: `GET /profile` + `profile` MCP tool. Same fact shape as recall, no score.
-- Verify: returns all current facts; superseded ones excluded.
+1. `service.py` `profile()`: Cypher `MATCH ()-[r:RELATES_TO]->() WHERE r.group_id=$gid AND r.expired_at IS NULL RETURN fact, name, polarity, strength, valid_at, invalid_at` ordered by `created_at` desc. `expired_at IS NULL` = current facts only (excludes bi-temporally superseded).
+2. `api.py`: `GET /profile` + `profile` MCP tool. Same fact shape as recall (with `polarity`/`strength`), no score.
+- Verify: returns all current facts, negatives and gates included; superseded ones excluded.
 
 Order: Item 1 (verify de-risks it) then Item 2. Both purely additive.
 
@@ -153,4 +153,4 @@ Two of our retrieval decisions are **single-domain, small-scale crutches**. They
 
 - **No `ask` method.** Collapsed into `recall` once we settled that the brain is a librarian with no synthesis (see Interfaces).
 - **The noise problem (false positives).** The brain returns facts with an absolute on-target relevance score and does **not** threshold; the app's intelligence library owns the task-dependent cutoff. "Brain knows nothing" = all scores low. See *Retrieval contract* above. (Score surfacing decided but unbuilt.)
-- **The blind-spot problem (false negatives).** At current scale, solved by **completeness, not cleverness**: the full-profile dump returns every fact, so nothing relevant can be missed. Scores can't fix blind spots (you can't rank what was never fetched); dumping everything sidesteps them. See *Scale cliffs* for when this stops working.
+- **The blind-spot problem (false negatives).** At current scale, solved by **completeness, not cleverness**: extraction now captures negatives and gates as facts (`polarity`/`strength`), and the full-profile dump returns every current fact, so nothing relevant can be missed. Scores can't fix blind spots (you can't rank what was never fetched); dumping everything sidesteps them. See *Scale cliffs* for when this stops working.

@@ -54,11 +54,11 @@ Write content into the brain. The brain decomposes the text into atomic, named-s
 
 ### `recall(query, limit=20) → list[dict]`
 
-The workhorse read. Returns scored facts: `{fact, name, score, valid_at, invalid_at}`, best-scored first. **`score` is an absolute on-target cosine — the brain reports it but does not threshold.** Your consumer decides what's strong enough; uniformly low scores mean the brain doesn't really know the answer. Each `fact` carries its own domain context (the graph is hub-shaped), so you usually don't need to traverse.
+The workhorse read. Returns scored **facts only**: `{fact, name, score, polarity, strength, valid_at, invalid_at}`, best-scored first. **`score` is an absolute on-target cosine — the brain reports it but does not threshold.** Your consumer decides what's strong enough; uniformly low scores mean the brain doesn't really know the answer. Each `fact` carries its own domain context (the graph is hub-shaped), so you usually don't need to traverse — and `polarity`/`strength` mean negatives and hard gates come back as facts too (see [facts are the source of truth](#what-to-read-back-facts-are-the-source-of-truth-important-for-every-consumer)). Pass `?debug=true` to also get the source episode bodies as provenance; don't use them to make decisions.
 
 ### `profile() → list[dict]`
 
-Every currently-true fact about the user, unscored, newest first. Use when you want the whole picture (let your consumer's LLM reason over all of it) rather than a targeted answer. Prefer `recall` for specific questions.
+A flat list of every currently-true fact about the user (each with `polarity`/`strength`), unscored, newest first — facts, not episode bodies. Use when you want the whole picture (let your consumer's LLM reason over all of it) rather than a targeted answer. Prefer `recall` for specific questions.
 
 > **Note:** the old standalone Graphiti tool surface (`add_memory`, `search_nodes`, `search_memory_facts`, `get_episodes`, `delete_*`, `clear_graph`) is gone. The brain narrowed to capture/recall/profile. If you need raw graph introspection during development, use the FalkorDB Browser or `scripts/reset_brain.py`, not a consumer call.
 
@@ -124,7 +124,10 @@ export class BrainClient {
     u.searchParams.set("limit", String(limit));
     const r = await fetch(u, { headers: this.headers() });
     if (!r.ok) throw new Error(`recall failed: HTTP ${r.status}`);
-    return (await r.json()).facts as Array<{ fact: string; name: string; score: number }>;
+    return (await r.json()).facts as Array<{
+      fact: string; name: string; score: number;
+      polarity: "positive" | "negative"; strength: "hard" | "soft";
+    }>;
   }
 
   async profile() {
@@ -185,18 +188,22 @@ MCP is kept for one reason: **Claude Code and future LLM harnesses speak it nati
 
 ---
 
-## What to read back: facts vs. episodes (important for every consumer)
+## What to read back: facts are the source of truth (important for every consumer)
 
-The brain returns two kinds of thing, and **you must know which to trust for what**:
+The graph is the single source of truth, and **facts are what you read** — they carry everything you need to decide, including the user's hard "no"s:
 
-- **`facts`** (from `recall`) — structured `subject → relation → object` claims extracted into the graph. Precise, scored, deduped, bi-temporal. **But they are a lossy, positive-only index:** the extractor reliably captures what the user *does / wants / has* ("targets X", "uses Y") and **systematically drops negatives and rules** — "avoids Z", "only A or B counts", "anything outside this set is a hard skip". This is a property of graph extraction, not a bug we can fully tune away.
+- **`facts`** (from `recall` and `profile`) — structured `subject → relation → object` claims extracted into the graph. Precise, scored, deduped, bi-temporal. The extractor captures **negatives and gates as first-class facts**, so each fact can carry:
+  - **`polarity`** — `"positive"` (the user *does / wants / has* it: "targets X", "uses Y") or `"negative"` (the user *avoids / excludes* it: "avoids Z", "excludes fintech").
+  - **`strength`** — `"hard"` (a gate / dealbreaker: "only A or B counts", "must be SF or remote") or `"soft"` (a preference).
 
-- **`episodes`** (from `profile`, and the `episodes` field of `recall`) — the faithful captured text. **Complete.** Contains the negatives, the gates, the rules — everything.
+  So "avoids fintech", "excludes Y", and hard gates ("only X or Y") **are facts now**. A consumer reading facts sees the user's hard nos and dealbreakers directly.
+
+- **`episodes`** — the faithful captured text, still stored as **provenance** for human tracing. Returned **only** when you pass an explicit `?debug=true` flag on `recall`. They are *not* a knowledge surface: **do not build decisions off episode bodies.** Use them to trace where a fact came from, nothing more.
 
 **The rule for consumers:**
 
-> Use `facts` for fast, scored lookups of *positive* attributes. For anything **rule-bearing** — gates, avoid-lists, dealbreakers, conditional exceptions — read the **episode bodies** (`profile`, or `recall.episodes`). If you decide off `facts` alone, you *will* silently miss the user's hard "no"s.
+> Read `facts`. Use **`strength=hard`** to identify gates / dealbreakers and **`polarity`** to tell seek-from-avoid. That's the complete picture — there is nothing extra hiding in the episode bodies.
 
-Concretely: a job-fit consumer that reads only `facts` will see "targets these verticals" but miss "fintech is explicitly excluded" and "anything outside the set is an automatic skip" — and pursue something it should hard-skip. The negatives and the gate live only in the episode body. Pull the body.
+Concretely: a job-fit consumer that reads `facts` now sees "fintech is excluded (`polarity=negative`, `strength=hard`)" and "must be SF or remote (`polarity=positive`, `strength=hard`)" alongside the positive targets — so it correctly hard-skips what it should and pursues only what fits. The negatives and the gates are in the facts; no body read required.
 
-Rule of thumb: **search with the facts; read the episode to be sure you have everything.** The episode body is the canonical record; the graph is an index over it.
+Rule of thumb: **the facts are canonical.** Episode bodies are provenance you can pull with `?debug=true` to see how a fact was derived — never to fill in something the facts "missed."

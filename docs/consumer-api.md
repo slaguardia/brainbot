@@ -26,7 +26,7 @@ Both faces are served by the one `brain` service (`brain/api.py`) and share one 
 
 ## Capture
 
-Decompose raw text into named-subject, domain-explicit atomic facts, then ingest them (the body episode + one episode per fact), applying the brain's extraction tuning.
+Rewrite raw text into faithful, named-subject prose and ingest it as **one episode**, applying the brain's extraction tuning. The override-tuned extractor pulls the typed entities and facts (each with `polarity`/`strength`) from that single episode — no per-fact fan-out.
 
 ### HTTP
 
@@ -52,13 +52,12 @@ Tool `capture`, arguments: `{ "text": "<string>" }`.
 HTTP `202`; MCP returns the same object:
 
 ```json
-{ "mode": "decomposed", "episodes": 4, "topic": "Globex / Kafka cost concern", "facts": 3 }
+{ "mode": "rewrite", "episodes": 1, "topic": "Globex / Kafka cost concern" }
 ```
 
-- `mode` — `"decomposed"` normally, or `"raw"` if `BRAIN_DECOMPOSE_ENABLED=false`.
-- `episodes` — total episodes written (`1` body + `N` facts; `1` in raw mode).
-- `topic` — the decomposer's short label for the body episode (`null` in raw mode).
-- `facts` — number of atomic-fact episodes written (`0` in raw mode).
+- `mode` — `"rewrite"` normally, or `"raw"` if `BRAIN_DECOMPOSE_ENABLED=false`.
+- `episodes` — always `1`: the capture is rewritten into a single episode (no per-fact fan-out); the extractor pulls the entities and facts from it.
+- `topic` — the decomposer's short label for the episode (`null` in raw mode).
 
 ### Returns (error)
 
@@ -72,8 +71,8 @@ Causes: empty/whitespace `text`, or invalid JSON body.
 
 ### Behavior notes
 
-- **Capture awaits the pipeline.** Unlike the old async `add_memory`, `/capture` runs decompose (one Claude call) + `1+N` `add_episode` extraction passes before returning — seconds, not milliseconds. Consumers that need instant UX should ack optimistically and fire-and-forget (the PWA does exactly this).
-- **Cost.** One decomposition call (Sonnet by default) + one extraction call per episode (Haiku) + embedder calls (Voyage). Roughly a cent per typical capture; bursts add up.
+- **Capture awaits the pipeline.** Unlike the old async `add_memory`, `/capture` runs decompose (one Claude call) + a single `add_episode` extraction pass (entities, fact-edges, and a per-edge attribute pass for `polarity`/`strength`) before returning — seconds, not milliseconds. Consumers that need instant UX should ack optimistically and fire-and-forget (the PWA does exactly this).
+- **Cost.** One decomposition call (Sonnet by default) + extraction (Haiku) + embedder calls (Voyage). Roughly a cent per typical capture; bursts add up.
 - **Per-group serialization** still applies inside graphiti-core during dedup.
 
 ---
@@ -90,7 +89,7 @@ GET /recall?q=what%20does%20the%20user%20want%20in%20a%20job&limit=8 HTTP/1.1
 
 ### MCP
 
-Tool `recall`, arguments: `{ "query": "<string>", "limit": 20 }`.
+Tool `recall`, arguments: `{ "query": "<string>", "limit": 20, "debug": false }`.
 
 ### Arguments
 
@@ -98,24 +97,27 @@ Tool `recall`, arguments: `{ "query": "<string>", "limit": 20 }`.
 |---|---|---|---|---|
 | `q` (HTTP) / `query` (MCP) | `string` | yes | — | Natural-language question. |
 | `limit` | `integer` | no | `20` | Max facts to return. |
+| `debug` | `boolean` | no | `false` | When true, also returns the source `episodes` (provenance/human-tracing only — **not** a knowledge surface). HTTP: `?debug=true`. |
 
 ### Returns (success)
 
-MCP `recall` returns the **list** directly. HTTP wraps it:
+Facts only by default — the graph is the source of truth, so recall returns scored graph facts and **no episodes**. MCP `recall` returns the object `{ "facts": [...] }`; HTTP wraps it with `query` and `fact_count`:
 
 ```json
 {
   "query": "what does the user want in a job",
-  "count": 2,
   "facts": [
     {
       "fact": "The user wants a forward-deployed engineering role with direct customer contact.",
       "name": "WANTS",
       "score": 0.7421,
+      "polarity": "positive",
+      "strength": "hard",
       "valid_at": "2026-05-25T22:30:18+00:00",
       "invalid_at": null
     }
-  ]
+  ],
+  "fact_count": 1
 }
 ```
 
@@ -126,10 +128,28 @@ Each fact record:
 | `fact` | `string` | The natural-language fact (carries its own domain context — the graph is hub-shaped). |
 | `name` | `string` | Edge label (e.g. `WANTS`, `RELATES_TO`). |
 | `score` | `float` | Absolute on-target cosine in ~`[0,1]`. **The brain does not threshold** — the consumer decides what's strong enough. All-low scores mean the brain doesn't really know this. |
+| `polarity` | `string\|null` | `"positive"` or `"negative"` — negatives (avoidances, "doesn't want…") are first-class facts, not absences. `null` on facts the extractor didn't tag. |
+| `strength` | `string\|null` | `"hard"` or `"soft"` — how firmly the fact is held (a hard rule vs. a soft preference). `null` on facts the extractor didn't tag. |
 | `valid_at` | `string\|null` | When the fact became true (ISO 8601). |
 | `invalid_at` | `string\|null` | When it was superseded; `null` for currently-true facts. |
 
-Empty result: HTTP `{ "query": ..., "count": 0, "facts": [] }`; MCP `[]`.
+Empty result: HTTP `{ "query": ..., "facts": [], "fact_count": 0 }`; MCP `{ "facts": [] }`.
+
+### Returns (debug)
+
+With `?debug=true` (HTTP) / `"debug": true` (MCP), the source episode bodies are re-included for provenance/human tracing — they are **not** a knowledge surface (the graph is). HTTP adds `episodes` + `episode_count`; MCP adds `episodes`:
+
+```json
+{
+  "query": "what does the user want in a job",
+  "facts": [ … ],
+  "fact_count": 1,
+  "episodes": [
+    { "name": "Globex / Kafka cost concern", "body": "<the captured episode text>" }
+  ],
+  "episode_count": 1
+}
+```
 
 ### Returns (error)
 
@@ -138,6 +158,7 @@ HTTP `400 { "error": "q is required" }` when `q` is missing/blank. (`limit` is c
 ### Behavior notes
 
 - **Scored, not filtered.** Use `score` to gate relevance in your consumer; the brain reports, it doesn't decide.
+- **Negatives and gates are facts.** The extractor captures negatives and hard-held rules as first-class facts tagged via `polarity`/`strength`, so the graph facts are legible on their own — there's no need to read episode bodies to recover what the user *doesn't* want or what's a hard rule.
 - **Hub topology.** Node-distance reranking doesn't help (every concept is ~2 hops from every other through the user node), so recall uses RRF + per-fact cosine rather than graph distance.
 
 ---
@@ -158,18 +179,18 @@ Tool `profile`, no arguments.
 
 ### Returns (success)
 
-MCP returns the **list**; HTTP wraps it:
+A flat list of current graph facts — not episode bodies. MCP `profile` returns the object `{ "facts": [...] }`; HTTP wraps it with `count`:
 
 ```json
 {
   "count": 1,
   "facts": [
-    { "fact": "The user is migrating off Kafka.", "name": "RELATES_TO", "valid_at": "2026-05-25T22:30:18+00:00", "invalid_at": null }
+    { "fact": "The user is migrating off Kafka.", "name": "RELATES_TO", "polarity": "positive", "strength": "soft", "valid_at": "2026-05-25T22:30:18+00:00" }
   ]
 }
 ```
 
-Same fact shape as recall **minus `score`** (profile is a dump, not a ranked search). Bi-temporally superseded facts (`expired_at` set) are excluded.
+Each fact carries `fact`, `name`, `polarity`, `strength`, and `valid_at` (same `polarity`/`strength` semantics as [recall](#recall); `null` when the extractor didn't tag). No `score` (profile is a dump, not a ranked search) and no `invalid_at` — only currently-true facts are returned: those whose `invalid_at`/`expired_at` IS NULL (not bi-temporally superseded).
 
 ### Behavior notes
 

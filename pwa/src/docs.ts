@@ -90,7 +90,7 @@ const DOCS_HTML = `
           <div class="layer k-brain">
             <span class="layer-tag">Brain &nbsp;·&nbsp; this service</span>
             <strong>Question → relevant facts</strong>
-            <p>The librarian. No synthesis, no inference. Returns scored facts and the faithful captures behind them.</p>
+            <p>The librarian. No synthesis, no inference. Returns scored facts, with the faithful captures behind them available for tracing.</p>
           </div>
           <div class="layer-gap"><span>add_episode&nbsp;↓</span><span>↑&nbsp;search</span></div>
           <div class="layer k-engine">
@@ -182,10 +182,12 @@ const DOCS_HTML = `
         </ul>
 
         <div class="note">
-          <strong>The body is canonical.</strong> The rewritten episode body is kept
-          as the faithful record. The extracted facts are a derived <em>index</em>
-          over it — fast to search, but a summary. Why that matters shows up in
-          recall, next.
+          <strong>The graph is the source of truth.</strong> The extracted facts —
+          including negatives and gates, each carrying <code>polarity</code>
+          (positive / negative) and <code>strength</code> (hard / soft) — are what
+          consumers read. The rewritten episode body is kept alongside as the faithful
+          capture: provenance you can trace back to, not the knowledge surface. Why
+          that matters shows up in recall, next.
         </div>
       </section>
 
@@ -235,12 +237,14 @@ const DOCS_HTML = `
 
           <div class="flow-node k-store">
             <span class="chip c-store">Result</span>
-            <strong>3 · Return facts <em>and</em> episodes</strong>
+            <strong>3 · Return scored facts</strong>
             <p>
-              <code>facts</code> — precise, scored, but positive-only (the extractor
-              drops negatives and rules). <code>episodes</code> — the faithful
-              rewrites, which <em>do</em> contain "avoids&nbsp;X" and gate rules. Read
-              <code>episodes</code> for completeness.
+              <code>facts</code> — precise and scored, each carrying
+              <code>polarity</code> and <code>strength</code>. The extractor now
+              captures negatives and gates as first-class facts, so "avoids&nbsp;X"
+              and hard rules come back here too. The faithful episode bodies are
+              returned only with <code>?debug=true</code> — provenance for tracing,
+              not a knowledge surface.
             </p>
           </div>
           <div class="flow-arrow" aria-hidden="true"></div>
@@ -254,19 +258,22 @@ const DOCS_HTML = `
 
         <h3>Profile — the whole picture, not one answer</h3>
         <p>
-          <code>profile</code> is a full dump: every currently-held episode body,
-          newest first. Use it when a consumer needs the complete record rather than
-          the answer to a single question. At single-user scale the whole profile
-          fits in a model's context, so dumping everything sidesteps blind spots
-          entirely.
+          <code>profile</code> is a flat list of every current fact — each with its
+          <code>polarity</code> and <code>strength</code>. Use it when a consumer needs
+          the complete record rather than the answer to a single question. At
+          single-user scale the whole profile fits in a model's context, so handing
+          back every fact sidesteps blind spots entirely.
         </p>
 
         <div class="note">
-          <strong>Why recall returns episodes too.</strong> The edge graph is a lossy,
-          positive-only index. On a real target-role capture, the avoid-list and the
-          hard vertical gate were perfectly preserved in the episode <em>body</em> but
-          never became edges. So the body is the source of truth; the edges are a
-          secondary index. <em>Search with the facts; read the episode to be sure.</em>
+          <strong>Why the facts are enough.</strong> An earlier extractor pulled only
+          positive facts and dropped negatives and rules — so an avoid-list or a hard
+          gate survived only in the episode <em>body</em>, and recall had to hand back
+          bodies to be complete. The extractor now captures those as first-class facts
+          (with <code>polarity</code> and <code>strength</code>), so the graph carries
+          the whole picture. Episodes are still stored as provenance and surface only
+          under <code>?debug=true</code>. <em>Read the facts; the body is just the
+          receipt.</em>
         </div>
       </section>
 
@@ -298,21 +305,20 @@ const DOCS_HTML = `
         <div class="endpoint">
           <div class="endpoint-head">
             <span class="method get">GET</span>
-            <span class="path">/recall?q=&amp;limit=</span>
+            <span class="path">/recall?q=&amp;limit=&amp;debug=</span>
             <span class="endpoint-tag">read</span>
           </div>
-          <p><code>q</code> required; <code>limit</code> defaults to 20. Scored, not thresholded.</p>
+          <p><code>q</code> required; <code>limit</code> defaults to 20. Scored, not thresholded. Returns scored facts; pass <code>debug=true</code> to also get the episode bodies behind them.</p>
           <pre><code>{
   "query": "what does the user want in a job",
   "facts": [
     { "fact": "The user wants a forward-deployed engineering role.",
-      "name": "WANTS", "score": 0.7421,
+      "name": "WANTS", "score": 0.7421, "polarity": "positive", "strength": "soft",
       "valid_at": "2026-05-25T22:30:18+00:00", "invalid_at": null }
   ],
-  "episodes": [ { "name": "Target role goals", "body": "…faithful rewrite…" } ],
-  "fact_count": 1,
-  "episode_count": 1
-}</code></pre>
+  "fact_count": 1
+}
+// with ?debug=true, an "episodes" array of faithful rewrites is included for tracing</code></pre>
         </div>
 
         <div class="endpoint">
@@ -321,11 +327,13 @@ const DOCS_HTML = `
             <span class="path">/profile</span>
             <span class="endpoint-tag">read</span>
           </div>
-          <p>Every currently-held episode body, newest first.</p>
+          <p>Every current fact, each with its polarity and strength.</p>
           <pre><code>{
   "count": 1,
-  "episodes": [
-    { "name": "Target role goals", "body": "…", "source": "capture" }
+  "facts": [
+    { "fact": "The user wants a forward-deployed engineering role.",
+      "name": "WANTS", "polarity": "positive", "strength": "soft",
+      "valid_at": "2026-05-25T22:30:18+00:00", "invalid_at": null }
   ]
 }</code></pre>
         </div>
@@ -358,17 +366,19 @@ const DOCS_HTML = `
         <h3>Episodes vs. facts</h3>
         <p>
           The brain holds two layers. An <strong>episode</strong> is one thing you
-          captured — a passage of text, saved as-is: the complete, trustworthy
-          record. A <strong>fact</strong> is a single structured claim the brain
-          extracted from an episode ("X is CTO at Y"), stored as a connection in the
-          graph. <strong>One episode produces many facts.</strong>
+          captured — a passage of text, saved as-is: the faithful provenance record.
+          A <strong>fact</strong> is a single structured claim the brain extracted
+          from an episode ("X is CTO at Y"), stored as a connection in the graph and
+          carrying its own polarity and strength. <strong>One episode produces many
+          facts.</strong>
         </p>
         <p>
-          The clearest picture is a <em>document and the index built from it</em>: the
-          episode is the document (everything's there); the facts are the index (fast
-          to search and link, but a summary that leaves things out — especially
-          "don'ts" and rules). Rule of thumb: <em>search with the facts; read the
-          episode to be sure you have everything.</em>
+          The clearest picture is a <em>document and the structured record built from
+          it</em>: the episode is the raw document, kept so any claim can be traced
+          back; the facts are the graph the brain actually reads from — and because
+          the extractor now captures "don'ts" and rules too, the facts carry the whole
+          picture. Rule of thumb: <em>read the facts; reach for the episode only when
+          you want to see where a fact came from.</em>
         </p>
 
         <h3>Nodes and edges</h3>
@@ -485,8 +495,8 @@ const DOCS_HTML = `
             <p>Two things are genuinely hard to rebuild and are the real differentiators: entity <strong>dedup</strong> and <strong>bi-temporal</strong> fact invalidation. graphiti does both well, so we keep it rather than talking to FalkorDB directly.</p>
           </div>
           <div class="decision">
-            <h3>Episodes are canonical; edges are an index</h3>
-            <p>The extractor reliably pulls positive facts but drops negatives and policies ("avoids X", "only Y counts"). So the faithful episode body is the source of truth — recall and profile return bodies, not just edges.</p>
+            <h3>The graph is the source of truth</h3>
+            <p>Extraction now captures negatives and gates as first-class facts ("avoids X", "only Y counts"), each carrying polarity and strength. So the graph holds the whole picture — recall and profile return facts. Episodes are still stored as provenance and surface only under <code>debug</code>.</p>
           </div>
           <div class="decision">
             <h3>A librarian, not an oracle</h3>

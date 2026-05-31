@@ -1,0 +1,18 @@
+{
+  "id": "US-001",
+  "featureId": "FEAT-20260531_144636-dsub",
+  "title": "Rip out graphiti/FalkorDB infra; stand up Postgres + pgvector",
+  "userStory": "As an operator, I want graphiti-core and FalkorDB removed and Postgres + pgvector in their place so that the brain has a clean document substrate with no leftover graph backend.",
+  "acceptanceCriteria": [
+    "graphiti-core and falkordb are removed from the brain's dependencies (pyproject/requirements)",
+    "The falkordb service is removed from compose/docker-compose.yml and replaced with a pgvector/pgvector:pg16 service (named volume, no host ports in prod; a local overlay exposes it on 127.0.0.1 for dev)",
+    "CREATE EXTENSION IF NOT EXISTS vector runs on first start",
+    "The brain connects to Postgres via asyncpg using env config (e.g. PG_DSN)",
+    "Verify: docker compose up -d postgres, then a connection smoke from the brain returns the Postgres server version; no falkordb container exists"
+  ],
+  "dependencies": [],
+  "status": "todo",
+  "createdAt": "2026-05-31T14:46:36Z",
+  "completedAt": null,
+  "iteration": null
+}

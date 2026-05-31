@@ -1,0 +1,18 @@
+{
+  "id": "US-007",
+  "featureId": "FEAT-20260531_144636-dsub",
+  "title": "recall(query, scope) on pgvector (hybrid + RRF)",
+  "userStory": "As a consumer app, I want recall(query, scope) so that I can look up the most relevant chunks for a query, optionally within a domain.",
+  "acceptanceCriteria": [
+    "GET /recall?q=&scope= runs semantic (pgvector cosine <=>) and lexical (tsvector) searches and fuses them with Reciprocal Rank Fusion, scoped by sources.path LIKE scope%",
+    "Returns a ranked list of Chunk{heading, text, score, path}",
+    "With the Target-role page ingested, recall('what locations is Steve open to') returns that page's chunk",
+    "scope filters correctly (a non-matching scope returns nothing); empty or garbage query is handled gracefully",
+    "Verify: covered by the US-010 smoke (a relevant query returns the chunk)"
+  ],
+  "dependencies": ["US-003", "US-004"],
+  "status": "todo",
+  "createdAt": "2026-05-31T14:46:36Z",
+  "completedAt": null,
+  "iteration": null
+}

@@ -1,0 +1,19 @@
+{
+  "id": "US-010",
+  "featureId": "FEAT-20260531_144636-dsub",
+  "title": "Validation gate: smoke on the real Target-role page",
+  "userStory": "As the developer, I want a smoke that ingests the Target-role page and exercises all three reads so that Phase 1 is provably working before anything else is built on it.",
+  "acceptanceCriteria": [
+    "A script/test ingests the real Target-role Notion URL via POST /ingest",
+    "Asserts recall('locations Steve is open to' or similar) returns the page chunk with a sensible score",
+    "Asserts profile(the page's path) returns assembled text containing known page content (e.g. 'fully remote', 'fintech')",
+    "Asserts map(parent scope) lists exactly the one ingested source",
+    "The script documents how to run it (env: NOTION_TOKEN, PG_DSN, Voyage key)",
+    "This is the Phase 1 gate: the phase is not done until this smoke passes end-to-end"
+  ],
+  "dependencies": ["US-006", "US-007", "US-008"],
+  "status": "todo",
+  "createdAt": "2026-05-31T14:46:36Z",
+  "completedAt": null,
+  "iteration": null
+}

@@ -1,0 +1,19 @@
+{
+  "id": "US-003",
+  "featureId": "FEAT-20260531_144636-dsub",
+  "title": "Create sources + chunks schema and indexes (migration)",
+  "userStory": "As a developer, I want the sources and chunks tables with the right indexes so that the substrate can store source docs and their embedded chunks.",
+  "acceptanceCriteria": [
+    "A migration creates sources(id, kind, title, raw_text, parent_id FK, path, version, created_at, updated_at)",
+    "A migration creates chunks(id, source_id FK ON DELETE CASCADE, heading, text, position, embedding vector(N), created_at, fts tsvector GENERATED from heading+text)",
+    "Indexes: HNSW on chunks.embedding (vector_cosine_ops), GIN on chunks.fts, btree text_pattern_ops on sources.path, btree on chunks(source_id, position)",
+    "vector(N) dimension matches the configured Voyage model",
+    "Migration runs clean on the local Postgres and is re-runnable / reversible",
+    "Verify: psql \\d sources and \\d chunks show the columns and indexes"
+  ],
+  "dependencies": ["US-001"],
+  "status": "todo",
+  "createdAt": "2026-05-31T14:46:36Z",
+  "completedAt": null,
+  "iteration": null
+}

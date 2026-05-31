@@ -1,0 +1,16 @@
+{
+  "id": "US-009",
+  "featureId": "FEAT-20260531_144636-dsub",
+  "title": "Repoint the MCP face onto recall/profile/map",
+  "userStory": "As a Claude Code user, I want the brain's MCP face to expose the new recall/profile/map so that I can read the document-substrate brain from my editor.",
+  "acceptanceCriteria": [
+    "The /mcp face exposes tools backed by the new pgvector recall/profile/map; no graphiti references remain in the MCP layer",
+    "The MCP tool schemas match the new Chunk / Context shapes",
+    "Verify: an MCP call to recall from a client returns the same result as the HTTP /recall endpoint for the same query and scope"
+  ],
+  "dependencies": ["US-007", "US-008"],
+  "status": "todo",
+  "createdAt": "2026-05-31T14:46:36Z",
+  "completedAt": null,
+  "iteration": null
+}

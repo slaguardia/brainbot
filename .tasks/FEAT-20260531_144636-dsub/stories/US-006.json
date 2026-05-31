@@ -1,0 +1,18 @@
+{
+  "id": "US-006",
+  "featureId": "FEAT-20260531_144636-dsub",
+  "title": "Ingest endpoint: POST a Notion URL, store the whole page as one chunk",
+  "userStory": "As a user, I want to POST a Notion URL and have that page loaded into the database so that I can test ingest on a single page.",
+  "acceptanceCriteria": [
+    "POST /ingest {url} orchestrates fetch_page -> upsert source (kind='notion_page', title, raw_text, path) -> store the WHOLE page as one chunk (position 0) -> embed -> insert",
+    "Re-posting the same URL wipe-replaces: existing chunks for that source are deleted and re-created (idempotent, always current)",
+    "Response returns the source id and chunk count (1)",
+    "Fetch or embed errors return a clear 4xx/5xx and leave no partial write",
+    "Verify: POST the Target-role URL, then query the DB for exactly one sources row and one chunks row with a non-null embedding; POST again and confirm still exactly one chunk"
+  ],
+  "dependencies": ["US-003", "US-004", "US-005"],
+  "status": "todo",
+  "createdAt": "2026-05-31T14:46:36Z",
+  "completedAt": null,
+  "iteration": null
+}

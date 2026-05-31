@@ -81,7 +81,18 @@ async def get_pool() -> asyncpg.Pool:
     if _pool is None:
         async with _pool_lock:
             if _pool is None:
-                _pool = await asyncpg.create_pool(Config().pg_dsn, init=_register)
+                dsn = Config().pg_dsn
+                # The pgvector `vector` type must exist BEFORE the pool's init hook
+                # runs register_vector (it introspects public.vector). On a fresh DB
+                # the extension isn't created yet, so ensure it on a one-off
+                # connection first — otherwise pool creation fails with
+                # "unknown type: public.vector". apply_schema re-runs it idempotently.
+                bootstrap = await asyncpg.connect(dsn)
+                try:
+                    await bootstrap.execute("CREATE EXTENSION IF NOT EXISTS vector")
+                finally:
+                    await bootstrap.close()
+                _pool = await asyncpg.create_pool(dsn, init=_register)
     return _pool
 
 

@@ -601,6 +601,36 @@ note-reader. Which is, once more, why the two setups don't really compete.
 
 ## Brain ↔ consumer interface (a reusable intelligence library)
 
+> **CORRECTION (2026-05-31) — read this first; it supersedes the "two core reads +
+> discovery read" framing below.** The principle that settles the interface:
+> **downstream apps are dumb — they only ever know what the brain gives them.** So
+> any call that requires the caller to know a *scope* (a path) is, by definition,
+> **not a consumer call** — it leaks the brain's internal taxonomy into the consumer.
+> That kicks **both `profile(scope)` and `map(scope)` out of the consumer contract.**
+> (The earlier idea that a consumer would *discover* its scope via `map` was wrong —
+> dropped.)
+>
+> **There are three audiences, not two:**
+> - **Dumb consumer apps (scout, …):** the entire contract is **`recall(query)`** —
+>   ask a question, get the relevant chunks. No scope, ever. Completeness (don't miss
+>   a dealbreaker when gating) is served *query-side* — `recall` in a "return
+>   everything related" mode (relevance threshold / high `k`) — never by `profile`.
+> - **The brain itself (internal jobs):** uses `map`/`profile` as *machinery*.
+>   `map` powers **sync reconciliation** (diff the Notion tree vs the brain's
+>   inventory) and maintenance (re-embed, dedup, GC). `profile` is the brain's
+>   **self-enrichment** primitive: a job assembles a domain (`profile('Job Hunting')`)
+>   → an LLM distills a high-signal **digest** stored as a derived source → `recall`
+>   surfaces it. *This recreates the old `profile()`'s "here's the user" value — built
+>   by the brain from the docs, delivered through `recall`, with the consumer never
+>   knowing a scope existed.* Also: contradiction sweeps, cross-domain link mining.
+> - **The owner (you, via the authed PWA/admin):** `map`/`profile` + edit, because
+>   you legitimately know your own folders.
+>
+> Net: **`recall(query)` is the whole public/consumer surface.** `profile`/`map` are
+> internal + owner tools, not consumer endpoints. The sections below describe `recall`
+> correctly; treat their "profile = scout's primary mode" / "map = consumer discovery"
+> claims as superseded by this block.
+
 The brain isn't scout's sidecar — it's a **reusable intelligence-gathering library**
 that any personal app consumes; scout is just the first. So the interface is kept
 small, domain-agnostic, and consumer-agnostic — and **read-only for consumers**

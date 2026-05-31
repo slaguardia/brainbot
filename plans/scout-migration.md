@@ -103,6 +103,40 @@ Map: `strength=hard` → gates section (split by polarity into requires/excludes
 `soft` → preferences; `null/null` → context. This makes the librarian→scout split
 explicit: the brain reports strength; the verdict prompt turns hard→gate, soft→weight.
 
+### 2a. Allowed-set semantics — hard positives are OR *within a dimension*
+
+**This is the one place naive gating breaks** (surfaced in the first migration run).
+The user's "allowed sets" — acceptable locations, target verticals, ideal titles — each
+extract as *multiple* `positive`/`hard` facts, one per member:
+
+```
+will only consider roles in the SF Bay Area                        positive/hard
+will only consider fully remote roles regardless of HQ             positive/hard
+will only consider opportunities in AI agent platforms             positive/hard
+will only consider opportunities in healthcare operations software positive/hard
+…(defense, business/ops platforms)…                                positive/hard
+```
+
+These are **OR within a dimension, not AND.** A role satisfies *location* if it matches
+**any** acceptable location; it satisfies *vertical* if it's in **any** target vertical.
+A company sits in ONE location and ONE vertical — so a scorer that AND-s them wrongly
+hard-no's a non-SF **remote** role (matches remote, not SF), and the **vertical gate
+hard-no's everything** (no company is in all four verticals at once).
+
+**Rule for the verdict:** group hard *positives* by dimension (location, vertical, title)
+and treat each group as a **satisfy-any** gate — a hard miss only when the role matches
+**none** of that dimension's members. Hard *negatives* (`excludes …`) stay individual,
+AND-ed dealbreakers. Encode it in `playbook.md` / the rubric, or co-tag members by
+dimension when building the criteria block.
+
+> **Why not fix this in the brain?** "These N facts are OR-alternatives of one dimension"
+> is *cross-fact* structure a binary entity→entity graph can't hold on a single edge —
+> encoding it would need the grouping/Constraint nodes the brain deliberately rejected.
+> And a brain patch for *location* would leave the *vertical* gate (same shape) still
+> broken. The brain faithfully reports each option and that the user holds it hard;
+> turning a set of options into a satisfy-any gate is **reasoning — the consumer's job**
+> (the librarian split). The facts are correct once OR'd.
+
 ### 3. `internal/verdict/verdict.go` (light)
 `buildSystemPrompt` injects the criteria string as-is, so the new grouped block
 flows in for free. Optional upgrade: add one line to the rubric telling the model

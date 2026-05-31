@@ -788,3 +788,38 @@ that's a fine reason to leave it.
 - **Migration path** from the current FalkorDB/graphiti store to pgvector if this
   is ever adopted (re-ingest from source docs is the clean path — and re-ingest
   *is* the model, so there's natural alignment).
+
+---
+
+## Future limits of `recall` (when it outgrows its job)
+
+`recall(query)` answers exactly one thing: *find the content relevant to this
+question.* It stays adequate until a question needs something retrieval
+fundamentally can't do — **aggregate, compose, synthesize, time-travel, or
+traverse.** Roughly in the order they'd bite, with the successor each needs:
+
+1. **Exhaustive / aggregate** ("list *every* X", "how many?") — top-k ranks by
+   similarity; it doesn't enumerate-with-guarantee or count. **The first real wall.**
+   Successor: a *structured* query path (SQL-ish filters over fields/metadata), not
+   semantic search.
+2. **Scale-precision decay** — at tens of thousands of chunks the embedding space
+   crowds and top-k gets noisy. Not a break, an *augment*: a reranker pass, metadata
+   filters, hierarchical retrieval.
+3. **Multi-constraint composition** ("Series A *and* remote *and* a vertical I
+   like") — one shot can't JOIN constraints. Solved *above* recall: the consumer runs
+   several recalls (agentic retrieval) or structured filters. Not a brain change.
+4. **Whole-picture synthesis** ("summarize who I am professionally") — recall returns
+   fragments, not a coherent whole. Solved *beside* recall: the brain-side enrichment
+   loop (`profile` → digest) pre-synthesizes, and recall surfaces the digest.
+5. **Temporal / "what changed"** — wipe-replace keeps only the present. Successor:
+   doc-version history (versioning the source, git-style) — deferred by design.
+6. **Relationship / multi-hop traversal** ("how does X connect to Y across domains")
+   — flat chunks + similarity can't traverse. Successor: a relationship/graph layer —
+   the one genuine graph case, full circle.
+
+**Synthesis:** `recall` never goes *wholesale* useless — specific *question shapes*
+outgrow it, and each successor has a known slot (structured queries, rerankers,
+brain-side digests, doc-versions, a relationship layer). For a single-user personal
+brain answering "find me the relevant stuff" questions, it's plenty for the
+foreseeable future; the first to bite are aggregate queries and scale-precision, both
+*augmentations*, not replacements.

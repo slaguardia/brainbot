@@ -17,6 +17,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import math
+from contextlib import contextmanager
 from datetime import datetime, timezone
 
 from anthropic import AsyncAnthropic
@@ -82,19 +83,38 @@ class Brain:
     async def close(self) -> None:
         await self.graphiti.driver.close()
 
+    @contextmanager
+    def _on_graph(self, group_id: str):
+        """Run an operation with the shared driver bound to `group_id`'s graph,
+        then ALWAYS restore the binding. graphiti's add_episode rebinds
+        `self.graphiti.driver` to the op's group_id and never restores it — so one
+        non-default capture used to poison the singleton, and every later default
+        read silently hit the wrong (often empty) graph until a restart. `clone()`
+        is a no-op when the graph already matches, so default-group_id traffic is
+        untouched; this only does real work for an explicit group_id override.
+        (Not safe under concurrent *different* group_ids on the one singleton —
+        a test-only edge; normal single-graph use is fine.)"""
+        saved = self.graphiti.driver
+        self.graphiti.driver = saved.clone(database=group_id)
+        try:
+            yield
+        finally:
+            self.graphiti.driver = saved
+
     async def _add(self, name: str, body: str, source_description: str, group_id: str) -> None:
-        await self.graphiti.add_episode(
-            name=name,
-            episode_body=body,
-            source=EpisodeType.text,
-            source_description=source_description,
-            reference_time=datetime.now(timezone.utc),
-            group_id=group_id,
-            entity_types=self.entity_types,
-            edge_types=self.edge_types,
-            edge_type_map=self.edge_type_map,
-            custom_extraction_instructions=self.cfg.extraction_instructions,
-        )
+        with self._on_graph(group_id):
+            await self.graphiti.add_episode(
+                name=name,
+                episode_body=body,
+                source=EpisodeType.text,
+                source_description=source_description,
+                reference_time=datetime.now(timezone.utc),
+                group_id=group_id,
+                entity_types=self.entity_types,
+                edge_types=self.edge_types,
+                edge_type_map=self.edge_type_map,
+                custom_extraction_instructions=self.cfg.extraction_instructions,
+            )
 
     async def capture(self, text: str, group_id: str | None = None) -> dict:
         """Rewrite + ingest as ONE episode. Returns a summary of what was written.
@@ -136,46 +156,47 @@ class Brain:
         reading inlined body text, so by default the bodies leave the payload.
         """
         gid = group_id or self.cfg.group_id
-        cfg = COMBINED_HYBRID_SEARCH_RRF.model_copy(deep=True)
-        cfg.limit = limit
-        res = await self.graphiti.search_(
-            query=query,
-            config=cfg,
-            group_ids=[gid],
-            search_filter=SearchFilters(),
-        )
-
-        facts: list[dict] = []
-        edges = list(res.edges)
-        if edges:
-            # Absolute on-target score: search_ strips fact_embedding, so fetch
-            # them for the candidate uuids and cosine against the query.
-            query_emb = await self.graphiti.embedder.create(query)
-            emb_map = await self._fact_embeddings([e.uuid for e in edges])
-            scored = sorted(
-                ((_cosine(query_emb, emb_map.get(e.uuid)), e) for e in edges),
-                key=lambda t: t[0],
-                reverse=True,
+        with self._on_graph(gid):
+            cfg = COMBINED_HYBRID_SEARCH_RRF.model_copy(deep=True)
+            cfg.limit = limit
+            res = await self.graphiti.search_(
+                query=query,
+                config=cfg,
+                group_ids=[gid],
+                search_filter=SearchFilters(),
             )
-            facts = [
-                {
-                    "fact": e.fact,
-                    "name": e.name,
-                    "score": round(s, 4),
-                    "polarity": e.attributes.get("polarity"),
-                    "strength": e.attributes.get("strength"),
-                    "valid_at": e.valid_at.isoformat() if e.valid_at else None,
-                    "invalid_at": e.invalid_at.isoformat() if e.invalid_at else None,
-                }
-                for s, e in scored
-            ]
 
-        facts = _dedupe_facts(facts)
-        out: dict = {"facts": facts}
-        if debug:
-            out["episodes"] = [{"name": ep.name, "body": ep.content} for ep in (res.episodes or [])]
-        logger.debug("recall gid=%s q=%r -> %d facts (debug=%s)", gid, query, len(facts), debug)
-        return out
+            facts: list[dict] = []
+            edges = list(res.edges)
+            if edges:
+                # Absolute on-target score: search_ strips fact_embedding, so fetch
+                # them for the candidate uuids and cosine against the query.
+                query_emb = await self.graphiti.embedder.create(query)
+                emb_map = await self._fact_embeddings([e.uuid for e in edges])
+                scored = sorted(
+                    ((_cosine(query_emb, emb_map.get(e.uuid)), e) for e in edges),
+                    key=lambda t: t[0],
+                    reverse=True,
+                )
+                facts = [
+                    {
+                        "fact": e.fact,
+                        "name": e.name,
+                        "score": round(s, 4),
+                        "polarity": e.attributes.get("polarity"),
+                        "strength": e.attributes.get("strength"),
+                        "valid_at": e.valid_at.isoformat() if e.valid_at else None,
+                        "invalid_at": e.invalid_at.isoformat() if e.invalid_at else None,
+                    }
+                    for s, e in scored
+                ]
+
+            facts = _dedupe_facts(facts)
+            out: dict = {"facts": facts}
+            if debug:
+                out["episodes"] = [{"name": ep.name, "body": ep.content} for ep in (res.episodes or [])]
+            logger.debug("recall gid=%s q=%r -> %d facts (debug=%s)", gid, query, len(facts), debug)
+            return out
 
     async def _fact_embeddings(self, uuids: list[str]) -> dict[str, list[float]]:
         if not uuids:
@@ -201,38 +222,39 @@ class Brain:
         group_id overrides the target graph (defaults to the configured one).
         """
         gid = group_id or self.cfg.group_id
-        records, _, _ = await self.graphiti.driver.execute_query(
-            "MATCH ()-[r:RELATES_TO]->() "
-            "WHERE r.group_id = $gid AND r.invalid_at IS NULL AND r.expired_at IS NULL "
-            "RETURN r.fact AS fact, r.name AS name, r.polarity AS polarity, "
-            "r.strength AS strength, r.valid_at AS valid_at, r.created_at AS created_at "
-            "ORDER BY r.created_at DESC",
-            gid=gid,
-        )
-        facts = [
-            {
-                "fact": r.get("fact"),
-                "polarity": r.get("polarity"),
-                "strength": r.get("strength"),
-                "valid_at": r.get("valid_at"),
-                "name": r.get("name"),
-            }
-            for r in records
-            if r.get("fact")
-        ]
-        facts = _dedupe_facts(facts)
-        if not facts:
-            # The exact symptom of the stale-connection bug: a healthy graph with
-            # data, but the long-lived connection returns nothing. Make it visible.
-            logger.warning(
-                "profile returned 0 facts for group_id=%s (graph=%s) — if data is expected, "
-                "suspect a dead pooled connection",
-                gid,
-                getattr(self.graphiti.driver, "_database", None),
+        with self._on_graph(gid):
+            records, _, _ = await self.graphiti.driver.execute_query(
+                "MATCH ()-[r:RELATES_TO]->() "
+                "WHERE r.group_id = $gid AND r.invalid_at IS NULL AND r.expired_at IS NULL "
+                "RETURN r.fact AS fact, r.name AS name, r.polarity AS polarity, "
+                "r.strength AS strength, r.valid_at AS valid_at, r.created_at AS created_at "
+                "ORDER BY r.created_at DESC",
+                gid=gid,
             )
-        else:
-            logger.debug("profile gid=%s -> %d facts", gid, len(facts))
-        return {"facts": facts}
+            facts = [
+                {
+                    "fact": r.get("fact"),
+                    "polarity": r.get("polarity"),
+                    "strength": r.get("strength"),
+                    "valid_at": r.get("valid_at"),
+                    "name": r.get("name"),
+                }
+                for r in records
+                if r.get("fact")
+            ]
+            facts = _dedupe_facts(facts)
+            if not facts:
+                # The exact symptom of the stale-connection bug: a healthy graph with
+                # data, but the long-lived connection returns nothing. Make it visible.
+                logger.warning(
+                    "profile returned 0 facts for group_id=%s (graph=%s) — if data is expected, "
+                    "suspect a dead pooled connection",
+                    gid,
+                    getattr(self.graphiti.driver, "_database", None),
+                )
+            else:
+                logger.debug("profile gid=%s -> %d facts", gid, len(facts))
+            return {"facts": facts}
 
 
 async def _smoke() -> None:

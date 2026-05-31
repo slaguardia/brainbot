@@ -81,9 +81,12 @@ pgvector/SQL lookups.
 Three tables instead of nodes/edges:
 
 ```
-sources(id, kind, title, raw_text, domain, version, created_at, updated_at)
+sources(id, kind, title, raw_text, parent_id FK, path, version, created_at, updated_at)
 facts(id, source_id FK, fact text, fact_embedding vector,
       polarity, strength, valid_at, created_at)
+-- path = materialized ancestry (e.g. 'Career/Job Search/Target Role'); domain
+--   scoping is a prefix match on it. parent_id mirrors the source tree (Notion
+--   nesting). See "Scalability" for why this — not a graph — solves domains.
 -- entities table optional; only if we want cross-source merge (see fork below)
 ```
 
@@ -156,17 +159,28 @@ The worry: today we talk about "the target-role doc," but the brain should
 capture many domains (career, skills, health, people, preferences…). How do facts
 stay separated without graph communities?
 
-**Domain = the source document, or a folder of them. Facts inherit their domain
-from `source_id`.** No separate domain abstraction, no per-fact domain tags — the
-corpus of sources *is* the partition, the way a filesystem categorizes by folder
-rather than tagging every byte. **Scale by organizing sources, not facts.** Adding
-a domain = adding a folder; no schema change, no migration.
+**Domain = position in the source hierarchy (the `path`), not a single document.**
+Facts inherit their domain from their source's place in the tree. This is the
+refinement that matters once sources nest (as Notion pages do, arbitrarily deep):
+"which document is the domain?" has no clean answer, but "where does this note sit
+in the tree?" always does. Notion's nesting is a *gift* here — it's a
+human-curated, multi-level domain tree you inherit for free as each source's
+`path` (`Career/Job Search/Target Role`). **Scale by organizing sources, not
+facts.** Adding a domain = a new branch in the tree; no schema change, no migration.
+
+The load-bearing point: **that hierarchy is just a `path` (or `parent_id`) field —
+any document or relational store holds it. A graph DB is not what provides it.**
+Throwing the whole nested notebook into graph nodes doesn't help either: a tree is
+a degenerate graph, recall is still semantic search over node text, and you'd be
+back to "the graph is just a store." The nesting solves the domain problem
+identically on Postgres or on a graph — so it is *not* a reason to keep the graph.
 
 Three recall modes, all cheap:
 
-- **Scoped** — `WHERE domain = 'career'` *alongside* the vector search. pgvector
-  combines a metadata filter with cosine similarity in one query (no traversal).
-  This is the hard boundary.
+- **Scoped** — `WHERE path LIKE 'Career/%'` *alongside* the vector search, at any
+  level of the tree (a whole subtree, or one leaf). pgvector combines this prefix
+  filter with cosine similarity in one query (no traversal). This is the hard,
+  multi-level boundary the nesting buys you.
 - **Unscoped** — semantic search across everything; a job query won't drag in
   health facts because they're not semantically near. **The embedding space is
   itself a soft domain boundary** — the thing graph-thinking overlooks.
@@ -174,16 +188,25 @@ Three recall modes, all cheap:
   dozens of domains is nothing. The scale cliff was never vector count, it's
   recall *precision* as the corpus grows — which the scoped filter addresses.
 
-**The one honest tradeoff** (same as the cross-fact one, at domain scale): flat
-facts make **cross-domain relationships implicit** — the LLM reconstructs links
-at read time instead of them being stored edges. Fine for an LLM consumer that
-already synthesizes. **Revisit a thin relationship layer only if persistent,
-queryable cross-domain links become load-bearing** ("show everything across all
-domains that constrains my job search") — not before.
+**The one honest tradeoff — and the only genuine case for a graph here:**
+*non-hierarchical cross-links.* The `path` tree captures containment, but not
+sideways links across branches — Notion *relations* and *backlinks*, where page A
+references page B in a different domain. Flat facts make those implicit (the LLM
+reconstructs them at read time from co-retrieved facts) rather than stored,
+traversable edges. That's fine for an LLM consumer that already synthesizes. The
+test for whether a graph earns its keep: **do you actually traverse those
+backlinks** ("show everything connected to Project X, wherever it lives") **, or do
+they just exist?** If you only need light cross-linking, a join/link table in
+Postgres covers it; reach for a real graph DB only if that traversal gets deep and
+central — and even then it's a *relationship-query feature, separate from recall*.
 
-Net: the document model scales *better* on delineation than the graph — folders
-are more legible to a human than communities, and they're the same `source_id`
-that powers wipe-replace.
+Net: keep the *structure* (the nesting tree solves domains, multi-level, for
+free), drop the *graph* (a `path` field provides that structure; the graph
+doesn't). The model becomes "nested sources carrying their Notion `path`; facts
+optionally derived; recall semantic, scoped by path prefix." The hierarchy is more
+legible to a human than graph communities — and it's the same `path` whether the
+backend is Postgres or a graph, which is exactly why it isn't an argument *for* the
+graph.
 
 ---
 

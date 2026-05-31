@@ -211,7 +211,13 @@ def _ancestor_titles(page: dict, cfg: Config) -> list[str]:
         parent_id = parent.get("page_id")
         if not parent_id:
             break
-        ancestor = _get(f"/pages/{parent_id}", cfg)
+        try:
+            ancestor = _get(f"/pages/{parent_id}", cfg)
+        except NotionError:
+            # An ancestor the integration can't read (only the leaf page was
+            # shared, not its parents). Stop the walk and use the partial path —
+            # the page content is what matters; the path is best-effort.
+            break
         titles.append(_page_title(ancestor))
         parent = ancestor.get("parent", {})
     titles.reverse()  # root -> immediate parent

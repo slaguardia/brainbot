@@ -1,49 +1,32 @@
 services:
-  falkordb:
-    image: falkordb/falkordb:latest
-    container_name: falkordb
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: postgres
     restart: unless-stopped
     networks:
       - brainnet
+    env_file:
+      - .env
+    environment:
+      POSTGRES_DB: brain
+      POSTGRES_USER: brain
+      # Set POSTGRES_PASSWORD in .env (used here and in the brain's PG_DSN).
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     volumes:
-      # FalkorDB writes RDB snapshots to /var/lib/falkordb/data (its
-      # FALKORDB_DATA_PATH). The image has a /data → /var/lib/falkordb/data
-      # symlink for convenience but you have to mount the real path; mounting
-      # /data overlays the symlink itself and silently drops data on restart.
-      - falkordb-data:/var/lib/falkordb/data
-    # Force a save policy so even small datasets get persisted. Default
-    # redis save thresholds (10K changes / 60s) would lose Phase 1's
-    # entire seed on every container recreation.
-    command:
-      - "redis-server"
-      - "--loadmodule"
-      - "/var/lib/falkordb/bin/falkordb.so"
-      - "--protected-mode"
-      - "no"
-      - "--dir"
-      - "/var/lib/falkordb/data"
-      - "--save"
-      - "30 1"
-      - "--appendonly"
-      - "yes"
+      - postgres-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD-SHELL", "pg_isready -U brain -d brain"]
       interval: 10s
       timeout: 3s
       retries: 5
       start_period: 10s
-    mem_limit: 2g
-
-  # NOTE: the standalone Graphiti MCP server was removed in Phase 2. The brain
-  # service now imports graphiti-core directly and exposes its own MCP face at
-  # /mcp (tools: recall, capture), so the wrapper is no longer needed. History
-  # lives in git if it ever needs to come back.
+    mem_limit: 1g
 
   brain:
-    # The brain service — the smart core. Constructs graphiti-core directly
-    # (no MCP server in the loop) and serves TWO faces on port 8100:
+    # The brain service — the smart core. A pgvector document substrate
+    # (asyncpg in-process; no graph DB) serving TWO faces on port 8100:
     #   - MCP at /mcp        → Claude Code (.mcp.json points here)
-    #   - plain HTTP         → /health, POST /capture, GET /recall (PWA + hook)
+    #   - plain HTTP         → /health, POST /ingest, GET /recall, /profile, /map
     # Consumers (PWA, Claude Code, future apps) all talk to this one service.
     build:
       context: ../brain
@@ -55,13 +38,10 @@ services:
     env_file:
       - .env
     environment:
-      # Constants independent of .env. Secrets (ANTHROPIC/VOYAGE keys) come
-      # from .env via env_file. database == group_id is enforced in code.
-      FALKORDB_HOST: falkordb
-      FALKORDB_PORT: "6379"
-      BRAIN_GROUP_ID: brain
+      # Secrets (VOYAGE_API_KEY, NOTION_TOKEN, POSTGRES_PASSWORD) come from .env.
+      PG_DSN: postgresql://brain:${POSTGRES_PASSWORD}@postgres:5432/brain
     depends_on:
-      falkordb:
+      postgres:
         condition: service_healthy
 
   pwa:
@@ -121,4 +101,4 @@ networks:
     driver: bridge
 
 volumes:
-  falkordb-data:
+  postgres-data:

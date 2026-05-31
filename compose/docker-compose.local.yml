@@ -6,10 +6,8 @@
 # Differences vs the VPS path:
 #   - Exposes the brain service (8100) on 127.0.0.1 so the host-run PWA
 #     backend and ad-hoc curl/python tests can reach it.
-#   - Exposes the FalkorDB Browser UI (3000) on 127.0.0.1 so you can
-#     visually inspect the graph at http://127.0.0.1:3000 (think pgAdmin
-#     for graphs). Connect with host=falkordb port=6379 from inside the
-#     browser's connection prompt.
+#   - Exposes Postgres (5432) on 127.0.0.1 so you can inspect the substrate
+#     with psql / any client: psql postgresql://brain:<pw>@127.0.0.1:5432/brain
 #   - No Caddy / TLS / bearer. The bearer header is enforced by Caddy on
 #     the VPS; locally you talk to the brain directly over plain HTTP.
 #   - The pwa service is intentionally excluded here. Locally you run
@@ -22,9 +20,9 @@
 # there defeats the "only Caddy is public" posture.
 
 services:
-  falkordb:
+  postgres:
     ports:
-      - "127.0.0.1:3000:3000"
+      - "127.0.0.1:5432:5432"
 
   # Expose the brain service on the host so the host-run PWA backend (and
   # ad-hoc curl/python tests) can reach it during local dev.

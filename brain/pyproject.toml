@@ -1,14 +1,15 @@
 [project]
 name = "brainbot-brain"
 version = "0.1.0"
-description = "The brain service — capture + recall over graphiti-core, called directly (no MCP server)."
+description = "The brain service — a pgvector document substrate: ingest sources, recall/profile/map over section-chunks."
 requires-python = ">=3.11"
 dependencies = [
-    # Pinned to match the graphiti MCP image we already run (compose/graphiti).
-    # The [anthropic,falkordb,voyageai] extras pull the provider SDKs the
-    # direct-construction path needs (AnthropicClient, FalkorDriver, VoyageAIEmbedder).
-    "graphiti-core[anthropic,falkordb,voyageai]==0.29.1",
-    "anthropic>=0.104,<1",
+    # Document substrate: Postgres + pgvector (asyncpg driver + the pgvector
+    # type adapter), Voyage for embeddings, and FastMCP (mcp) for the MCP face
+    # + custom HTTP routes. No graphiti/FalkorDB, no LLM at write time.
+    "asyncpg>=0.30,<1",
+    "pgvector>=0.3,<1",
+    "voyageai>=0.3,<1",
     "mcp>=1.27,<2",
     "uvicorn[standard]>=0.30,<1",
 ]

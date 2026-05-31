@@ -14,8 +14,16 @@ faces — plain HTTP and MCP — on port 8100:
 - `GET /map?scope=` — domain discovery: the `(path, title)` source tree.
 - `GET /health` — process liveness.
 
-The same three reads are exposed as MCP tools (`recall`, `profile`, `map`) at
-`/mcp` for Claude Code.
+The same reads are exposed as MCP tools (`recall`, `profile`, `map`) at `/mcp`
+for Claude Code.
+
+**Consumer contract = `recall(query)` only.** Dumb consumer apps (scout, …) ask a
+question and get the relevant chunks; they never need to know the brain's folder
+structure (a *scope*). `profile(scope)` and `map(scope)` are **not consumer
+endpoints** — they're brain-side machinery (`map` → sync reconciliation + maintenance;
+`profile` → self-enrichment: assemble a domain, distill a digest that `recall` then
+surfaces) and owner tools (the authed PWA browsing your own folders). See the design
+doc's "Brain ↔ consumer interface" correction for the rationale.
 
 ## What the brain is
 

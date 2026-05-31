@@ -64,14 +64,15 @@ decides.**
 
 ## Interfaces
 
-Three reads (plus `/ingest` and `/health`). All reads are **read-only for
-consumers** — writes come only from sources.
+Reads are **read-only** (writes come only from sources). **Only `recall` is the
+consumer surface** — `profile`/`map` are internal (brain machinery) + owner tools,
+not for dumb consumer apps.
 
 | Operation | Status | Shape | Notes |
 |---|---|---|---|
-| `recall(query, scope=None)` | built | query → top-k `Chunk`s | Hybrid: cosine (pgvector `<=>`) + full-text (`tsvector`), each path-scoped, fused with RRF (`c=60`). For ad-hoc lookups and large-brain fallback. |
-| `profile(scope, budget)` | built | scope → one assembled `Context` | Every chunk under the `path` prefix, ordered, rebuilt into structured markdown with provenance. Completeness over precision — the scout's primary call. Degrades to recall-in-scope past `budget`, flagging `truncated`. |
-| `map(scope=None)` | built | scope → `(path, title)` tree | Domain discovery, so a consumer that doesn't know its scope can find it. |
+| `recall(query, scope=None)` | built | query → top-k `Chunk`s | Hybrid: cosine (pgvector `<=>`) + full-text (`tsvector`), fused with RRF (`c=60`). **The consumer contract** — dumb apps ask a question; no scope knowledge needed. Completeness via a threshold/high-`k` mode. |
+| `profile(scope, budget)` | built | scope → one assembled `Context` | Every chunk under the `path` prefix, rebuilt into structured markdown. **Not a consumer endpoint** — brain-side self-enrichment (assemble a domain → distill a digest `recall` surfaces) + owner browse. Degrades past `budget`, flagging `truncated`. |
+| `map(scope=None)` | built | scope → `(path, title)` tree | **Not a consumer endpoint** — brain-side sync reconciliation + maintenance, and owner navigation. |
 | `ingest(url)` | built | Notion URL → source + chunk(s) | Fetch → upsert source → wipe-replace chunks → embed. Capture = edit = re-sync. |
 
 Decision (settled): **there is no `ask` method.** The brain is a librarian (no

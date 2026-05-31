@@ -30,9 +30,8 @@ The full reasoning lives in [`architecture.md`](./architecture.md). Per-componen
 |---|---|---|
 | 0 — VPS + Docker substrate | ✅ done | Small VPS, Ubuntu LTS, UFW, Caddy, Tailscale |
 | 1 — Brain online + ingest + Claude Code reads it | 🟡 in progress | Stack runs end-to-end locally with native Anthropic + Voyage providers via a custom-built image. Generic text/document ingest CLI is working. Remaining: VPS deployment + Claude Code client wiring. See [`plans/phase-1-graph-online.md`](./plans/phase-1-graph-online.md) and [Known limits](#known-limits--setup-gotchas) below. |
-| 2 — PWA: one-screen capture + brain service | 🟡 mostly built | Re-scoped from chat/browse/edit down to a single capture screen (the pivot made the brain the product, not the UI). Shipped the `brain` service + capture PWA + Google edge auth. See [`plans/phase-2-pwa-harness.md`](./plans/phase-2-pwa-harness.md) + [`plans/phase-2-pwa-auth.md`](./plans/phase-2-pwa-auth.md). |
-| 3 — Write-back loop + capture polish | 🟡 in plan | [`plans/phase-3-writeback.md`](./plans/phase-3-writeback.md) |
-| 4 — Hardening + life expansion | 🟡 in plan | [`plans/phase-4-hardening.md`](./plans/phase-4-hardening.md) |
+| 2 — PWA: one-screen capture + brain service | 🟡 mostly built | Re-scoped from chat/browse/edit down to a single capture screen (the pivot made the brain the product, not the UI). Shipped the `brain` service + capture PWA + Google edge auth. |
+| → Next — document-substrate refactor | 📐 designed, not started | Reconsidered the substrate: the graph isn't earning its keep, so the go-forward is source-of-truth docs + derived section-chunks on pgvector, with the brain as a reusable intelligence library (`recall`/`profile`/`map`). Supersedes the old phase 3–4 plans. See [`plans/document-substrate-exploration.md`](./plans/document-substrate-exploration.md). |
 
 ## The vision
 
@@ -52,10 +51,8 @@ brainbot/
 ├── architecture.md              — current architecture + decision rationale
 ├── docs/                        — per-component working docs (memory model, embedder, MCP, etc.)
 ├── plans/
-│   ├── phase-1-graph-online.md
-│   ├── phase-2-pwa-harness.md
-│   ├── phase-3-writeback.md
-│   └── phase-4-hardening.md
+│   ├── phase-1-graph-online.md           — Phase 1 (built): graph brain online
+│   └── document-substrate-exploration.md — go-forward: pgvector document substrate
 ├── brain/                       — the brain service (FastAPI; constructs graphiti-core directly; capture + recall + MCP face)
 ├── pwa/                         — Phase 2 one-screen capture PWA (thin proxy to the brain)
 ├── compose/                     — docker-compose, Caddyfile, oauth2-proxy whitelist

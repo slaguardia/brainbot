@@ -145,7 +145,7 @@ attributes that are extracted and persisted, via `edge_type_map`.
 edge carrying `polarity` + `strength`; then rebuild `profile()`/`recall()` to read
 from the graph and retire the body-dump. This **returns to the original Item-2
 design** — now viable because the graph is finally faithful enough to honor it.
-See [`plans/graph-as-source-of-truth.md`](./plans/graph-as-source-of-truth.md).
+(That Path-A plan has since been retired — see **Chapter 6**.)
 
 Kept deliberately **generic** (per [`docs/genericity-rule.md`](./docs/genericity-rule.md)):
 `polarity` and `strength` are domain-agnostic dimensions, not career verbs like
@@ -224,6 +224,52 @@ intact.
 > graph's shape allow — a flawless schema fails silently if its name doesn't match,
 > and a gate's strength can only live on what's representable, never on the formless
 > complement. Read the graph, not the code, to know what actually landed.
+
+---
+
+## Chapter 6 — The graph doesn't earn its keep (the document-substrate pivot)
+
+**Believed:** a knowledge graph (FalkorDB via graphiti) was the right substrate —
+entities, typed edges carrying `polarity`/`strength`, bi-temporal facts. The whole
+premise was that the value is *relationships*.
+
+**Broke:** look at what `recall()` actually does and the graph is never used as a
+graph. It's hybrid semantic + BM25 (RRF) with **zero multi-hop traversal**; the
+topology is a star (everything hangs off the user node) and node-distance reranking
+was deliberately disabled because it can't help on a star. The "relationships"
+benefit was never cashed in. The only real value graphiti gave us was dedup +
+bi-temporal — and bi-temporal is two timestamp columns and a `WHERE` filter, not a
+graph feature. Meanwhile the graph *cost* us: no human-edit surface, a
+`polarity`/`strength` schema that quietly coupled the brain to scout's gating
+use-case, and a black box over the very RAG pipeline this project exists to learn.
+
+**Learned:**
+- Pick the substrate by the **read pattern**, not by "is knowledge a graph." Ours is
+  semantic search → an LLM. That's a document/vector workload wearing a graph costume.
+- The consumer is an LLM, so **structure belongs in the prose, not in columns.**
+  `polarity`/`strength` were the librarian doing the analyst's job — an LLM reads
+  "avoids fintech — hard dealbreaker" straight from the text.
+- Over-decomposing into atomic schema-tagged facts *caused* the wrinkles we kept
+  fighting (closed-set gates shattering, scoped exclusions detaching, the Chapter 3
+  negative-dropping). Storing the human's own **sections** fixes all of them for free.
+
+**Changed (in design; migration not yet executed):** pivoted to a **document
+substrate** — source-of-truth docs + derived **section-chunks** on pgvector. Source
+docs are canonical and human-edited; chunks are the doc's own sections (no schema,
+no fact-extraction LLM); editing a source wipes + re-derives its chunks, so currency
+is guaranteed by construction (no `invalid_at`). The brain becomes a **reusable
+intelligence-gathering library** with two reads — `recall(query)` (lookup) and
+`profile(scope)` (domain dump, the primary mode where missing a fact is the worst
+outcome) — plus `map(scope)` for discovery; consumers are read-only; the
+librarian/analyst split gets *purer* (brain returns raw faithful content, all
+interpretation is the consumer's). Hierarchy (Notion nesting → a `path` field) solves
+domain delineation, and the brain runs as an always-on service kept current by Notion
+auto-sync. Full design: [`plans/document-substrate-exploration.md`](./plans/document-substrate-exploration.md).
+
+> **Principle:** a graph is a store you query by *traversal* — if you never traverse,
+> you've paid for a graph and bought a document store. Choose the substrate by the
+> read pattern, and when the consumer is an LLM, keep the structure in the prose: the
+> cleverness you remove is faithfulness you gain.
 
 ---
 

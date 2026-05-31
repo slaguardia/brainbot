@@ -12,31 +12,6 @@
       "title": "Phase 1.5: Make VPS install + update a one-liner",
       "stories": 3,
       "sourcePlan": "user request 2026-05-10 (no markdown plan file)"
-    },
-    {
-      "id": "FEAT-20260510_134115-p2",
-      "title": "Phase 2: PWA — chat + browse/edit + capture",
-      "stories": 15,
-      "sourcePlan": "plans/phase-2-pwa-harness.md"
-    },
-    {
-      "id": "FEAT-20260510_134115-p3",
-      "title": "Phase 3: Close the write-back loop + capture surface polish",
-      "stories": 8,
-      "sourcePlan": "plans/phase-3-writeback.md"
-    },
-    {
-      "id": "FEAT-20260510_134115-p4",
-      "title": "Phase 4 (Track A): Make backups real before anything else",
-      "stories": 3,
-      "sourcePlan": "plans/phase-4-hardening.md",
-      "backlog": "backlog.json"
-    },
-    {
-      "id": "FEAT-20260510_134115-p4-5",
-      "title": "Phase 4.5: In-PWA upgrade button on /admin",
-      "stories": 3,
-      "sourcePlan": "user request 2026-05-10 (no markdown plan file)"
     }
   ]
 }

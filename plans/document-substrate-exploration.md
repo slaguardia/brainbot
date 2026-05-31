@@ -17,8 +17,6 @@ scout's primary mode); see *Brain ↔ consumer interface*. With that interface n
 specced (phased: `recall` + `profile` + `map` in Phase 1, multi-scope assembly
 later; consumers read-only), **the design hashout is buttoned up — what's left is
 execution (and pulling the trigger).** See also
-[`graph-as-source-of-truth.md`](graph-as-source-of-truth.md) (the *graph-native*
-answer to the same edit/source-of-truth problem) and
 [`../docs/human-edit-surface.md`](../docs/human-edit-surface.md).
 
 ---
@@ -747,7 +745,7 @@ that's a fine reason to leave it.
 
 ## Open questions / sharp edges
 
-- **Closed-set legibility** (carried from `graph-as-source-of-truth.md`): "allowed
+- **Closed-set legibility** (carried over from the earlier graph design): "allowed
   verticals are *exactly* these four" must survive as a set, not shatter into
   disconnected likes. How does that survive flat-fact extraction + read-time
   dedup?

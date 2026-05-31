@@ -33,3 +33,6 @@ Thumbs.db
 # Local backups / test dumps
 *.rdb
 *.sql.gz
+
+# Claude Code worktrees (bg-job isolation; never commit)
+.claude/worktrees/

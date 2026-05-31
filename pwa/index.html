@@ -16,7 +16,11 @@
     <main id="capture-view">
       <header class="cap-head">
         <span class="brand" aria-label="brain">brain</span>
-        <a id="open-docs" href="#docs" aria-label="How the brain works">docs</a>
+        <nav class="cap-nav" aria-label="Brain views">
+          <a href="#search" aria-label="Search the brain">search</a>
+          <a href="#map" aria-label="Source map">map</a>
+          <a id="open-docs" href="#docs" aria-label="How the brain works">docs</a>
+        </nav>
       </header>
       <textarea
         id="capture"
@@ -32,6 +36,8 @@
         coming. See <a href="#docs">docs</a> for how the brain works today.
       </p>
     </main>
+    <div id="search-view" hidden></div>
+    <div id="map-view" hidden></div>
     <div id="docs-view" hidden></div>
     <div id="learnings-view" hidden></div>
     <div id="toast" role="status" aria-live="polite"></div>

@@ -17,6 +17,11 @@ import { fileURLToPath } from "node:url";
 
 const PORT = Number(process.env.PORT ?? 8787);
 
+// Brain service base. Reads are proxied here so the owner PWA can surface the
+// brain's recall/map without the browser talking to the brain directly. Writes
+// are never proxied — the PWA stays read-only against the brain.
+const BRAIN = process.env.BRAIN_SERVICE_URL ?? "http://brain:8100";
+
 const HERE = fileURLToPath(new URL(".", import.meta.url));
 // In prod, dist-server/server/index.js sits next to ../../dist/ (Vite build output).
 // In dev (tsx), src/server/index.ts sits next to ../../dist/ if a build exists,
@@ -49,6 +54,30 @@ function captureGone(res: ServerResponse): void {
       "The brain now ingests sources (Notion pages / docs), not free text. " +
       "A source-editing surface is planned.",
   });
+}
+
+// GET-only read proxy to the brain. Forwards a fixed allow-list of query params
+// to a brain read endpoint and streams back its JSON verbatim. On any fetch
+// failure the brain is treated as unreachable (502) rather than hanging.
+async function proxyRead(
+  res: ServerResponse,
+  url: URL,
+  brainPath: string,
+  params: readonly string[],
+): Promise<void> {
+  const target = new URL(brainPath, BRAIN);
+  for (const p of params) {
+    const v = url.searchParams.get(p);
+    if (v !== null) target.searchParams.set(p, v);
+  }
+  try {
+    const upstream = await fetch(target, { method: "GET" });
+    const body = await upstream.text();
+    res.writeHead(upstream.status, { "Content-Type": "application/json; charset=utf-8" });
+    res.end(body);
+  } catch (err) {
+    json(res, 502, { error: "brain unreachable", detail: String(err) });
+  }
 }
 
 async function serveStatic(req: IncomingMessage, res: ServerResponse): Promise<void> {
@@ -102,6 +131,15 @@ const server = createServer((req, res) => {
   }
   if (req.method === "GET" && url.pathname === "/api/health") {
     json(res, 200, { ok: true });
+    return;
+  }
+  // Owner read-views: recall search + source map, proxied GET-only to the brain.
+  if (req.method === "GET" && url.pathname === "/api/recall") {
+    void proxyRead(res, url, "/recall", ["q", "k", "scope"]);
+    return;
+  }
+  if (req.method === "GET" && url.pathname === "/api/map") {
+    void proxyRead(res, url, "/map", ["scope"]);
     return;
   }
   if (req.method === "GET" || req.method === "HEAD") {

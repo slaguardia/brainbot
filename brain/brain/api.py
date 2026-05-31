@@ -23,7 +23,7 @@ from starlette.applications import Starlette
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
-from .db import close_pool, get_pool
+from .db import apply_schema, close_pool, get_pool
 from .notion import NotionError, fetch_page
 from .store import map_, profile, recall, upsert_source
 
@@ -80,6 +80,9 @@ async def ingest(request: Request) -> JSONResponse:
             title=page["title"],
             raw_text=page["text"],
             path=page["path"],
+            # Notion page id (a uuid) is the stable source id, so re-ingesting the
+            # same URL wipe-replaces that source instead of creating a duplicate.
+            source_id=page["id"],
         )
     except Exception as e:  # noqa: BLE001
         logger.exception("ingest: upsert_source failed")
@@ -183,8 +186,9 @@ def _with_pool_lifespan(app: Starlette) -> None:
 
     @contextlib.asynccontextmanager
     async def lifespan(app: Starlette) -> AsyncIterator[None]:
-        await get_pool()
-        logger.info("brain: asyncpg pool opened")
+        pool = await get_pool()
+        await apply_schema(pool)  # idempotent DDL — ensures sources/chunks exist on a fresh DB
+        logger.info("brain: asyncpg pool opened + schema applied")
         try:
             async with inner(app):
                 yield

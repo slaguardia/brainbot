@@ -144,7 +144,7 @@ async def recall(
     path subtree. Runs a semantic select (cosine distance) and a lexical select
     (`ts_rank`), each capped at ~50 and prefix-scoped by `sources.path`, then
     fuses them with RRF and returns the top-k `Chunk`s."""
-    [q_emb] = await asyncio.to_thread(embed, [query])
+    [q_emb] = await asyncio.to_thread(embed, [query], "query")
     scope_like = f"{scope}%" if scope else "%"
 
     async with pool.acquire() as conn:

@@ -221,8 +221,9 @@ def _ancestor_titles(page: dict, cfg: Config) -> list[str]:
 # ---- public entrypoint -------------------------------------------------------
 
 def fetch_page(url: str) -> dict:
-    """Fetch a Notion page as {title, text, path}.
+    """Fetch a Notion page as {id, title, text, path}.
 
+    - id:    the dashed Notion page uuid (used as the stable source id).
     - title: the page title.
     - text:  blocks flattened to markdown (the canonical content to chunk/embed).
     - path:  ancestor titles + this page's title joined by '/'.
@@ -240,4 +241,6 @@ def fetch_page(url: str) -> dict:
     title = _page_title(page)
     text = _page_text(page_id, cfg)
     path = "/".join([*_ancestor_titles(page, cfg), title]).strip("/")
-    return {"title": title, "text": text, "path": path}
+    # `id` is the dashed Notion page uuid — the caller uses it as the stable
+    # source id so re-ingesting the same page wipe-replaces rather than duplicates.
+    return {"id": page_id, "title": title, "text": text, "path": path}

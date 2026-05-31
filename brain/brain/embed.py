@@ -28,21 +28,22 @@ def _get_client(cfg: Config) -> voyageai.Client:
     return _client
 
 
-def embed(texts: list[str]) -> list[list[float]]:
+def embed(texts: list[str], input_type: str = "document") -> list[list[float]]:
     """Embed a batch of texts with Voyage (model = BRAIN_EMBED_MODEL).
 
     Returns one float-vector per input text, in input order. The vectors are
     EMBED_DIM-dimensional (voyage-3-lite = 512) to match the chunks.embedding
     column. Synchronous — wrap with asyncio.to_thread in async callers.
+
+    input_type: "document" for stored content (ingest), "query" for recall
+    queries — Voyage embeds the two sides asymmetrically for better retrieval.
     """
     if not texts:
         return []
     cfg = Config()
     client = _get_client(cfg)
-    # `input_type="document"` is the right side for stored content; query-side
-    # callers can re-embed with their own intent later if it ever matters. One
-    # batched call (Voyage accepts a list) keeps ingest a single round-trip.
-    result = client.embed(texts, model=cfg.embed_model, input_type="document")
+    # One batched call (Voyage accepts a list) keeps ingest a single round-trip.
+    result = client.embed(texts, model=cfg.embed_model, input_type=input_type)
     embeddings = result.embeddings
     if len(embeddings) != len(texts):
         raise RuntimeError(

@@ -185,4 +185,46 @@ Working the design out loud sharpened it past the first sketch:
 
 ---
 
+## Chapter 5 — Making the tags actually fire (what only the live retest caught)
+
+**Believed:** with Path A's typed edge and tuned descriptions in place, facts
+would come back carrying their `polarity`/`strength`. Ship it.
+
+**Broke:** two silent failures no amount of *reading the code* would reveal —
+only re-ingesting real data and querying the graph exposed them.
+
+- **Gotcha 1 — every tag came back `null`.** graphiti matches the LLM's extracted
+  relation label against the registered edge-type name *by exact string*, and its
+  extraction prompt mandates `SCREAMING_SNAKE_CASE` labels. We registered the type
+  as `"Asserts"`; the LLM emitted `"ASSERTS"`; `{"Asserts": …}.get("ASSERTS")` →
+  `None` → the attribute pass never ran. A perfectly-described schema that silently
+  never matched. (An earlier run matched ~half by luck, which disguised it as
+  "inconsistent tagging" rather than a casing bug.)
+- **Gotcha 2 — a clearly-stated hard gate landed `soft`.** "SF or remote,
+  everything else is a skip" — explicit in the source — came back as a soft "will
+  consider SF/remote." The firmness lived in the *skip* clause, whose target is
+  "everywhere else": a **set-complement with no entity** for an entity→entity graph
+  to anchor. The skip dropped; only the soft positive survived.
+
+**Learned:**
+- A custom edge type is only as good as its **name match**. The description steers
+  *which* edges qualify, but if the type-name doesn't equal what the extractor
+  actually emits (`SCREAMING_SNAKE_CASE`), nothing matches and it fails *silently*.
+- A **"must be in set S" gate is captured by hard-positive facts on S's members**,
+  not by excluding the complement. There's no node for "everywhere else," so the
+  firmness has to ride on what *is* representable — the rewrite must say "will
+  **only** consider X or Y," not "will consider X or Y."
+
+**Changed:** registered the type as `ASSERTS`; tuned the rewrite so a gated
+accept-set states its members as a hard requirement. The same source then landed
+location `hard` (both the requirement and the skip), with the broad soft/hard mix
+intact.
+
+> **Principle:** the model only tags what the substrate's matching rules and the
+> graph's shape allow — a flawless schema fails silently if its name doesn't match,
+> and a gate's strength can only live on what's representable, never on the formless
+> complement. Read the graph, not the code, to know what actually landed.
+
+---
+
 *Next chapter gets written when this one breaks. It will.*

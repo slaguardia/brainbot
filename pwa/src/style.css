@@ -143,31 +143,33 @@ main {
   text-decoration: none;
   user-select: none;
   cursor: default;
-  transition: text-shadow var(--dur-fast) var(--ease);
-}
-.brand:hover {
+  /* Chromatic RGB-split glitch — present at rest; hover amplifies it. */
   text-shadow: -1.5px 0 rgba(255, 45, 120, 0.72),
     1.5px 0 rgba(40, 224, 255, 0.72), 0 0 16px rgba(139, 109, 255, 0.3);
-  animation: brand-glitch 360ms steps(2, end);
+}
+.brand:hover {
+  animation: brand-glitch 360ms steps(2, end) 2;
 }
 @keyframes brand-glitch {
   0% {
     transform: translate(0, 0);
+    text-shadow: -1.5px 0 rgba(255, 45, 120, 0.72), 1.5px 0 rgba(40, 224, 255, 0.72);
   }
-  20% {
-    transform: translate(-1px, 0);
+  25% {
+    transform: translate(-2px, 0);
+    text-shadow: 2.5px 0 rgba(255, 45, 120, 0.9), -2.5px 0 rgba(40, 224, 255, 0.9);
   }
-  40% {
-    transform: translate(1.5px, 0);
+  50% {
+    transform: translate(2px, -1px);
+    text-shadow: -2.5px 0 rgba(255, 45, 120, 0.9), 2.5px 0 rgba(40, 224, 255, 0.9);
   }
-  60% {
-    transform: translate(-1px, 0);
-  }
-  80% {
-    transform: translate(1px, 0);
+  75% {
+    transform: translate(-1px, 1px);
+    text-shadow: 1.5px 0 rgba(255, 45, 120, 0.72), -1.5px 0 rgba(40, 224, 255, 0.72);
   }
   100% {
     transform: translate(0, 0);
+    text-shadow: -1.5px 0 rgba(255, 45, 120, 0.72), 1.5px 0 rgba(40, 224, 255, 0.72);
   }
 }
 

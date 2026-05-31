@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <meta name="theme-color" content="#0b0b0d" />
+    <meta name="theme-color" content="#0b0d12" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="Brain" />
@@ -14,6 +14,10 @@
   </head>
   <body>
     <main id="capture-view">
+      <header class="cap-head">
+        <span class="brand" aria-label="brain">brain</span>
+        <a id="open-docs" href="#docs" aria-label="How the brain works">docs</a>
+      </header>
       <textarea
         id="capture"
         autofocus
@@ -24,7 +28,6 @@
       ></textarea>
       <button id="send" type="button">Send to brain</button>
     </main>
-    <a id="open-docs" href="#docs" aria-label="How the brain works">Docs</a>
     <div id="docs-view" hidden></div>
     <div id="toast" role="status" aria-live="polite"></div>
     <script type="module" src="/src/main.ts"></script>

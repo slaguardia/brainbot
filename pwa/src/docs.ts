@@ -34,7 +34,7 @@ const DOCS_HTML = `
     <a class="docs-back" href="#" aria-label="Back to capture">
       <span class="docs-back-arrow" aria-hidden="true">←</span> Capture
     </a>
-    <span class="docs-title">How the brain works</span>
+    <span class="brand" aria-label="brain">brain</span>
   </div>
 
   <div class="docs-body">
@@ -375,41 +375,41 @@ const DOCS_HTML = `
           <svg viewBox="0 0 520 300" role="img" aria-label="Graph: owner hub with RELATES_TO facts, and an episode hub with MENTIONS edges">
             <defs>
               <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-                <path d="M0,0 L10,5 L0,10 z" fill="#6e6b64"></path>
+                <path d="M0,0 L10,5 L0,10 z" fill="#6c7484"></path>
               </marker>
             </defs>
             <!-- edges -->
-            <g stroke="#4a4844" stroke-width="1.5" fill="none" marker-end="url(#arrow)">
+            <g stroke="#2d3243" stroke-width="1.5" fill="none" marker-end="url(#arrow)">
               <line x1="250" y1="150" x2="95"  y2="70"></line>
               <line x1="250" y1="150" x2="95"  y2="230"></line>
               <line x1="250" y1="150" x2="420" y2="95"></line>
             </g>
-            <g stroke="#3f3a4f" stroke-width="1.5" stroke-dasharray="4 4" fill="none" marker-end="url(#arrow)">
+            <g stroke="#403a5c" stroke-width="1.5" stroke-dasharray="4 4" fill="none" marker-end="url(#arrow)">
               <line x1="420" y1="215" x2="285" y2="170"></line>
               <line x1="420" y1="215" x2="430" y2="120"></line>
             </g>
             <!-- edge labels -->
-            <text x="150" y="100" fill="#a8a59d" font-size="11">RELATES_TO</text>
-            <text x="150" y="205" fill="#a8a59d" font-size="11">RELATES_TO</text>
-            <text x="335" y="115" fill="#a8a59d" font-size="11">RELATES_TO</text>
-            <text x="318" y="205" fill="#9b95c9" font-size="11">MENTIONS</text>
+            <text x="150" y="100" fill="#9099a8" font-size="11">RELATES_TO</text>
+            <text x="150" y="205" fill="#9099a8" font-size="11">RELATES_TO</text>
+            <text x="335" y="115" fill="#9099a8" font-size="11">RELATES_TO</text>
+            <text x="318" y="205" fill="#a594ff" font-size="11">MENTIONS</text>
             <!-- owner hub -->
-            <circle cx="250" cy="150" r="34" fill="#2a2926" stroke="#d97757" stroke-width="2"></circle>
-            <text x="250" y="154" text-anchor="middle" fill="#f5f4ee" font-size="13" font-weight="600">You</text>
+            <circle cx="250" cy="150" r="34" fill="#14171f" stroke="#8b6dff" stroke-width="2"></circle>
+            <text x="250" y="154" text-anchor="middle" fill="#e8eaf0" font-size="13" font-weight="600">You</text>
             <!-- entity nodes -->
-            <circle cx="78" cy="62" r="26" fill="#22302c" stroke="#7fb0a3" stroke-width="1.5"></circle>
-            <text x="78" y="58" text-anchor="middle" fill="#cfe0da" font-size="10">Topic</text>
-            <text x="78" y="71" text-anchor="middle" fill="#8fa8a1" font-size="9">forward-deployed</text>
-            <circle cx="78" cy="238" r="26" fill="#2a2926" stroke="#7fb0a3" stroke-width="1.5"></circle>
-            <text x="78" y="234" text-anchor="middle" fill="#cfe0da" font-size="10">Person</text>
-            <text x="78" y="247" text-anchor="middle" fill="#8fa8a1" font-size="9">Beatrice</text>
-            <circle cx="445" cy="88" r="26" fill="#2a2926" stroke="#7fb0a3" stroke-width="1.5"></circle>
-            <text x="445" y="84" text-anchor="middle" fill="#cfe0da" font-size="10">Org</text>
-            <text x="445" y="97" text-anchor="middle" fill="#8fa8a1" font-size="9">Globex</text>
+            <circle cx="78" cy="62" r="26" fill="#14171f" stroke="#7aa9ff" stroke-width="1.5"></circle>
+            <text x="78" y="58" text-anchor="middle" fill="#c7d2e8" font-size="10">Topic</text>
+            <text x="78" y="71" text-anchor="middle" fill="#8b94a6" font-size="9">forward-deployed</text>
+            <circle cx="78" cy="238" r="26" fill="#14171f" stroke="#7aa9ff" stroke-width="1.5"></circle>
+            <text x="78" y="234" text-anchor="middle" fill="#c7d2e8" font-size="10">Person</text>
+            <text x="78" y="247" text-anchor="middle" fill="#8b94a6" font-size="9">Beatrice</text>
+            <circle cx="445" cy="88" r="26" fill="#14171f" stroke="#7aa9ff" stroke-width="1.5"></circle>
+            <text x="445" y="84" text-anchor="middle" fill="#c7d2e8" font-size="10">Org</text>
+            <text x="445" y="97" text-anchor="middle" fill="#8b94a6" font-size="9">Globex</text>
             <!-- episode hub -->
-            <rect x="402" y="196" width="86" height="40" rx="9" fill="#26233322" stroke="#9b95c9" stroke-width="1.5"></rect>
-            <text x="445" y="214" text-anchor="middle" fill="#c9c4e6" font-size="10">Episodic</text>
-            <text x="445" y="227" text-anchor="middle" fill="#9690b8" font-size="9">a capture's body</text>
+            <rect x="402" y="196" width="86" height="40" rx="9" fill="rgba(139,109,255,0.08)" stroke="#8b6dff" stroke-width="1.5"></rect>
+            <text x="445" y="214" text-anchor="middle" fill="#c2b8ff" font-size="10">Episodic</text>
+            <text x="445" y="227" text-anchor="middle" fill="#9a90c0" font-size="9">a capture's body</text>
           </svg>
         </div>
         <p>

@@ -1,28 +1,94 @@
-/* Warm-dark palette tuned to feel like a writing app, not a form.
-   Reference: claude.ai's input affordance — warm neutrals, generous
-   whitespace, restrained accent, serif-leaning body for the writing
-   surface itself. UI chrome stays sans. */
+/* Cool-dark palette ported from the scout consumer (cool navy surfaces,
+   purple brand accent, blue interactive, emerald/amber/coral semantics).
+   The capture textarea keeps its serif "writing surface" — everything else
+   (UI chrome, buttons, docs) speaks scout. */
 :root {
-  --bg: #1f1e1c;
-  --bg-elevated: #2a2926;
-  --border: #383632;
-  --border-strong: #4a4844;
-  --fg: #f5f4ee;
-  --fg-muted: #a8a59d;
-  --fg-faint: #6e6b64;
-  --accent: #d97757;
-  --accent-press: #c46342;
-  --error: #e07a6a;
-  --error-bg: #3a201c;
-  --radius: 14px;
-  --radius-lg: 18px;
-  --shadow-soft: 0 1px 0 rgba(255, 255, 255, 0.04) inset,
-    0 8px 24px rgba(0, 0, 0, 0.25);
+  /* Surfaces */
+  --bg: #0b0d12;
+  --bg-2: #0f1218;
+  --bg-elevated: #14171f; /* "panel" — cards, inputs, raised surfaces */
+  --panel-2: #181c26;
+  --panel-3: #1d2230;
+
+  /* Text */
+  --fg: #e8eaf0;
+  --fg-muted: #9099a8;
+  --fg-faint: #6c7484;
+
+  /* Lines */
+  --border: #232838;
+  --border-strong: #2d3243;
+
+  /* Brand accent (purple) + interactive (blue) */
+  --accent: #8b6dff;
+  --accent-press: #7a5cf0;
+  --link: #7aa9ff;
+  --link-bg: rgba(122, 169, 255, 0.12);
+
+  /* Semantic signal */
+  --yes: #34d399;
+  --yes-bg: rgba(52, 211, 153, 0.12);
+  --maybe: #f5b942;
+  --maybe-bg: rgba(245, 185, 66, 0.12);
+  --no: #ef6464;
+  --no-bg: rgba(239, 100, 100, 0.12);
+  --error: #ef6464;
+  --error-bg: rgba(239, 100, 100, 0.12);
+
+  /* Radius */
+  --r-sm: 4px;
+  --r-md: 6px;
+  --r-lg: 10px;
+  --r-xl: 14px;
+  --radius: 10px;
+  --radius-lg: 14px;
+
+  /* Motion — scout's snappy easing + three tiers */
+  --ease: cubic-bezier(0.32, 0.72, 0, 1);
+  --dur-fast: 120ms;
+  --dur-base: 180ms;
+  --dur-slow: 260ms;
+
+  /* Shadows */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.25);
+  --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.35);
+  --shadow-lg: -16px 0 48px rgba(0, 0, 0, 0.55);
+  --shadow-soft: var(--shadow-md);
+
+  /* Font stacks */
+  --font-ui: -apple-system, BlinkMacSystemFont, "SF Pro Text", Inter, "Segoe UI",
+    Roboto, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", "Fira Code", "SF Mono", ui-monospace, Menlo,
+    Consolas, monospace;
+  --font-serif: "Iowan Old Style", "Charter", "Georgia", "Cambria",
+    "Times New Roman", serif;
+
   color-scheme: dark;
 }
 
 * {
   box-sizing: border-box;
+}
+
+/* Scout-style thin themed scrollbars. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 999px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::selection {
+  background: rgba(139, 109, 255, 0.32);
 }
 
 html,
@@ -32,25 +98,13 @@ body {
   height: 100%;
   background: var(--bg);
   color: var(--fg);
-  font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI",
-    system-ui, sans-serif;
-  font-size: 17px;
+  font-family: var(--font-ui);
+  font-size: 15px;
+  font-feature-settings: "ss01", "cv11";
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   -webkit-tap-highlight-color: transparent;
   text-rendering: optimizeLegibility;
-}
-
-body {
-  /* Subtle vertical falloff — invisible at a glance, gives the surface
-     depth instead of a flat slab. */
-  background: radial-gradient(
-      ellipse at top,
-      rgba(217, 119, 87, 0.04) 0%,
-      transparent 55%
-    ),
-    var(--bg);
-  background-attachment: fixed;
 }
 
 main {
@@ -58,7 +112,7 @@ main {
   flex-direction: column;
   height: 100dvh;
   gap: 14px;
-  padding: max(20px, env(safe-area-inset-top))
+  padding: max(18px, env(safe-area-inset-top))
     max(20px, env(safe-area-inset-right))
     max(20px, env(safe-area-inset-bottom))
     max(20px, env(safe-area-inset-left));
@@ -67,8 +121,84 @@ main {
   width: 100%;
 }
 
-/* Writing surface: serif body, comfortable measure, no chrome.
-   The textarea IS the page. */
+/* Slim capture header: brand wordmark left, docs link right. Keeps the
+   screen one-screen while carrying scout's brand identity. */
+.cap-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex: 0 0 auto;
+}
+
+/* The glitch wordmark — scout's signature. RGB-split on hover, the only
+   flashy motion in the whole UI. */
+.brand {
+  font-family: var(--font-mono);
+  font-size: 17px;
+  font-weight: 800;
+  letter-spacing: 0.22em;
+  text-transform: lowercase;
+  color: var(--fg);
+  text-decoration: none;
+  user-select: none;
+  cursor: default;
+  transition: text-shadow var(--dur-fast) var(--ease);
+}
+.brand:hover {
+  text-shadow: -1.5px 0 rgba(255, 45, 120, 0.72),
+    1.5px 0 rgba(40, 224, 255, 0.72), 0 0 16px rgba(139, 109, 255, 0.3);
+  animation: brand-glitch 360ms steps(2, end);
+}
+@keyframes brand-glitch {
+  0% {
+    transform: translate(0, 0);
+  }
+  20% {
+    transform: translate(-1px, 0);
+  }
+  40% {
+    transform: translate(1.5px, 0);
+  }
+  60% {
+    transform: translate(-1px, 0);
+  }
+  80% {
+    transform: translate(1px, 0);
+  }
+  100% {
+    transform: translate(0, 0);
+  }
+}
+
+#open-docs {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: lowercase;
+  color: var(--fg-muted);
+  text-decoration: none;
+  padding: 6px 11px;
+  border-radius: var(--r-md);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  transition: color var(--dur-fast) var(--ease),
+    border-color var(--dur-fast) var(--ease),
+    background-color var(--dur-fast) var(--ease);
+}
+#open-docs:hover {
+  color: var(--fg);
+  border-color: var(--border-strong);
+  background: var(--panel-2);
+}
+#open-docs:focus-visible {
+  outline: none;
+  border-color: var(--link);
+  box-shadow: 0 0 0 3px var(--link-bg);
+}
+
+/* Writing surface: serif body kept on purpose — the textarea IS the page. */
 #capture {
   flex: 1;
   width: 100%;
@@ -77,15 +207,12 @@ main {
   color: var(--fg);
   border: none;
   outline: none;
-  font-family: "Iowan Old Style", "Charter", "Georgia", "Cambria", "Times New Roman",
-    serif;
+  font-family: var(--font-serif);
   font-size: 20px;
   line-height: 1.55;
   letter-spacing: 0.005em;
   padding: 6px 2px;
   caret-color: var(--accent);
-  /* iOS quietly enforces 16px to skip the auto-zoom on focus — we're
-     already above that; this just locks it in across engines. */
   -webkit-text-size-adjust: 100%;
 }
 
@@ -95,42 +222,44 @@ main {
 }
 
 #capture::selection {
-  background: rgba(217, 119, 87, 0.28);
+  background: rgba(139, 109, 255, 0.32);
 }
 
+/* Primary action — scout's interactive blue, solid for a clear CTA. */
 #send {
   width: 100%;
-  padding: 15px 20px;
-  min-height: 52px;
-  background: var(--accent);
-  color: #1a1714;
-  border: 1px solid rgba(0, 0, 0, 0.18);
-  border-radius: var(--radius);
+  padding: 13px 20px;
+  min-height: 50px;
+  background: var(--link);
+  color: #0b0d12;
+  border: 1px solid rgba(0, 0, 0, 0.2);
+  border-radius: var(--r-md);
   font: inherit;
   font-weight: 600;
-  font-size: 16px;
+  font-size: 14px;
   letter-spacing: 0.01em;
   cursor: pointer;
   touch-action: manipulation;
   user-select: none;
-  transition: background-color 120ms ease, transform 120ms ease,
-    box-shadow 120ms ease;
-  box-shadow: var(--shadow-soft);
+  transition: background-color var(--dur-fast) var(--ease),
+    transform var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease);
+  box-shadow: var(--shadow-sm);
 }
 
 #send:hover {
-  background: #e08465;
+  background: #a4c2ff;
 }
 
 #send:active {
-  background: var(--accent-press);
+  background: #5f93f0;
   transform: translateY(1px);
   box-shadow: none;
 }
 
 #send:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 3px;
+  outline: none;
+  border-color: var(--link);
+  box-shadow: 0 0 0 3px rgba(122, 169, 255, 0.25);
 }
 
 #send:disabled {
@@ -141,28 +270,37 @@ main {
   box-shadow: none;
 }
 
-/* Toast: floats above the keyboard, pill-shaped, subtly blurred so it
-   reads as a separate plane from the writing surface. */
+/* Toast: scout's panel toast with a glowing status dot. */
 #toast {
   position: fixed;
   left: 50%;
-  bottom: calc(96px + env(safe-area-inset-bottom));
-  transform: translate(-50%, 12px) scale(0.96);
-  background: rgba(42, 41, 38, 0.92);
-  -webkit-backdrop-filter: saturate(160%) blur(12px);
-  backdrop-filter: saturate(160%) blur(12px);
+  bottom: calc(92px + env(safe-area-inset-bottom));
+  transform: translate(-50%, 12px) scale(0.98);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
   color: var(--fg);
-  padding: 11px 18px;
-  border-radius: 999px;
-  font-size: 14px;
+  padding: 10px 16px 10px 14px;
+  border-radius: var(--r-md);
+  font-size: 13px;
   font-weight: 500;
   letter-spacing: 0.01em;
   opacity: 0;
   pointer-events: none;
-  transition: opacity 200ms ease, transform 220ms cubic-bezier(0.2, 0.9, 0.3, 1.2);
-  border: 1px solid var(--border);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  transition: opacity var(--dur-base) var(--ease),
+    transform var(--dur-base) var(--ease);
+  box-shadow: var(--shadow-md);
   white-space: nowrap;
+}
+#toast::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--yes);
+  box-shadow: 0 0 8px var(--yes);
 }
 
 #toast.show {
@@ -171,12 +309,18 @@ main {
 }
 
 #toast.error {
-  background: rgba(58, 32, 28, 0.92);
-  border-color: #6a3a32;
-  color: var(--error);
+  color: var(--no);
+  border-color: #5a2f33;
+}
+#toast.error::before {
+  background: var(--no);
+  box-shadow: 0 0 8px var(--no);
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .brand:hover {
+    animation: none;
+  }
   #send,
   #toast {
     transition: opacity 120ms ease;
@@ -185,10 +329,10 @@ main {
 }
 
 /* ===========================================================================
-   Documentation view. Same warm-dark palette as the capture screen; UI chrome
-   stays sans (the serif is reserved for the writing surface). Reached via the
-   `#docs` hash route. A few muted legend hues are added for the LLM-layer
-   diagrams — kept desaturated so the page still reads as one warm surface.
+   Documentation view. Same scout palette; UI chrome is sans/mono (the serif
+   stays on the capture surface). Reached via the `#docs` hash route. The
+   diagram legend hues map onto scout's semantic colors: purple = LLM, blue =
+   embeddings, amber = search, emerald = graph store.
    =========================================================================== */
 
 #capture-view[hidden],
@@ -196,47 +340,13 @@ main {
   display: none;
 }
 
-/* Floating entry from the capture screen — unobtrusive, top-right. */
-#open-docs {
-  position: fixed;
-  z-index: 20;
-  top: max(14px, env(safe-area-inset-top));
-  right: max(16px, env(safe-area-inset-right));
-  font-size: 13px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  color: var(--fg-muted);
-  text-decoration: none;
-  padding: 7px 13px;
-  border-radius: 999px;
-  background: rgba(42, 41, 38, 0.7);
-  border: 1px solid var(--border);
-  -webkit-backdrop-filter: blur(8px);
-  backdrop-filter: blur(8px);
-  transition: color 120ms ease, border-color 120ms ease;
-}
-#open-docs:hover {
-  color: var(--fg);
-  border-color: var(--border-strong);
-}
-#open-docs:active {
-  transform: translateY(1px);
-}
-#open-docs:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 3px;
-}
-body.docs-open #open-docs {
-  display: none;
-}
-
 #docs-view {
   --topbar-h: calc(52px + env(safe-area-inset-top));
-  --chip-llm: #d97757; /* warm orange — generative LLM */
-  --chip-vec: #7fb0a3; /* sage — embeddings / vector */
-  --chip-search: #cba56a; /* gold — search / retrieval */
-  --chip-store: #9b95c9; /* lavender — graph store */
-  --chip-io: #8a8780; /* neutral — in / out */
+  --chip-llm: var(--accent); /* purple — generative LLM */
+  --chip-vec: var(--link); /* blue — embeddings / vector */
+  --chip-search: var(--maybe); /* amber — search / retrieval */
+  --chip-store: var(--yes); /* emerald — graph store */
+  --chip-io: var(--fg-faint); /* neutral — in / out */
 }
 
 /* --- Sticky top bar --------------------------------------------------------*/
@@ -251,10 +361,14 @@ body.docs-open #open-docs {
   display: flex;
   align-items: center;
   gap: 14px;
-  background: rgba(31, 30, 28, 0.85);
+  background: rgba(11, 13, 18, 0.82);
   -webkit-backdrop-filter: saturate(150%) blur(12px);
   backdrop-filter: saturate(150%) blur(12px);
   border-bottom: 1px solid var(--border);
+}
+.docs-topbar .brand {
+  margin-left: auto;
+  font-size: 14px;
 }
 .docs-back {
   display: inline-flex;
@@ -265,8 +379,9 @@ body.docs-open #open-docs {
   font-size: 14px;
   font-weight: 500;
   padding: 6px 10px 6px 8px;
-  border-radius: 8px;
-  transition: color 120ms ease, background-color 120ms ease;
+  border-radius: var(--r-md);
+  transition: color var(--dur-fast) var(--ease),
+    background-color var(--dur-fast) var(--ease);
 }
 .docs-back:hover {
   color: var(--fg);
@@ -275,12 +390,6 @@ body.docs-open #open-docs {
 .docs-back-arrow {
   font-size: 16px;
   line-height: 1;
-}
-.docs-title {
-  color: var(--fg-faint);
-  font-size: 13px;
-  font-weight: 500;
-  letter-spacing: 0.02em;
 }
 
 /* --- Body + section nav ----------------------------------------------------*/
@@ -293,7 +402,7 @@ body.docs-open #open-docs {
   z-index: 5;
   margin: 0;
   padding: 10px max(16px, env(safe-area-inset-left));
-  background: rgba(31, 30, 28, 0.9);
+  background: rgba(11, 13, 18, 0.9);
   -webkit-backdrop-filter: blur(10px);
   backdrop-filter: blur(10px);
   border-bottom: 1px solid var(--border);
@@ -313,15 +422,17 @@ body.docs-open #open-docs {
   border-radius: 999px;
   border: 1px solid var(--border);
   background: var(--bg-elevated);
-  transition: color 120ms ease, border-color 120ms ease, background-color 120ms ease;
+  transition: color var(--dur-fast) var(--ease),
+    border-color var(--dur-fast) var(--ease),
+    background-color var(--dur-fast) var(--ease);
 }
 .docs-nav-link:hover {
   color: var(--fg);
 }
 .docs-nav-link.active {
   color: var(--fg);
-  border-color: var(--accent);
-  background: rgba(217, 119, 87, 0.1);
+  border-color: var(--link);
+  background: var(--link-bg);
 }
 
 /* --- Article ---------------------------------------------------------------*/
@@ -341,7 +452,7 @@ body.docs-open #open-docs {
   color: var(--fg);
 }
 .docs-lead {
-  color: #cfccc4;
+  color: #c7cdda;
   font-size: 16px;
   line-height: 1.6;
 }
@@ -364,24 +475,24 @@ body.docs-open #open-docs {
 .docs-article p {
   color: var(--fg-muted);
   line-height: 1.65;
-  font-size: 15.5px;
+  font-size: 15px;
 }
 .docs-article em {
   color: var(--fg);
   font-style: italic;
 }
 .docs-article code {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 0.86em;
+  font-family: var(--font-mono);
+  font-size: 0.84em;
   background: rgba(255, 255, 255, 0.05);
   padding: 1px 5px;
-  border-radius: 5px;
-  color: #e8d9c8;
+  border-radius: var(--r-sm);
+  color: #cdd5e6;
 }
 .docs-article pre {
-  background: #181715;
+  background: var(--bg-2);
   border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border-radius: var(--r-lg);
   padding: 14px 16px;
   overflow-x: auto;
   margin: 14px 0;
@@ -398,8 +509,8 @@ body.docs-open #open-docs {
 .note {
   border: 1px solid var(--border);
   border-left: 3px solid var(--accent);
-  background: rgba(217, 119, 87, 0.05);
-  border-radius: var(--radius);
+  background: rgba(139, 109, 255, 0.06);
+  border-radius: var(--r-lg);
   padding: 14px 16px;
   margin: 20px 0;
   font-size: 14.5px;
@@ -422,12 +533,12 @@ body.docs-open #open-docs {
   margin-left: 8px;
 }
 .dir-write {
-  color: var(--accent);
-  background: rgba(217, 119, 87, 0.14);
+  color: var(--maybe);
+  background: var(--maybe-bg);
 }
 .dir-read {
-  color: #9ec9be;
-  background: rgba(127, 176, 163, 0.14);
+  color: var(--link);
+  background: var(--link-bg);
 }
 
 /* --- Three-layer model -----------------------------------------------------*/
@@ -438,17 +549,17 @@ body.docs-open #open-docs {
   border: 1px solid var(--border);
   border-left: 3px solid var(--border-strong);
   background: var(--bg-elevated);
-  border-radius: var(--radius);
+  border-radius: var(--r-lg);
   padding: 14px 16px;
 }
 .layer.k-app {
-  border-left-color: var(--chip-vec);
+  border-left-color: var(--link);
 }
 .layer.k-brain {
   border-left-color: var(--accent);
 }
 .layer.k-engine {
-  border-left-color: var(--chip-store);
+  border-left-color: var(--yes);
 }
 .layer-tag {
   font-size: 11px;
@@ -546,7 +657,7 @@ body.docs-open #open-docs {
   border: 1px solid var(--border);
   border-left: 3px solid var(--border-strong);
   background: var(--bg-elevated);
-  border-radius: var(--radius);
+  border-radius: var(--r-lg);
   padding: 13px 16px;
 }
 .flow-node .chip {
@@ -631,7 +742,7 @@ body.docs-open #open-docs {
 .endpoint {
   border: 1px solid var(--border);
   background: var(--bg-elevated);
-  border-radius: var(--radius);
+  border-radius: var(--r-lg);
   padding: 16px 18px;
   margin: 14px 0;
 }
@@ -643,23 +754,23 @@ body.docs-open #open-docs {
   margin-bottom: 8px;
 }
 .method {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.05em;
   padding: 4px 8px;
-  border-radius: 6px;
+  border-radius: var(--r-sm);
 }
 .method.get {
-  color: #9ec9be;
-  background: rgba(127, 176, 163, 0.14);
+  color: var(--link);
+  background: var(--link-bg);
 }
 .method.post {
-  color: var(--accent);
-  background: rgba(217, 119, 87, 0.16);
+  color: var(--maybe);
+  background: var(--maybe-bg);
 }
 .path {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: 14px;
   color: var(--fg);
 }
@@ -686,7 +797,7 @@ body.docs-open #open-docs {
 .graph-diagram {
   border: 1px solid var(--border);
   background: var(--bg-elevated);
-  border-radius: var(--radius);
+  border-radius: var(--r-lg);
   padding: 10px;
   margin: 16px 0;
 }
@@ -705,7 +816,7 @@ body.docs-open #open-docs {
 .decision {
   border: 1px solid var(--border);
   background: var(--bg-elevated);
-  border-radius: var(--radius);
+  border-radius: var(--r-lg);
   padding: 16px 18px;
 }
 .decision h3 {
@@ -759,13 +870,13 @@ body.docs-open #open-docs {
   .docs-nav-link {
     border: none;
     background: none;
-    border-radius: 8px;
+    border-radius: var(--r-md);
     padding: 8px 12px;
     border-left: 2px solid transparent;
   }
   .docs-nav-link.active {
     background: var(--bg-elevated);
-    border-left-color: var(--accent);
+    border-left-color: var(--link);
   }
   .docs-article {
     padding: 0;

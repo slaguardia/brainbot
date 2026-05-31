@@ -73,7 +73,6 @@ function route() {
   }
   docsView.hidden = !onDocs;
   captureView.hidden = onDocs;
-  document.body.classList.toggle("docs-open", onDocs);
   if (onDocs) {
     // Land at the top for a plain `#docs` entry, but let a `#docs/<section>`
     // deep link keep the scroll position docs.ts set on mount.

@@ -13,7 +13,10 @@ to pull the trigger*). **Two further refinements (2026-05-31):** facts →
 **section-chunks** (no polarity/strength schema — an LLM reads structure from
 prose), and the brain is framed as a **reusable intelligence-gathering library**
 with two reads — `recall(query)` (lookup) and `profile(scope)` (domain dump,
-scout's primary mode); see *Brain ↔ consumer interface*. See also
+scout's primary mode); see *Brain ↔ consumer interface*. With that interface now
+specced (phased: `recall` + `profile` + `map` in Phase 1, multi-scope assembly
+later; consumers read-only), **the design hashout is buttoned up — what's left is
+execution (and pulling the trigger).** See also
 [`graph-as-source-of-truth.md`](graph-as-source-of-truth.md) (the *graph-native*
 answer to the same edit/source-of-truth problem) and
 [`../docs/human-edit-surface.md`](../docs/human-edit-surface.md).
@@ -602,7 +605,9 @@ note-reader. Which is, once more, why the two setups don't really compete.
 
 The brain isn't scout's sidecar — it's a **reusable intelligence-gathering library**
 that any personal app consumes; scout is just the first. So the interface is kept
-small, domain-agnostic, and consumer-agnostic. **Two read primitives:**
+small, domain-agnostic, and consumer-agnostic — and **read-only for consumers**
+(writes only ever come from sources; see the boundary below). **Two core reads, plus
+a discovery read:**
 
 - **`recall(query, scope=None)` — targeted retrieval ("look something up").** Hybrid
   semantic + lexical search; returns the top-k sections matching a query, optionally
@@ -611,6 +616,10 @@ small, domain-agnostic, and consumer-agnostic. **Two read primitives:**
   assembled.** Returns the *whole* relevant slice — every section under `scope`,
   rebuilt into a structured context bundle. For bounded assessment tasks where
   *completeness beats precision.*
+- **`map(scope=None)` — domain discovery (the source tree).** Returns the
+  `path`/title tree (`SELECT path, title FROM sources WHERE path LIKE $1 ORDER BY
+  path`) so a consumer that doesn't already know its scope can find it. This is the
+  "if the right domain isn't obvious, a source-tree layer covers the gap" piece.
 
 **Why two, and why the split matters.** scout's job is gating (green/yellow/red),
 and for gating the worst failure is *missing* a fact — miss "avoids fintech" and you
@@ -668,6 +677,43 @@ chunking, or budgets.
 budget the dump instead of dumping raw, (3) return sections not schema-tagged facts,
 (4) point consumers at `profile(scope)` by default. The bigger shift is the mental
 model — *consumers pull a scoped context bundle; they don't hold a Q&A.*
+
+### Fit check & the multi-consumer roadmap
+
+**Does this hold the librarian/analyst line?** Yes — more cleanly than before. The
+brain returns *raw, faithful content, never a verdict*; all interpretation — gates
+(OR/AND), dedup, ranking, presentation — is the consumer's job (the validated
+Phase-1 consumer boundary). Dropping the polarity/strength schema was the purifying
+move: the librarian stopped pre-judging "hard vs soft" (an analyst's call). Assembly
+in `profile` stays librarian work (gather + arrange, not interpret) **as long as
+ingest stays faithful** — store the human's section text, don't let a rewrite
+editorialize. (Completeness is conditional, too: `profile` can't-miss only while the
+slice fits budget; past that it degrades to recall-in-scope and flags `truncated` —
+the librarian says "couldn't hand you everything," the analyst decides what to do.)
+
+**Read-only boundary (decided).** Consumers **never write back** to the brain. Writes
+come only from sources (Notion sync, captures). A consumer's takeaways don't mutate
+the brain — if something should be remembered, it enters as a *source*, through the
+human. This keeps the librarian pure and the source-of-truth model intact.
+
+**Multi-consumer pattern.** Because the interface carries no consumer-specific
+concepts, every app is the same shape — *pick a scope or query → get a `Context` →
+do its own job*:
+
+| Consumer app | Brain call | Its job (the analyst part) |
+|---|---|---|
+| scout | `profile('…/Job Hunting')` | gate companies green/yellow/red |
+| cover-letter drafter | `profile('…/Job Hunting')` + company | write the letter |
+| meeting prep | `recall('person X', scope='People')` | brief you |
+| learning planner | `profile('Career')` | suggest next skills |
+| personal chatbot | `recall(question)` | answer ad-hoc |
+
+**Interface roadmap (phased).**
+- **Phase 1:** `recall(query, scope)` + `profile(scope)` + `map(scope)` (discovery).
+- **Later phase (planned, not Phase 1): multi-scope assembly** — one call that
+  assembles several domains at once (Job Hunting + People + Projects) into a single
+  budgeted `Context`. Composable today via repeated `profile`; promote to first-class
+  when a consumer needs it.
 
 ---
 

@@ -1,6 +1,10 @@
+import { mountDocs } from "./docs";
+
 const textarea = document.getElementById("capture") as HTMLTextAreaElement;
 const sendBtn = document.getElementById("send") as HTMLButtonElement;
 const toast = document.getElementById("toast") as HTMLDivElement;
+const captureView = document.getElementById("capture-view") as HTMLElement;
+const docsView = document.getElementById("docs-view") as HTMLDivElement;
 
 let toastTimer: number | undefined;
 
@@ -56,6 +60,30 @@ textarea.addEventListener("keydown", (e) => {
     send();
   }
 });
+
+// Hash router: `#docs` (and `#docs/<section>`) shows the documentation view;
+// anything else is the capture screen. The docs HTML is mounted lazily on
+// first visit so it never costs the capture path anything.
+let docsMounted = false;
+function route() {
+  const onDocs = location.hash.replace(/^#/, "").startsWith("docs");
+  if (onDocs && !docsMounted) {
+    mountDocs(docsView);
+    docsMounted = true;
+  }
+  docsView.hidden = !onDocs;
+  captureView.hidden = onDocs;
+  document.body.classList.toggle("docs-open", onDocs);
+  if (onDocs) {
+    // Land at the top for a plain `#docs` entry, but let a `#docs/<section>`
+    // deep link keep the scroll position docs.ts set on mount.
+    if (!/^#docs\//.test(location.hash)) window.scrollTo(0, 0);
+  } else {
+    textarea.focus();
+  }
+}
+window.addEventListener("hashchange", route);
+route();
 
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {

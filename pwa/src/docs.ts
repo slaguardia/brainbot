@@ -1,0 +1,574 @@
+// The documentation view: a single on-theme page that explains how the brain
+// works — the two LLM layers, the endpoints, the graph database, and the
+// reasoning behind the architecture. Static, hand-authored content (no user
+// input ever lands in this HTML, so innerHTML is safe and far more legible
+// than building the tree by hand). Reached via the `#docs` hash route; the
+// router in main.ts toggles it against the capture screen.
+
+const SECTIONS: { id: string; label: string }[] = [
+  { id: "overview", label: "Overview" },
+  { id: "capture", label: "Capture pipeline" },
+  { id: "recall", label: "Recall & profile" },
+  { id: "endpoints", label: "Endpoints" },
+  { id: "graph", label: "Graph database" },
+  { id: "why", label: "Why this design" },
+];
+
+const NAV = SECTIONS.map(
+  (s) => `<a class="docs-nav-link" data-target="${s.id}" href="#docs/${s.id}">${s.label}</a>`,
+).join("");
+
+// Reusable bits ---------------------------------------------------------------
+
+const LEGEND = `
+  <div class="legend" aria-hidden="true">
+    <span class="chip c-llm">Generative LLM</span>
+    <span class="chip c-vec">Embeddings</span>
+    <span class="chip c-search">Search</span>
+    <span class="chip c-store">Graph store</span>
+    <span class="chip c-io">In / out</span>
+  </div>`;
+
+const DOCS_HTML = `
+  <div class="docs-topbar">
+    <a class="docs-back" href="#" aria-label="Back to capture">
+      <span class="docs-back-arrow" aria-hidden="true">←</span> Capture
+    </a>
+    <span class="docs-title">How the brain works</span>
+  </div>
+
+  <div class="docs-body">
+    <nav class="docs-nav" aria-label="Documentation sections">${NAV}</nav>
+
+    <article class="docs-article">
+
+      <header class="docs-hero">
+        <h1>How the brain works</h1>
+        <p class="docs-lead">
+          A single self-hosted knowledge service that holds structured truth about
+          one person. This page walks the two LLM layers, the endpoints, the graph
+          underneath, and why it's shaped the way it is.
+        </p>
+      </header>
+
+      <!-- OVERVIEW ------------------------------------------------------------>
+      <section class="docs-section" id="overview">
+        <h2>Overview</h2>
+        <p>
+          The brain is domain-agnostic: it knows things <em>about you</em>, but
+          nothing about what any app <em>does</em> with that knowledge. That's the
+          whole trick — one brain can serve every app precisely because it never
+          learns what a "job," a "calendar," or a "reading list" is.
+        </p>
+
+        <div class="note">
+          <strong>One smart brain, many thin consumers.</strong>
+          All the intelligence — the capture pipeline, the recall scoring — lives
+          in the brain. Everything else (this capture screen, Claude&nbsp;Code in
+          your terminal, any app you build) is a dumb client that calls in over
+          HTTP or MCP. Cross-app knowledge lives in one place instead of being
+          copied into each app.
+        </div>
+
+        <h3>A librarian, not an oracle</h3>
+        <p>
+          Ask the brain a question and it hands back the relevant facts it holds,
+          each scored by how on-target it is. It never synthesizes, infers, or
+          decides — that's the consumer's job. It can never reason wrong, because
+          it never reasons. The line in one sentence:
+          <em>the brain hands back what it knows; the app reasons and decides.</em>
+        </p>
+
+        <div class="layers" role="img" aria-label="Three-layer model: app, brain, graph engine">
+          <div class="layer k-app">
+            <span class="layer-tag">App &nbsp;·&nbsp; scout, calendar prep, …</span>
+            <strong>Task → questions → decision</strong>
+            <p>Turns a task into the questions it needs answered, then reasons over the returned facts and decides: pursue / skip / maybe.</p>
+          </div>
+          <div class="layer-gap"><span>questions&nbsp;↓</span><span>↑&nbsp;relevant facts</span></div>
+          <div class="layer k-brain">
+            <span class="layer-tag">Brain &nbsp;·&nbsp; this service</span>
+            <strong>Question → relevant facts</strong>
+            <p>The librarian. No synthesis, no inference. Returns scored facts and the faithful captures behind them.</p>
+          </div>
+          <div class="layer-gap"><span>add_episode&nbsp;↓</span><span>↑&nbsp;search</span></div>
+          <div class="layer k-engine">
+            <span class="layer-tag">graphiti-core → FalkorDB</span>
+            <strong>Extraction · dedup · bi-temporal facts · hybrid search</strong>
+            <p>Constructed in-process by the brain. The graph engine and the only persistent store.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- CAPTURE -------------------------------------------------------------->
+      <section class="docs-section" id="capture">
+        <h2>Capture pipeline <span class="dir-badge dir-write">write path</span></h2>
+        <p class="docs-lead">
+          When you capture a thought it passes through <strong>two LLM layers</strong>
+          before it lands in the graph. Capture is slow on purpose — both layers run
+          before it returns — which is why this screen acknowledges optimistically and
+          never makes you wait on it.
+        </p>
+
+        ${LEGEND}
+
+        <div class="flow" role="img" aria-label="Capture pipeline flowchart">
+          <div class="flow-node k-io">
+            <span class="chip c-io">Input</span>
+            <strong>Raw capture</strong>
+            <p>Messy, first-person, as you'd type it: <em>"I only want forward-deployed roles with real customer contact — anything purely backend is a skip."</em></p>
+          </div>
+          <div class="flow-arrow" aria-hidden="true"></div>
+
+          <div class="flow-node k-llm">
+            <span class="chip c-llm">LLM · Sonnet</span>
+            <strong>1 · Decompose</strong>
+            <p>
+              Rewrites the raw text into faithful, named-subject prose the extractor
+              can read well. "I/me/my" become your name. Rules stay rules — a hard
+              gate stays one statement instead of shattering into a fact per excluded
+              thing — and strength is preserved (a dealbreaker stays a dealbreaker).
+              Invents nothing. Emits a short <code>topic</code> label plus a clean
+              <code>body</code>.
+            </p>
+          </div>
+          <div class="flow-arrow" aria-hidden="true"></div>
+
+          <div class="flow-node k-llm">
+            <span class="chip c-llm">LLM · Haiku</span>
+            <strong>2 · Extract</strong>
+            <p>
+              Inside graphiti. Reads the rewritten body and pulls out entities
+              (Person, Organization, Topic, …) and the relationships between them,
+              each as a natural-language fact. A custom instruction override tells it
+              to capture values, goals, and preferences — graphiti's stock prompt
+              refuses "abstract concepts," which for a personal brain is exactly
+              backwards.
+            </p>
+          </div>
+          <div class="flow-arrow" aria-hidden="true"></div>
+
+          <div class="flow-node k-vec">
+            <span class="chip c-vec">Embed · Voyage</span>
+            <strong>3 · Vectorize</strong>
+            <p>Each entity and each fact is embedded into a vector so semantic search can find it later.</p>
+          </div>
+          <div class="flow-arrow" aria-hidden="true"></div>
+
+          <div class="flow-node k-store">
+            <span class="chip c-store">graphiti</span>
+            <strong>4 · Dedup + bi-temporal merge</strong>
+            <p>
+              Each entity is matched against existing nodes (one node per real-world
+              thing). When a new fact contradicts an old one, the old fact is
+              <em>superseded</em> — not overwritten — so history survives.
+            </p>
+          </div>
+          <div class="flow-arrow" aria-hidden="true"></div>
+
+          <div class="flow-node k-store">
+            <span class="chip c-store">FalkorDB</span>
+            <strong>5 · Store</strong>
+            <p>The entities, the facts, and the original episode body land in the graph.</p>
+          </div>
+        </div>
+
+        <h3>The three design choices baked in here</h3>
+        <ul class="reasons">
+          <li><strong>Decompose before extract.</strong> graphiti's extractor works on named-subject, domain-explicit statements — not first-person preference prose. The rewrite reshapes the input into what it reads well, without losing rules or strength.</li>
+          <li><strong>Override the extractor.</strong> The stock prompt says <em>"NEVER extract abstract concepts."</em> But your values and goals <em>are</em> the point of a personal brain. The override flips that — validated at 2&nbsp;→&nbsp;20 entities on the same input.</li>
+          <li><strong>One episode, not many.</strong> An earlier design exploded each capture into one episode per atomic fact. It over-atomized (a single location rule shattered into a node per city), duplicated, and was slow. Now the tuned extractor gets one clean episode and pulls the facts itself.</li>
+        </ul>
+
+        <div class="note">
+          <strong>The body is canonical.</strong> The rewritten episode body is kept
+          as the faithful record. The extracted facts are a derived <em>index</em>
+          over it — fast to search, but a summary. Why that matters shows up in
+          recall, next.
+        </div>
+      </section>
+
+      <!-- RECALL --------------------------------------------------------------->
+      <section class="docs-section" id="recall">
+        <h2>Recall &amp; profile <span class="dir-badge dir-read">read path</span></h2>
+        <p class="docs-lead">
+          Reads are fast and — notably — use <strong>no generative LLM</strong>. The
+          brain retrieves and scores; the actual reasoning happens in whatever
+          consumer asked.
+        </p>
+
+        ${LEGEND}
+
+        <div class="flow" role="img" aria-label="Recall pipeline flowchart">
+          <div class="flow-node k-io">
+            <span class="chip c-io">Input</span>
+            <strong>Question</strong>
+            <p><em>"what does the user want in a job?"</em> — sent verbatim as the query.</p>
+          </div>
+          <div class="flow-arrow" aria-hidden="true"></div>
+
+          <div class="flow-node k-search">
+            <span class="chip c-search">Hybrid search · RRF</span>
+            <strong>1 · Find candidates</strong>
+            <p>
+              graphiti runs a keyword search (BM25) and a vector search in parallel,
+              then fuses the two rankings with reciprocal rank fusion. Running both
+              means a fragmented graph still degrades gracefully instead of returning
+              nothing.
+            </p>
+          </div>
+          <div class="flow-arrow" aria-hidden="true"></div>
+
+          <div class="flow-node k-vec">
+            <span class="chip c-vec">Embed + cosine · Voyage</span>
+            <strong>2 · Score</strong>
+            <p>
+              The question is embedded; each candidate fact's stored embedding is
+              fetched and the absolute cosine similarity is computed — an on-target
+              <code>score</code> in roughly [0, 1]. The brain <em>reports</em> the
+              score; it does not threshold. If every fact scores low, the brain
+              simply doesn't know — no separate "I don't know" needed.
+            </p>
+          </div>
+          <div class="flow-arrow" aria-hidden="true"></div>
+
+          <div class="flow-node k-store">
+            <span class="chip c-store">Result</span>
+            <strong>3 · Return facts <em>and</em> episodes</strong>
+            <p>
+              <code>facts</code> — precise, scored, but positive-only (the extractor
+              drops negatives and rules). <code>episodes</code> — the faithful
+              rewrites, which <em>do</em> contain "avoids&nbsp;X" and gate rules. Read
+              <code>episodes</code> for completeness.
+            </p>
+          </div>
+          <div class="flow-arrow" aria-hidden="true"></div>
+
+          <div class="flow-node k-io">
+            <span class="chip c-io">Output</span>
+            <strong>Consumer reasons &amp; decides</strong>
+            <p>The brain stops at "here's what I know." The consumer's own LLM filters, synthesizes, and decides.</p>
+          </div>
+        </div>
+
+        <h3>Profile — the whole picture, not one answer</h3>
+        <p>
+          <code>profile</code> is a full dump: every currently-held episode body,
+          newest first. Use it when a consumer needs the complete record rather than
+          the answer to a single question. At single-user scale the whole profile
+          fits in a model's context, so dumping everything sidesteps blind spots
+          entirely.
+        </p>
+
+        <div class="note">
+          <strong>Why recall returns episodes too.</strong> The edge graph is a lossy,
+          positive-only index. On a real target-role capture, the avoid-list and the
+          hard vertical gate were perfectly preserved in the episode <em>body</em> but
+          never became edges. So the body is the source of truth; the edges are a
+          secondary index. <em>Search with the facts; read the episode to be sure.</em>
+        </div>
+      </section>
+
+      <!-- ENDPOINTS ------------------------------------------------------------>
+      <section class="docs-section" id="endpoints">
+        <h2>Endpoints</h2>
+        <p class="docs-lead">
+          Two front doors, one service: plain <strong>HTTP/JSON</strong> for typed
+          consumers, and <strong>MCP</strong> (streamable HTTP at <code>/mcp</code>)
+          exposing the same operations as tools for Claude&nbsp;Code. Three
+          operations — capture, recall, profile — plus a health probe.
+        </p>
+
+        <div class="endpoint">
+          <div class="endpoint-head">
+            <span class="method post">POST</span>
+            <span class="path">/capture</span>
+            <span class="endpoint-tag">write</span>
+          </div>
+          <p>Runs the full decompose → extract pipeline, then returns. Seconds, not milliseconds.</p>
+          <pre><code>// request
+{ "text": "Talked to Beatrice from Globex; she's worried about Kafka cost." }
+
+// 202
+{ "mode": "rewrite", "episodes": 1, "topic": "Globex / Kafka cost concern" }</code></pre>
+          <p class="endpoint-note"><code>400</code> if <code>text</code> is missing or blank. <code>mode</code> is <code>"raw"</code> when decomposition is disabled.</p>
+        </div>
+
+        <div class="endpoint">
+          <div class="endpoint-head">
+            <span class="method get">GET</span>
+            <span class="path">/recall?q=&amp;limit=</span>
+            <span class="endpoint-tag">read</span>
+          </div>
+          <p><code>q</code> required; <code>limit</code> defaults to 20. Scored, not thresholded.</p>
+          <pre><code>{
+  "query": "what does the user want in a job",
+  "facts": [
+    { "fact": "The user wants a forward-deployed engineering role.",
+      "name": "WANTS", "score": 0.7421,
+      "valid_at": "2026-05-25T22:30:18+00:00", "invalid_at": null }
+  ],
+  "episodes": [ { "name": "Target role goals", "body": "…faithful rewrite…" } ],
+  "fact_count": 1,
+  "episode_count": 1
+}</code></pre>
+        </div>
+
+        <div class="endpoint">
+          <div class="endpoint-head">
+            <span class="method get">GET</span>
+            <span class="path">/profile</span>
+            <span class="endpoint-tag">read</span>
+          </div>
+          <p>Every currently-held episode body, newest first.</p>
+          <pre><code>{
+  "count": 1,
+  "episodes": [
+    { "name": "Target role goals", "body": "…", "source": "capture" }
+  ]
+}</code></pre>
+        </div>
+
+        <div class="endpoint">
+          <div class="endpoint-head">
+            <span class="method get">GET</span>
+            <span class="path">/health</span>
+            <span class="endpoint-tag">liveness</span>
+          </div>
+          <p>Process-up only. Brain construction is lazy, so this does <em>not</em> verify the database or the LLM — it's a cheap probe for healthchecks.</p>
+          <pre><code>{ "ok": true }</code></pre>
+        </div>
+
+        <div class="note">
+          <strong>MCP face.</strong> The same logic is exposed as tools
+          <code>capture(text)</code>, <code>recall(query, limit=20)</code>, and
+          <code>profile()</code> at <code>/mcp</code> — one shared brain instance.
+          <code>health</code> is HTTP-only. The old standalone Graphiti MCP server's
+          broad surface (<code>add_memory</code>, <code>search_nodes</code>,
+          <code>clear_graph</code>, …) is deliberately <em>not</em> exposed — the
+          contract is three operations.
+        </div>
+      </section>
+
+      <!-- GRAPH ---------------------------------------------------------------->
+      <section class="docs-section" id="graph">
+        <h2>The graph database</h2>
+
+        <h3>Episodes vs. facts</h3>
+        <p>
+          The brain holds two layers. An <strong>episode</strong> is one thing you
+          captured — a passage of text, saved as-is: the complete, trustworthy
+          record. A <strong>fact</strong> is a single structured claim the brain
+          extracted from an episode ("X is CTO at Y"), stored as a connection in the
+          graph. <strong>One episode produces many facts.</strong>
+        </p>
+        <p>
+          The clearest picture is a <em>document and the index built from it</em>: the
+          episode is the document (everything's there); the facts are the index (fast
+          to search and link, but a summary that leaves things out — especially
+          "don'ts" and rules). Rule of thumb: <em>search with the facts; read the
+          episode to be sure you have everything.</em>
+        </p>
+
+        <h3>Nodes and edges</h3>
+        <div class="graph-diagram">
+          <svg viewBox="0 0 520 300" role="img" aria-label="Graph: owner hub with RELATES_TO facts, and an episode hub with MENTIONS edges">
+            <defs>
+              <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                <path d="M0,0 L10,5 L0,10 z" fill="#6e6b64"></path>
+              </marker>
+            </defs>
+            <!-- edges -->
+            <g stroke="#4a4844" stroke-width="1.5" fill="none" marker-end="url(#arrow)">
+              <line x1="250" y1="150" x2="95"  y2="70"></line>
+              <line x1="250" y1="150" x2="95"  y2="230"></line>
+              <line x1="250" y1="150" x2="420" y2="95"></line>
+            </g>
+            <g stroke="#3f3a4f" stroke-width="1.5" stroke-dasharray="4 4" fill="none" marker-end="url(#arrow)">
+              <line x1="420" y1="215" x2="285" y2="170"></line>
+              <line x1="420" y1="215" x2="430" y2="120"></line>
+            </g>
+            <!-- edge labels -->
+            <text x="150" y="100" fill="#a8a59d" font-size="11">RELATES_TO</text>
+            <text x="150" y="205" fill="#a8a59d" font-size="11">RELATES_TO</text>
+            <text x="335" y="115" fill="#a8a59d" font-size="11">RELATES_TO</text>
+            <text x="318" y="205" fill="#9b95c9" font-size="11">MENTIONS</text>
+            <!-- owner hub -->
+            <circle cx="250" cy="150" r="34" fill="#2a2926" stroke="#d97757" stroke-width="2"></circle>
+            <text x="250" y="154" text-anchor="middle" fill="#f5f4ee" font-size="13" font-weight="600">You</text>
+            <!-- entity nodes -->
+            <circle cx="78" cy="62" r="26" fill="#22302c" stroke="#7fb0a3" stroke-width="1.5"></circle>
+            <text x="78" y="58" text-anchor="middle" fill="#cfe0da" font-size="10">Topic</text>
+            <text x="78" y="71" text-anchor="middle" fill="#8fa8a1" font-size="9">forward-deployed</text>
+            <circle cx="78" cy="238" r="26" fill="#2a2926" stroke="#7fb0a3" stroke-width="1.5"></circle>
+            <text x="78" y="234" text-anchor="middle" fill="#cfe0da" font-size="10">Person</text>
+            <text x="78" y="247" text-anchor="middle" fill="#8fa8a1" font-size="9">Beatrice</text>
+            <circle cx="445" cy="88" r="26" fill="#2a2926" stroke="#7fb0a3" stroke-width="1.5"></circle>
+            <text x="445" y="84" text-anchor="middle" fill="#cfe0da" font-size="10">Org</text>
+            <text x="445" y="97" text-anchor="middle" fill="#8fa8a1" font-size="9">Globex</text>
+            <!-- episode hub -->
+            <rect x="402" y="196" width="86" height="40" rx="9" fill="#26233322" stroke="#9b95c9" stroke-width="1.5"></rect>
+            <text x="445" y="214" text-anchor="middle" fill="#c9c4e6" font-size="10">Episodic</text>
+            <text x="445" y="227" text-anchor="middle" fill="#9690b8" font-size="9">a capture's body</text>
+          </svg>
+        </div>
+        <p>
+          Two node labels: <strong>Episodic</strong> (a capture's body) and
+          <strong>Entity</strong> (an extracted thing, also tagged Person,
+          Organization, Location, Event, Document, or Topic). Two edge types:
+          <strong>RELATES_TO</strong> (entity → entity — the fact itself, carrying the
+          sentence, its embedding, and timestamps) and <strong>MENTIONS</strong>
+          (episode → entity — provenance: which capture a thing came from). There's no
+          schema you define up front; the types are strings the extractor produces on
+          the fly. Capture a sailboat tomorrow and you get a <code>Boat</code> entity
+          with no code change.
+        </p>
+
+        <h3>Two hubs</h3>
+        <p>
+          Because everything is about one person, the graph naturally forms two
+          well-connected hubs: the <strong>owner node</strong> (the web of what's true
+          about you — the knowledge index) and each <strong>episode node</strong>
+          (links to everything that capture produced — the source index, so any fact
+          traces back to where it came from). Single-user by design, so the owner
+          staying central is correct, not clutter.
+        </p>
+
+        <h3>Dedup</h3>
+        <p>
+          Before adding a <code>Maya</code> node, graphiti checks embeddings and name:
+          is this the Maya we already have? If so, the new facts attach to the
+          existing node instead of forking a duplicate. One node per real-world thing
+          — the thing that's genuinely tedious to get right by hand.
+        </p>
+
+        <h3>Bi-temporal facts</h3>
+        <p>
+          Every fact carries <em>when it's true in the world</em>
+          (<code>valid_at</code> / <code>invalid_at</code>) and <em>when the system
+          learned it</em> (<code>created_at</code>). A correction doesn't overwrite —
+          it supersedes. "Maya left Acme for a stealth startup" sets
+          <code>invalid_at</code> on the old "Maya is CTO at Acme" fact and adds the
+          new one. Both stay; <em>"where does Maya work now?"</em> returns only facts
+          with <code>invalid_at = null</code>. In a plain vector store the stale
+          sentence would keep surfacing forever — bi-temporal is what makes
+          corrections actually stick.
+        </p>
+
+        <div class="note">
+          <strong>FalkorDB underneath.</strong> The graph lives in FalkorDB — a Redis
+          module that speaks Cypher, roughly 6× more memory-efficient than Neo4j (fits
+          a small VPS), with vector indexes built in. graphiti supports Neo4j too, so
+          switching is a config change, not a rewrite.
+        </div>
+      </section>
+
+      <!-- WHY ------------------------------------------------------------------>
+      <section class="docs-section" id="why">
+        <h2>Why this design</h2>
+        <p class="docs-lead">
+          Every decision here is meant to be defensible. The short version of each:
+        </p>
+
+        <div class="decisions">
+          <div class="decision">
+            <h3>One smart brain, thin consumers</h3>
+            <p>All the intelligence lives in the brain. Consumers stay dumb and narrow — this capture screen is just a proxy to <code>/capture</code>. Knowledge lives in one place instead of being copied into every app.</p>
+          </div>
+          <div class="decision">
+            <h3>graphiti-core directly, not its MCP server</h3>
+            <p>The standalone MCP server throws away the extraction override (the 2&nbsp;→&nbsp;20 entities hook), won't forward entity/edge type controls, and hardcodes a search recipe that bled domains. In-process, graphiti exposes every lever. The MCP server is kept only for Claude&nbsp;Code, where MCP is required.</p>
+          </div>
+          <div class="decision">
+            <h3>Keep graphiti; don't go raw FalkorDB</h3>
+            <p>Two things are genuinely hard to rebuild and are the real differentiators: entity <strong>dedup</strong> and <strong>bi-temporal</strong> fact invalidation. graphiti does both well, so we keep it rather than talking to FalkorDB directly.</p>
+          </div>
+          <div class="decision">
+            <h3>Episodes are canonical; edges are an index</h3>
+            <p>The extractor reliably pulls positive facts but drops negatives and policies ("avoids X", "only Y counts"). So the faithful episode body is the source of truth — recall and profile return bodies, not just edges.</p>
+          </div>
+          <div class="decision">
+            <h3>A librarian, not an oracle</h3>
+            <p>The brain returns facts; it never synthesizes or decides. There's deliberately no <code>ask</code> endpoint — "asking the brain" is just <code>recall</code>. Keeping reasoning out is what lets it serve every consumer without learning any one domain.</p>
+          </div>
+          <div class="decision">
+            <h3>Scored, not thresholded</h3>
+            <p>Recall attaches an absolute on-target score to every fact and stops. The right cutoff is task-dependent — a gate question wants precision, a profile question wants recall — and only the consumer knows the task.</p>
+          </div>
+          <div class="decision">
+            <h3>FalkorDB over Neo4j</h3>
+            <p>Memory efficiency on a small VPS, Cypher-compatible, built-in vectors. Neo4j has deeper tooling; for a single-user brain the memory win wins. Swappable via config if that ever changes.</p>
+          </div>
+          <div class="decision">
+            <h3>Retrieve broadly; don't over-tune ranking</h3>
+            <p>At one-user / one-domain scale the whole relevant profile fits in a model's context. On a star topology every concept is ~2 hops from every other through the owner, so node-distance reranking doesn't help — recall uses RRF plus the fact text's own context. Ranking optimization is a scale problem we don't have yet.</p>
+          </div>
+        </div>
+      </section>
+
+      <footer class="docs-foot">
+        <a class="docs-back" href="#"><span class="docs-back-arrow" aria-hidden="true">←</span> Back to capture</a>
+      </footer>
+
+    </article>
+  </div>`;
+
+let wired = false;
+
+export function mountDocs(container: HTMLElement): void {
+  container.innerHTML = DOCS_HTML;
+  if (wired) return;
+  wired = true;
+  wireNav(container);
+}
+
+function wireNav(container: HTMLElement): void {
+  const links = Array.from(
+    container.querySelectorAll<HTMLAnchorElement>(".docs-nav-link"),
+  );
+  const byId = new Map(links.map((l) => [l.dataset.target ?? "", l]));
+  const sections = Array.from(container.querySelectorAll<HTMLElement>(".docs-section"));
+  const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  // Click a section: smooth-scroll to it and reflect it in the hash (for
+  // sharing) without forcing a re-render — we set the hash with replaceState
+  // so the router's hashchange handler doesn't fire.
+  for (const link of links) {
+    link.addEventListener("click", (e) => {
+      const id = link.dataset.target ?? "";
+      const target = document.getElementById(id);
+      if (!target) return;
+      e.preventDefault();
+      target.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "start" });
+      history.replaceState(null, "", `#docs/${id}`);
+    });
+  }
+
+  // Scrollspy: highlight the section nearest the top of the viewport.
+  const setActive = (id: string) => {
+    for (const l of links) l.classList.remove("active");
+    byId.get(id)?.classList.add("active");
+  };
+  const observer = new IntersectionObserver(
+    (entries) => {
+      const visible = entries
+        .filter((en) => en.isIntersecting)
+        .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)[0];
+      if (visible) setActive(visible.target.id);
+    },
+    { rootMargin: "-45% 0px -50% 0px", threshold: 0 },
+  );
+  for (const s of sections) observer.observe(s);
+
+  // If we arrived on a deep link (#docs/<id>), jump straight to that section.
+  const deep = location.hash.match(/^#docs\/(.+)$/);
+  if (deep) {
+    const target = document.getElementById(deep[1]);
+    if (target) {
+      target.scrollIntoView({ behavior: "auto", block: "start" });
+      setActive(deep[1]);
+    }
+  } else {
+    setActive(sections[0]?.id ?? "");
+  }
+}

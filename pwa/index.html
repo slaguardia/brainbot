@@ -16,7 +16,10 @@
     <main id="capture-view">
       <header class="cap-head">
         <span class="brand" aria-label="brain">brain</span>
-        <a id="open-docs" href="#docs" aria-label="How the brain works">docs</a>
+        <nav class="cap-links" aria-label="About the brain">
+          <a id="open-learnings" href="#learnings" aria-label="How the brain evolved">timeline</a>
+          <a id="open-docs" href="#docs" aria-label="How the brain works">docs</a>
+        </nav>
       </header>
       <textarea
         id="capture"
@@ -29,6 +32,7 @@
       <button id="send" type="button">Send to brain</button>
     </main>
     <div id="docs-view" hidden></div>
+    <div id="learnings-view" hidden></div>
     <div id="toast" role="status" aria-live="polite"></div>
     <script type="module" src="/src/main.ts"></script>
   </body>

@@ -1,10 +1,12 @@
 import { mountDocs } from "./docs";
+import { mountLearnings } from "./learnings";
 
 const textarea = document.getElementById("capture") as HTMLTextAreaElement;
 const sendBtn = document.getElementById("send") as HTMLButtonElement;
 const toast = document.getElementById("toast") as HTMLDivElement;
 const captureView = document.getElementById("capture-view") as HTMLElement;
 const docsView = document.getElementById("docs-view") as HTMLDivElement;
+const learningsView = document.getElementById("learnings-view") as HTMLDivElement;
 
 let toastTimer: number | undefined;
 
@@ -61,22 +63,31 @@ textarea.addEventListener("keydown", (e) => {
   }
 });
 
-// Hash router: `#docs` (and `#docs/<section>`) shows the documentation view;
-// anything else is the capture screen. The docs HTML is mounted lazily on
-// first visit so it never costs the capture path anything.
+// Hash router: `#docs` (and `#docs/<section>`) shows the documentation view,
+// `#learnings` shows the evolution timeline; anything else is the capture
+// screen. Each overlay's HTML is mounted lazily on first visit so it never
+// costs the capture path anything.
 let docsMounted = false;
+let learningsMounted = false;
 function route() {
-  const onDocs = location.hash.replace(/^#/, "").startsWith("docs");
+  const hash = location.hash.replace(/^#/, "");
+  const onDocs = hash.startsWith("docs");
+  const onLearnings = hash.startsWith("learnings");
   if (onDocs && !docsMounted) {
     mountDocs(docsView);
     docsMounted = true;
   }
+  if (onLearnings && !learningsMounted) {
+    mountLearnings(learningsView);
+    learningsMounted = true;
+  }
   docsView.hidden = !onDocs;
-  captureView.hidden = onDocs;
-  if (onDocs) {
-    // Land at the top for a plain `#docs` entry, but let a `#docs/<section>`
-    // deep link keep the scroll position docs.ts set on mount.
-    if (!/^#docs\//.test(location.hash)) window.scrollTo(0, 0);
+  learningsView.hidden = !onLearnings;
+  captureView.hidden = onDocs || onLearnings;
+  if (onDocs || onLearnings) {
+    // Land at the top for a plain entry, but let a `#docs/<section>` deep link
+    // keep the scroll position docs.ts set on mount.
+    if (!/^#(docs|learnings)\//.test(location.hash)) window.scrollTo(0, 0);
   } else {
     textarea.focus();
   }

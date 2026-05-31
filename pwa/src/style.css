@@ -130,6 +130,11 @@ main {
   gap: 12px;
   flex: 0 0 auto;
 }
+.cap-links {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
 
 /* The glitch wordmark — scout's signature. RGB-split on hover, the only
    flashy motion in the whole UI. */
@@ -173,7 +178,8 @@ main {
   }
 }
 
-#open-docs {
+#open-docs,
+#open-learnings {
   font-family: var(--font-mono);
   font-size: 12px;
   font-weight: 600;
@@ -189,12 +195,14 @@ main {
     border-color var(--dur-fast) var(--ease),
     background-color var(--dur-fast) var(--ease);
 }
-#open-docs:hover {
+#open-docs:hover,
+#open-learnings:hover {
   color: var(--fg);
   border-color: var(--border-strong);
   background: var(--panel-2);
 }
-#open-docs:focus-visible {
+#open-docs:focus-visible,
+#open-learnings:focus-visible {
   outline: none;
   border-color: var(--link);
   box-shadow: 0 0 0 3px var(--link-bg);
@@ -338,7 +346,8 @@ main {
    =========================================================================== */
 
 #capture-view[hidden],
-#docs-view[hidden] {
+#docs-view[hidden],
+#learnings-view[hidden] {
   display: none;
 }
 
@@ -893,8 +902,160 @@ main {
 
 @media (prefers-reduced-motion: reduce) {
   #open-docs,
+  #open-learnings,
   .docs-back,
   .docs-nav-link {
     transition: none;
+  }
+}
+
+/* ===========================================================================
+   Learnings timeline view (#learnings). Reuses the docs chrome
+   (.docs-topbar / .docs-back / .docs-hero / .docs-article) and adds a vertical
+   timeline of chapters. Mirrors LEARNINGS.md.
+   =========================================================================== */
+#learnings-view {
+  --topbar-h: calc(52px + env(safe-area-inset-top));
+}
+
+.timeline {
+  list-style: none;
+  margin: 18px 0 0;
+  padding: 0;
+  position: relative;
+}
+/* the rail running down the markers */
+.timeline::before {
+  content: "";
+  position: absolute;
+  left: 15px;
+  top: 10px;
+  bottom: 10px;
+  width: 2px;
+  background: var(--border-strong);
+}
+.tl-item {
+  position: relative;
+  padding: 0 0 26px 48px;
+}
+.tl-marker {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--bg-elevated);
+  border: 2px solid var(--border-strong);
+  color: var(--fg-muted);
+  font-size: 14px;
+  font-weight: 700;
+  z-index: 1;
+}
+.tl-item.current .tl-marker {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.tl-card {
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  border-radius: var(--radius);
+  padding: 15px 17px;
+}
+.tl-item.current .tl-card {
+  border-left: 3px solid var(--accent);
+}
+.tl-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+.tl-head h2 {
+  font-size: 18px;
+  margin: 0;
+  padding: 0;
+  border: none;
+  color: var(--fg);
+  letter-spacing: -0.01em;
+}
+.tl-status {
+  margin-left: auto;
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 3px 9px;
+  border-radius: 999px;
+}
+.tl-status.done {
+  color: var(--yes);
+  background: var(--yes-bg);
+}
+.tl-status.wip {
+  color: var(--maybe);
+  background: var(--maybe-bg);
+}
+.tl-phases {
+  display: grid;
+  gap: 9px;
+  margin: 0;
+}
+.tl-phases > div {
+  display: grid;
+  grid-template-columns: 84px 1fr;
+  gap: 12px;
+  align-items: baseline;
+}
+.tl-phases dt {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--fg-faint);
+}
+.tl-phases dd {
+  margin: 0;
+  color: var(--fg-muted);
+  font-size: 14px;
+  line-height: 1.55;
+}
+.tl-phases dd strong,
+.tl-phases dd em {
+  color: var(--fg);
+}
+.tl-phases dd code {
+  font-family: var(--font-mono);
+  font-size: 0.86em;
+  background: rgba(255, 255, 255, 0.05);
+  padding: 1px 5px;
+  border-radius: var(--r-sm);
+  color: #cdd5e6;
+}
+.tl-principle {
+  margin: 13px 0 0;
+  padding: 10px 14px;
+  border-left: 3px solid var(--accent);
+  border-radius: var(--r-md);
+  background: rgba(139, 109, 255, 0.06);
+  color: var(--fg);
+  font-size: 14px;
+  font-style: italic;
+  line-height: 1.5;
+}
+.tl-note {
+  margin: 12px 0 0;
+  font-size: 13px;
+  color: var(--fg-faint);
+  line-height: 1.55;
+}
+@media (max-width: 480px) {
+  .tl-phases > div {
+    grid-template-columns: 1fr;
+    gap: 2px;
   }
 }

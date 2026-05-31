@@ -131,25 +131,21 @@ come from the graph.** If a read bypasses the graph, the database is decorative.
 The fix isn't to abandon the graph — it's to make the graph faithful enough to
 trust, then read from it.
 
-**The insight that reopened it:** the three things the body-dump was covering for
-are *not* all "graphs can't do this":
+**The insight that reopened it:** the things the body-dump was covering for are
+*not* "graphs can't do this":
 - **Negatives** ("avoids X") — graphs handle this fine; we just never *told* the
   extractor to look for negatives. An instruction gap.
 - **Strength** (hard gate vs. nice-to-have) — a graph edge can carry this as an
   **attribute**; we just weren't using typed edges. A modeling gap.
-- **If-then rules** ("if outside the set, skip") — the genuinely awkward sliver;
-  modeled as first-class **Constraint nodes** so the rule lives *in* the graph.
 
-Verified that the graphiti we already run supports all of this: custom
-`edge_types` with attributes (extracted and persisted), `edge_type_map`, and
-custom entity types.
+Verified that the graphiti we already run supports this: custom `edge_types` with
+attributes that are extracted and persisted, via `edge_type_map`.
 
-**Changing (Path A):** tune extraction to capture negatives; add generic typed
-edges carrying `polarity` + `strength`; model hard rules as `Constraint` nodes;
-then rebuild `profile()`/`recall()` to read from the graph and retire the
-body-dump. This **returns to the original Item-2 design** — now viable because
-the graph is finally faithful enough to honor it. See
-[`plans/graph-as-source-of-truth.md`](./plans/graph-as-source-of-truth.md).
+**Changing (Path A):** tune extraction to capture negatives; add one generic typed
+edge carrying `polarity` + `strength`; then rebuild `profile()`/`recall()` to read
+from the graph and retire the body-dump. This **returns to the original Item-2
+design** — now viable because the graph is finally faithful enough to honor it.
+See [`plans/graph-as-source-of-truth.md`](./plans/graph-as-source-of-truth.md).
 
 Kept deliberately **generic** (per [`docs/genericity-rule.md`](./docs/genericity-rule.md)):
 `polarity` and `strength` are domain-agnostic dimensions, not career verbs like
@@ -159,6 +155,33 @@ what an app should *do* about it.
 > **Principle:** when your store "can't" hold something, check whether you ever
 > asked it to. Most "fundamental limits" are untuned defaults. Make the source of
 > truth trustworthy instead of routing around it.
+
+### What the design review settled (and the symmetry it exposed)
+
+Working the design out loud sharpened it past the first sketch:
+
+- **"Wall vs. weight" isn't a brain decision — it's the `strength` value.** The
+  brain stores how hard the user holds a fact; the *consumer* turns hard→gate,
+  soft→weight. That also makes it multi-user for free (your "location = hard" and
+  someone else's "location = soft" are the same schema).
+- **The consumer is an LLM — so we DON'T over-structure.** No `Constraint` nodes,
+  no exception engine, no precedence logic in the brain. Hand an LLM facts +
+  strength and it reasons about gates/exceptions/collisions itself. *Everything
+  is a fact.* (The "Constraint node" idea from the first sketch died here.)
+- **The same "it's an LLM" premise flipped one decision the other way.** For
+  storage it *lowered* the bar (reason over loose facts). For `recall`'s old body
+  field it *raised* it: an LLM reads any text you put in front of it, so a
+  "provenance only, don't use this" label is unenforceable. The body has to
+  *leave the payload* (behind a debug flag), not get relabelled.
+- **The first real consumer was already built on the bug.** Scout (`~/Repositories/scout`)
+  reads episode *bodies* as its criteria *on purpose* — "a scorer built off facts
+  alone will pursue companies the user hard-excludes," its own client says. So
+  fixing the brain isn't done until the consumer is migrated off bodies — and that
+  migration must come *after* the graph is faithful, never before.
+
+> **Principle:** the same premise can cut both ways — "it's an LLM" means *trust
+> it to reason* and *don't trust it to ignore*. And a fix isn't finished until the
+> consumers built on the old workaround are migrated off it.
 
 ---
 

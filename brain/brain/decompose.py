@@ -50,7 +50,7 @@ A clean rewrite of the input as continuous prose, following these rules:
    - *Defining* lists that ARE the actual content (a closed allowed-set, a specific inventory) — KEEP them in full, and KEEP THEM AS ONE COHERENT STATEMENT. (e.g. the specific target industries, or a tech stack the person actually uses.) A closed set is information ONLY as a set: say "the allowed set is exactly {A, B, C, D}" so the boundary stays legible — do NOT scatter it into separate, context-free "likes A", "likes B" statements, which loses the fact that the set is closed.
    When unsure, ask: "is this item real information, or just an example of the rule?" Keep the former, drop the latter.
 
-4. **Preserve strength.** If something is a hard requirement, dealbreaker, or "gate, not a weight", say so explicitly in the prose. If it's a mild preference, keep it mild. Never flatten a hard constraint into a soft preference.
+4. **Preserve strength — and a gated accept-set is a hard requirement on its allowed members.** State hard requirements, dealbreakers, and "gate, not a weight" rules explicitly; keep mild preferences mild. Never flatten a hard constraint into a soft preference — and never harden a mild one. When the input gates membership in a set ("only X or Y", "must be in X", "X or Y; everything else is a skip"), write the ALLOWED members as a hard requirement — "{user_name} will only consider X or Y" — NOT a soft acceptance like "will consider X or Y". A bare "everything else is excluded" names nothing specific, so the gate's firmness has to ride on the allowed members themselves.
 
 5. **Preserve all real detail.** Keep numbers, names, qualifiers. Do not summarize specifics away. Invent nothing not present in the input.
 

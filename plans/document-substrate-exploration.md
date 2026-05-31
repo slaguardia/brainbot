@@ -1,11 +1,15 @@
 # Plan: Document substrate (source-of-truth docs + derived facts on pgvector)
 
-## Status: exploratory — NOT committed
+## Status: intended direction — migration not yet triggered
 
-Captured 2026-05-31 from a design conversation. Steve is questioning whether
-the graph DB earns its keep and is **likely leaving the current system as-is for
-now** — but this direction looks like the better long-term architecture, so it's
-written down to return to. Nothing here is decided. See also
+Captured 2026-05-31 from a design conversation, refined over it. Steve now accepts
+the graph DB doesn't earn its keep for this use case (its only real benefit here is
+dedup + bi-temporal, **not** relationships) and is **fine leaving graph-DB
+experimentation behind** — the remaining hesitation (losing RAG learning) is
+resolved by the [RAG section](#rag-what-wed-be-experimenting-with): this substrate
+is *more* hands-on RAG, not less. So this is increasingly the **intended refactor
+direction**, though the migration itself isn't scheduled/triggered yet (see *When
+to pull the trigger*). See also
 [`graph-as-source-of-truth.md`](graph-as-source-of-truth.md) (the *graph-native*
 answer to the same edit/source-of-truth problem) and
 [`../docs/human-edit-surface.md`](../docs/human-edit-surface.md).
@@ -374,6 +378,65 @@ The shape in one breath: **ingest is one function** (capture = edit = re-sync),
 are either *gone* (invalidation) or *demoted to a cheap read-time pass* (dedup).
 With real error handling, batching, and a connection pool this lands around 200
 lines — small enough to own and debug, which graphiti and Mem0 are not.
+
+---
+
+## RAG: what we'd be experimenting with
+
+A primary reason this project exists is hands-on **RAG experimentation.** This
+refactor *serves that goal better than the graph does* — which resolves the main
+worry about leaving the graph behind.
+
+**The reframe:** the current graph setup is a black-box GraphRAG / knowledge-graph-
+memory variant — graphiti owns the whole retrieval pipeline and you configure it
+from outside. The pgvector architecture is **textbook RAG with the hood open**: you
+build, tune, and *evaluate* the retrieval pipeline yourself. You've been doing RAG
+all along (graph-flavored); this moves you to its canonical core.
+
+**What moves from black-box to your hands** — every "you own" row is a RAG
+experiment the current setup won't let you run:
+
+| RAG component | Today (graphiti, hidden) | Document / pgvector (you own) |
+|---|---|---|
+| Chunking / what to embed | embeds extracted edges | raw chunks vs distilled propositions |
+| Embedding model & dim | a config value | wired directly, swappable, dim-aware |
+| ANN index & params | managed by the engine | tune HNSW (`m`, `ef_search`) |
+| Semantic query | abstracted | the `<=>` cosine query in `recall()` |
+| Lexical / BM25 | internal | `tsvector` FTS you build |
+| Hybrid fusion (RRF) | a flag (`COMBINED_HYBRID_SEARCH_RRF`) | `_rrf()` you implement + tune `c` |
+| Reranking | limited | add a cross-encoder / Voyage rerank pass |
+| Retrieval eval | bolt-on | own recall@k end-to-end |
+| Query transforms | no hook | HyDE / multi-query |
+
+The `recall()` + `_rrf()` in the Tech stack skeleton are literally the canonical
+RAG retrieval step, hand-written. (Repo's `../docs/rag-primer.md` is the theory;
+this is where those concepts become knobs.)
+
+**Flavor choice — itself a RAG experiment.** Keeping distillation = *proposition-
+based retrieval* (embed distilled facts, a more sophisticated variant); dropping it
+= *raw-RAG* (chunk + embed, the vanilla, most-textbook form). Both are RAG; it's a
+knob, not a question of whether this "counts."
+
+**What we leave behind, and why it's fine.** Graph-native retrieval — multi-hop
+traversal, GraphRAG community summarization. Real and interesting, but unused today
+(star topology, node-distance rerank disabled), so no experiment we're actually
+running is lost. **Decision (2026-05-31): leaving graph-DB experimentation behind
+is accepted**, now that its only real benefit here (dedup + bi-temporal, not
+relationships) is understood.
+
+**Concrete RAG experiments this unlocks** (rough backlog):
+
+1. **Reranker pass** — add Voyage rerank or a cross-encoder after RRF; measure
+   recall@k lift.
+2. **Chunk vs proposition** — embed raw chunks vs distilled facts; compare
+   retrieval precision and answer faithfulness.
+3. **HNSW tuning** — `m` / `ef_construction` / `ef_search` vs recall/latency.
+4. **Hybrid weighting** — RRF `c`, semantic-vs-lexical balance, MMR for diversity.
+5. **Retrieval-eval scorecard** — a recall@k / precision harness (the LongMemEval
+   idea from the Supermemory-patterns notes); the real RAG skill, and the thing
+   that tells you whether any of 1–4 actually helped.
+6. **Query transforms** — HyDE, multi-query expansion; measured on the same
+   scorecard.
 
 ---
 

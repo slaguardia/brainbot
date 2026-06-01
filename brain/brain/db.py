@@ -37,8 +37,15 @@ CREATE TABLE IF NOT EXISTS sources (
     path       text NOT NULL DEFAULT '',
     version    integer NOT NULL DEFAULT 1,
     created_at timestamptz NOT NULL DEFAULT now(),
-    updated_at timestamptz NOT NULL DEFAULT now()
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    source_last_edited timestamptz
 );
+
+-- The source's real last-edited time at its origin (e.g. Notion's
+-- last_edited_time), distinct from updated_at (our ingest/sync time). Nullable:
+-- unknown for sources whose origin doesn't supply it. Added idempotently so DBs
+-- created before this column gain it on the next startup.
+ALTER TABLE sources ADD COLUMN IF NOT EXISTS source_last_edited timestamptz;
 
 CREATE TABLE IF NOT EXISTS chunks (
     id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),

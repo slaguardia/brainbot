@@ -88,6 +88,9 @@ async def ingest(request: Request) -> JSONResponse:
             # Notion page id (a uuid) is the stable source id, so re-ingesting the
             # same URL wipe-replaces that source instead of creating a duplicate.
             source_id=page["id"],
+            # Notion's real last-edited time (provenance), kept distinct from our
+            # ingest/sync time (sources.updated_at).
+            last_edited=page.get("last_edited_time"),
         )
     except Exception as e:  # noqa: BLE001
         logger.exception("ingest: upsert_source failed")

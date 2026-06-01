@@ -31,6 +31,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from dataclasses import asdict, dataclass
+from datetime import datetime
 
 import asyncpg
 
@@ -85,6 +86,18 @@ class Context:
 
 # ---- ingest: capture = edit = re-sync, all one call --------------------------
 
+def _parse_iso(value: str | None) -> datetime | None:
+    """Parse an ISO-8601 timestamp (e.g. Notion's last_edited_time) to a datetime
+    for the timestamptz column. Tolerates a trailing 'Z'; returns None on
+    missing/unparseable input rather than failing the ingest."""
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
 async def upsert_source(
     pool: asyncpg.Pool,
     *,
@@ -93,6 +106,7 @@ async def upsert_source(
     raw_text: str,
     path: str,
     source_id: str | None = None,
+    last_edited: str | None = None,
 ) -> str:
     """Create or replace a source, then re-derive its chunks (wipe-replace).
 
@@ -112,6 +126,9 @@ async def upsert_source(
     title = (title or "").replace("\x00", "")
     path = (path or "").replace("\x00", "")
     page_text = (raw_text or "").replace("\x00", "")
+    # The source's real edit time (e.g. Notion's last_edited_time), parsed to a
+    # datetime for the timestamptz column. None when the origin doesn't supply it.
+    last_edited_dt = _parse_iso(last_edited)
     embed_input = f"{title}\n{page_text}"
     if len(embed_input) > _EMBED_CHAR_BUDGET:
         # A large page would blow Voyage's single-input token cap and 500 /ingest.
@@ -132,10 +149,10 @@ async def upsert_source(
         async with conn.transaction():
             src_id = await conn.fetchval(
                 """
-                INSERT INTO sources (id, kind, title, raw_text, path)
-                VALUES (COALESCE($1::uuid, gen_random_uuid()), $2, $3, $4, $5)
+                INSERT INTO sources (id, kind, title, raw_text, path, source_last_edited)
+                VALUES (COALESCE($1::uuid, gen_random_uuid()), $2, $3, $4, $5, $6)
                 ON CONFLICT (id) DO UPDATE
-                  SET kind=$2, title=$3, raw_text=$4, path=$5,
+                  SET kind=$2, title=$3, raw_text=$4, path=$5, source_last_edited=$6,
                       version=sources.version+1, updated_at=now()
                 RETURNING id
                 """,
@@ -144,6 +161,7 @@ async def upsert_source(
                 title,
                 page_text,
                 path,
+                last_edited_dt,
             )
             # Wipe-replace: drop this source's chunks, re-insert the fresh one.
             await conn.execute("DELETE FROM chunks WHERE source_id=$1", src_id)
@@ -293,7 +311,7 @@ async def profile(
     async with pool.acquire() as conn:
         rows = await conn.fetch(
             """
-            SELECT s.path, s.id AS source_id, s.title, s.updated_at,
+            SELECT s.path, s.id AS source_id, s.title, s.source_last_edited,
                    c.heading, c.text, c.position
             FROM chunks c JOIN sources s ON s.id = c.source_id
             WHERE (s.path = $1 OR left(s.path, length($1) + 1) = $1 || '/')
@@ -366,8 +384,10 @@ def _assemble_chunks(chunks: list[Chunk]) -> str:
 
 
 def _provenance(rows: list) -> list:
-    """List of (path, source_id, last_edited) per distinct source, for citation —
-    'per your Target role doc.' Order follows the assembled rows."""
+    """List of (path, source_id, title, last_edited) per distinct source, for
+    citation — 'per your Target role doc.' `last_edited` is the source's REAL edit
+    time at its origin (Notion's last_edited_time), not our ingest/sync time; it is
+    None when the origin didn't supply one. Order follows the assembled rows."""
     seen: set = set()
     out: list = []
     for r in rows:
@@ -375,13 +395,13 @@ def _provenance(rows: list) -> list:
         if key in seen:
             continue
         seen.add(key)
-        updated = r["updated_at"]
+        edited = r["source_last_edited"]
         out.append(
             {
                 "path": r["path"] or "",
                 "source_id": key,
                 "title": r["title"] or "",
-                "last_edited": updated.isoformat() if updated is not None else None,
+                "last_edited": edited.isoformat() if edited is not None else None,
             }
         )
     return out

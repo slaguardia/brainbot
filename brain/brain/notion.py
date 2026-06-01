@@ -264,12 +264,13 @@ def _ancestor_titles(page: dict, cfg: Config) -> list[str]:
 # ---- public entrypoint -------------------------------------------------------
 
 def fetch_page(url: str) -> dict:
-    """Fetch a Notion page as {id, title, text, path}.
+    """Fetch a Notion page as {id, title, text, path, last_edited_time}.
 
     - id:    the dashed Notion page uuid (used as the stable source id).
     - title: the page title.
     - text:  blocks flattened to markdown (the canonical content to chunk/embed).
     - path:  ancestor titles + this page's title joined by '/'.
+    - last_edited_time: Notion's real last-edited timestamp (ISO 8601), or None.
 
     Raises NotionTokenError / NotionURLError / NotionNotSharedError for the three
     distinct failure modes. Synchronous (stdlib- or httpx-backed) — wrap with
@@ -282,6 +283,7 @@ def fetch_page(url: str) -> dict:
 
     page = _get(f"/pages/{page_id}", cfg)  # raises NotionNotSharedError on 404
     title = _page_title(page)
+    last_edited = page.get("last_edited_time")  # Notion's real edit time (ISO 8601)
     text = _page_text(page_id, cfg)
     # Drop blank segments (an untitled page/ancestor) so we never store path=''
     # — which the scope predicate would mishandle — or an 'A//B' double slash that
@@ -290,4 +292,10 @@ def fetch_page(url: str) -> dict:
     path = "/".join(parts) or page_id
     # `id` is the dashed Notion page uuid — the caller uses it as the stable
     # source id so re-ingesting the same page wipe-replaces rather than duplicates.
-    return {"id": page_id, "title": title, "text": text, "path": path}
+    return {
+        "id": page_id,
+        "title": title,
+        "text": text,
+        "path": path,
+        "last_edited_time": last_edited,
+    }

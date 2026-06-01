@@ -59,15 +59,24 @@ _EMBED_CHAR_BUDGET = 110_000
 @dataclass
 class Chunk:
     """One retrieved section — self-contained; the consumer LLM reads meaning
-    straight from `text`. JSON-serializable via `to_dict`."""
+    straight from `text`. The public recall contract is heading/text/score/path
+    (see `to_dict`). `source_id` is internal provenance (which source the chunk came
+    from), used by profile()'s degrade path; it is deliberately NOT in `to_dict`."""
 
     heading: str
     text: str
     score: float
     path: str
+    source_id: str = ""
 
     def to_dict(self) -> dict:
-        return asdict(self)
+        # The 4-key recall contract — source_id stays internal.
+        return {
+            "heading": self.heading,
+            "text": self.text,
+            "score": self.score,
+            "path": self.path,
+        }
 
 
 @dataclass
@@ -221,6 +230,7 @@ async def recall(
                        c.heading,
                        c.text,
                        s.path,
+                       s.id AS source_id,
                        row_number() OVER (ORDER BY c.embedding <=> $1) AS rank
                 FROM chunks c JOIN sources s ON s.id = c.source_id
                 {sem_scope}
@@ -235,6 +245,7 @@ async def recall(
                        c.heading,
                        c.text,
                        s.path,
+                       s.id AS source_id,
                        row_number() OVER (
                            ORDER BY ts_rank(c.fts, plainto_tsquery('english', $1)) DESC
                        ) AS rank
@@ -269,6 +280,7 @@ def _rrf(*rankings: list, c: int = _RRF_C) -> list[Chunk]:
             text=row[rid]["text"],
             score=score[rid],
             path=row[rid]["path"],
+            source_id=str(row[rid]["source_id"]),
         )
         for rid in order
     ]
@@ -330,11 +342,16 @@ async def profile(
     # and SAY it was cut. (Phase 1 never reaches here for a single page; this is
     # the documented degrade path for a future multi-section corpus.)
     focused = await recall(pool, focus or scope, scope=scope, k=40)
-    # Provenance must match the text actually returned AND keep the contract's
-    # 4-key shape. The focused chunks carry only `path`, so recover full provenance
-    # from the rows already fetched, filtered to the paths that survived.
-    focused_paths = {ch.path or "" for ch in focused}
-    degraded_rows = [r for r in rows if (r["path"] or "") in focused_paths]
+    # Provenance must match the text actually returned, in the same order, AND keep
+    # the contract's 4-key shape. Key by SOURCE ID (not path — distinct sources can
+    # share a path subtree, which would over-include), recovering full provenance
+    # from the rows already fetched, in the focused chunks' relevance order.
+    by_id = {str(r["source_id"]): r for r in rows}
+    degraded_rows = [
+        by_id[sid]
+        for sid in dict.fromkeys(ch.source_id for ch in focused)
+        if sid in by_id
+    ]
     return Context(
         text=_assemble_chunks(focused),
         sources=_provenance(degraded_rows),
@@ -353,7 +370,8 @@ def _assemble(rows: list) -> str:
         path = r["path"] or ""
         source_key = str(r["source_id"])
         if path != last_path:
-            lines.append(f"# {path}")
+            if path:  # skip a bare '# ' header for an empty-path source
+                lines.append(f"# {path}")
             last_path = path
             last_source = None
         if source_key != last_source:

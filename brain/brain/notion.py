@@ -24,6 +24,7 @@ import json
 import re
 import urllib.error
 import urllib.request
+from urllib.parse import parse_qs, urlsplit
 
 from .config import Config
 
@@ -56,9 +57,15 @@ def parse_page_id(url: str) -> str:
 
     Accepts dashed or undashed ids; takes the LAST match so a slug that happens to
     contain hex doesn't win over the trailing id. Raises NotionURLError if none."""
-    # Drop any #fragment (a block anchor) before matching so a trailing block id
-    # can't win over the page id; the query is kept (covers the ?p=<id> form).
-    matches = _HEX32.findall((url or "").split("#", 1)[0])
+    # The page id lives in the PATH (notion.so/<slug>-<pageid>). Match there first,
+    # ignoring the query, so a database-view id (?v=<viewid>) or other query token
+    # can't win over the real page id. The #fragment (block anchor) is dropped by
+    # urlsplit. Only when the path has no id do we fall back to an explicit ?p=<id>
+    # (the peek/side-panel form, where the path is just the workspace).
+    parts = urlsplit(url or "")
+    matches = _HEX32.findall(parts.path)
+    if not matches:
+        matches = _HEX32.findall(parse_qs(parts.query).get("p", [""])[0])
     if not matches:
         raise NotionURLError(f"no Notion page id found in URL: {url!r}")
     raw = matches[-1].replace("-", "").lower()

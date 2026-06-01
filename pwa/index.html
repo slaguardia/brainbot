@@ -13,7 +13,7 @@
     <link rel="stylesheet" href="/src/style.css" />
   </head>
   <body>
-    <main id="capture-view">
+    <main id="home-view">
       <header class="cap-head">
         <span class="brand" aria-label="brain">brain</span>
         <nav class="cap-nav" aria-label="Brain views">
@@ -22,19 +22,7 @@
           <a id="open-docs" href="#docs" aria-label="How the brain works">docs</a>
         </nav>
       </header>
-      <textarea
-        id="capture"
-        placeholder="Thought, note, anything…"
-        autocomplete="off"
-        autocorrect="on"
-        spellcheck="true"
-      ></textarea>
-      <button id="send" type="button" disabled>Capture disabled</button>
-      <p id="capture-note" class="cap-note">
-        Free-text capture is paused. The brain now ingests <strong>sources</strong>
-        (Notion pages / docs) rather than raw text — a source-editing surface is
-        coming. See <a href="#docs">docs</a> for how the brain works today.
-      </p>
+      <section id="home-body" class="home"></section>
     </main>
     <div id="search-view" hidden></div>
     <div id="map-view" hidden></div>

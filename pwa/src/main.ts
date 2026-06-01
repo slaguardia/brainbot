@@ -1,8 +1,10 @@
 import { mountDocs } from "./docs";
+import { mountHome } from "./home";
 import { mountLearnings } from "./learnings";
 import { mountSearch, mountMap } from "./views";
 
-const captureView = document.getElementById("capture-view") as HTMLElement;
+const homeView = document.getElementById("home-view") as HTMLElement;
+const homeBody = document.getElementById("home-body") as HTMLElement;
 const docsView = document.getElementById("docs-view") as HTMLDivElement;
 const learningsView = document.getElementById("learnings-view") as HTMLDivElement;
 const searchView = document.getElementById("search-view") as HTMLDivElement;
@@ -10,15 +12,15 @@ const mapView = document.getElementById("map-view") as HTMLDivElement;
 
 // Free-text capture is disabled with the document-substrate cutover: the brain's
 // write path is now source ingest (Notion pages / docs), not a /capture endpoint.
-// The send button is disabled in the markup and there is no POST here — so the UI
-// has no broken request and no console error. The capture screen stays as the
-// landing view (with a note) until a source-editing surface lands; the docs and
-// evolution views below are unaffected.
+// So the landing view is a small dashboard of high-level facts about the brain
+// (source + domain counts, read from /api/map) rather than a capture box; the
+// docs and evolution views below are unaffected.
+mountHome(homeBody);
 
 // Hash router: `#docs` (and `#docs/<section>`) shows the documentation view,
 // `#learnings` shows the evolution timeline, `#search` the recall search box,
-// `#map` the source map; anything else is the capture screen. Each overlay's
-// HTML is mounted lazily on first visit so it never costs the capture path
+// `#map` the source map; anything else is the home dashboard. Each overlay's
+// HTML is mounted lazily on first visit so it never costs the home path
 // anything. `#search` / `#map` are owner read-views over the brain.
 let docsMounted = false;
 let learningsMounted = false;
@@ -50,7 +52,7 @@ function route() {
   learningsView.hidden = !onLearnings;
   searchView.hidden = !onSearch;
   mapView.hidden = !onMap;
-  captureView.hidden = onDocs || onLearnings || onSearch || onMap;
+  homeView.hidden = onDocs || onLearnings || onSearch || onMap;
   if (
     (onDocs || onLearnings || onSearch || onMap) &&
     !/^#(docs|learnings)\//.test(location.hash)

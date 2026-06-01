@@ -1,7 +1,6 @@
 /* Cool-dark palette ported from the scout consumer (cool navy surfaces,
    purple brand accent, blue interactive, emerald/amber/coral semantics).
-   The capture textarea keeps its serif "writing surface" — everything else
-   (UI chrome, buttons, docs) speaks scout. */
+   The whole UI (chrome, buttons, docs, dashboard) speaks scout. */
 :root {
   /* Surfaces */
   --bg: #0b0d12;
@@ -60,8 +59,6 @@
     Roboto, system-ui, sans-serif;
   --font-mono: "JetBrains Mono", "Fira Code", "SF Mono", ui-monospace, Menlo,
     Consolas, monospace;
-  --font-serif: "Iowan Old Style", "Charter", "Georgia", "Cambria",
-    "Times New Roman", serif;
 
   color-scheme: dark;
 }
@@ -110,7 +107,7 @@ body {
 main {
   display: flex;
   flex-direction: column;
-  height: 100dvh;
+  min-height: 100dvh;
   gap: 14px;
   padding: max(18px, env(safe-area-inset-top))
     max(20px, env(safe-area-inset-right))
@@ -121,14 +118,21 @@ main {
   width: 100%;
 }
 
-/* Slim capture header: brand wordmark left, docs link right. Keeps the
-   screen one-screen while carrying scout's brand identity. */
+/* Slim header: brand wordmark left, view-nav links right. Carries scout's
+   brand identity while keeping the dashboard above the fold. */
 .cap-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
   flex: 0 0 auto;
+}
+
+/* The view-nav: search / map / docs, laid out as a row of pill links. */
+.cap-nav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 /* The glitch wordmark — scout's signature. RGB-split on hover, the only
@@ -173,7 +177,7 @@ main {
   }
 }
 
-#open-docs {
+.cap-nav a {
   font-family: var(--font-mono);
   font-size: 12px;
   font-weight: 600;
@@ -189,93 +193,106 @@ main {
     border-color var(--dur-fast) var(--ease),
     background-color var(--dur-fast) var(--ease);
 }
-#open-docs:hover {
+.cap-nav a:hover {
   color: var(--fg);
   border-color: var(--border-strong);
   background: var(--panel-2);
 }
-#open-docs:focus-visible {
+.cap-nav a:focus-visible {
   outline: none;
   border-color: var(--link);
   box-shadow: 0 0 0 3px var(--link-bg);
 }
 
-/* Writing surface: serif body kept on purpose — the textarea IS the page. */
-#capture {
+/* ===========================================================================
+   Home dashboard (default view, no hash). High-level facts about the brain —
+   a one-line summary, source/domain stat tiles, and a per-domain breakdown —
+   read from /api/map. Replaces the old (now-retired) capture textarea.
+   =========================================================================== */
+.home {
   flex: 1;
-  width: 100%;
-  resize: none;
-  background: transparent;
-  color: var(--fg);
-  border: none;
-  outline: none;
-  font-family: var(--font-serif);
-  font-size: 20px;
-  line-height: 1.55;
-  letter-spacing: 0.005em;
-  padding: 6px 2px;
-  caret-color: var(--accent);
-  -webkit-text-size-adjust: 100%;
 }
-
-#capture::placeholder {
-  color: var(--fg-faint);
-  font-style: italic;
-}
-
-#capture::selection {
-  background: rgba(139, 109, 255, 0.32);
-}
-
-/* Primary action — scout's interactive blue, solid for a clear CTA. */
-#send {
-  width: 100%;
-  padding: 13px 20px;
-  min-height: 50px;
-  background: var(--link);
-  color: #0b0d12;
-  border: 1px solid rgba(0, 0, 0, 0.2);
-  border-radius: var(--r-md);
-  font: inherit;
-  font-weight: 600;
+.home-status {
+  color: var(--fg-muted);
   font-size: 14px;
-  letter-spacing: 0.01em;
-  cursor: pointer;
-  touch-action: manipulation;
-  user-select: none;
-  transition: background-color var(--dur-fast) var(--ease),
-    transform var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease);
-  box-shadow: var(--shadow-sm);
+  margin: 8px 2px;
 }
-
-#send:hover {
-  background: #a4c2ff;
+.home-hero {
+  padding: 8px 0 4px;
 }
-
-#send:active {
-  background: #5f93f0;
-  transform: translateY(1px);
-  box-shadow: none;
+.home-lead {
+  color: #c7cdda;
+  font-size: 16px;
+  line-height: 1.6;
+  margin: 0;
 }
-
-#send:focus-visible {
-  outline: none;
-  border-color: var(--link);
-  box-shadow: 0 0 0 3px rgba(122, 169, 255, 0.25);
+.home-stats {
+  display: flex;
+  gap: 12px;
+  margin: 18px 0 8px;
 }
-
-#send:disabled {
+.stat {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  border: 1px solid var(--border);
   background: var(--bg-elevated);
+  border-radius: var(--r-lg);
+  padding: 16px 18px;
+}
+.stat-num {
+  font-family: var(--font-mono);
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--fg);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+.stat-label {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
   color: var(--fg-faint);
-  border-color: var(--border);
-  cursor: not-allowed;
-  box-shadow: none;
+}
+.home-domains {
+  margin: 20px 0 0;
+}
+.home-domains h2 {
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--fg-faint);
+  margin: 0 0 8px;
+}
+.dom-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.dom-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 2px;
+  border-bottom: 1px solid var(--border);
+}
+.dom-name {
+  color: var(--fg);
+  font-size: 14.5px;
+}
+.dom-count {
+  color: var(--fg-muted);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
 }
 
-/* Capture-disabled note: short explainer under the (disabled) send button while
+/* Capture-paused note: short explainer at the foot of the dashboard while
    free-text capture is paused for the document-substrate cutover. */
 .cap-note {
-  margin: 14px 2px 0;
+  margin: 22px 2px 0;
   color: var(--fg-faint);
   font-size: 13px;
   line-height: 1.5;
@@ -336,7 +353,6 @@ main {
   .brand:hover {
     animation: none;
   }
-  #send,
   #toast {
     transition: opacity 120ms ease;
     transform: none !important;
@@ -350,7 +366,7 @@ main {
    embeddings, amber = search, emerald = graph store.
    =========================================================================== */
 
-#capture-view[hidden],
+#home-view[hidden],
 #docs-view[hidden],
 #learnings-view[hidden],
 #search-view[hidden],
@@ -908,7 +924,7 @@ main {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  #open-docs,
+  .cap-nav a,
   .docs-back,
   .docs-nav-link {
     transition: none;

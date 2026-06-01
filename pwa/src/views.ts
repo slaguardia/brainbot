@@ -46,8 +46,8 @@ const VIEW_STYLE = `
 function topbar(label: string): string {
   return `
     <div class="docs-topbar">
-      <a class="docs-back" href="#" aria-label="Back to capture">
-        <span class="docs-back-arrow" aria-hidden="true">←</span> Capture
+      <a class="docs-back" href="#" aria-label="Back to home">
+        <span class="docs-back-arrow" aria-hidden="true">←</span> Home
       </a>
       <span class="brand" aria-label="brain">brain</span>
       <a class="docs-cross" href="${esc(label === "search" ? "#map" : "#search")}" aria-label="${label === "search" ? "Source map" : "Search the brain"}">${

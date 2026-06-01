@@ -101,7 +101,8 @@ async def recall_route(request: Request) -> JSONResponse:
     if not q:
         return JSONResponse({"error": "missing required query param: q"}, status_code=400)
     scope = request.query_params.get("scope") or None
-    k = _int_param(request, "k", 12)
+    # Clamp k to >=1 (and a sane cap) so k<=0 never reaches the `[:k]` slice.
+    k = _int_param(request, "k", 12, lo=1, hi=100)
 
     try:
         pool = await get_pool()
@@ -120,11 +121,13 @@ async def profile_route(request: Request) -> JSONResponse:
         return JSONResponse(
             {"error": "missing required query param: scope"}, status_code=400
         )
-    budget = _int_param(request, "budget", 20_000)
+    # Clamp budget to a sane floor so budget<=0 never flips the degrade gate.
+    budget = _int_param(request, "budget", 20_000, lo=1000)
+    focus = request.query_params.get("focus") or None
 
     try:
         pool = await get_pool()
-        ctx = await profile(pool, scope, budget=budget)
+        ctx = await profile(pool, scope, budget=budget, focus=focus)
     except Exception as e:  # noqa: BLE001 — embed/db failure: surface, don't 500
         logger.exception("profile failed")
         return JSONResponse({"error": f"profile failed: {e}"}, status_code=502)
@@ -144,15 +147,29 @@ async def map_route(request: Request) -> JSONResponse:
     return JSONResponse({"sources": tree})
 
 
-def _int_param(request: Request, name: str, default: int) -> int:
-    """Parse an int query param, falling back to `default` on missing/garbage."""
+def _int_param(
+    request: Request,
+    name: str,
+    default: int,
+    *,
+    lo: int | None = None,
+    hi: int | None = None,
+) -> int:
+    """Parse an int query param, falling back to `default` on missing/garbage,
+    then clamp into `[lo, hi]` (either bound optional) so out-of-range values
+    (e.g. k<=0 or budget<=0) can never reach the slice/gate that consumes them."""
     raw = request.query_params.get(name)
     if raw is None:
         return default
     try:
-        return int(raw)
+        value = int(raw)
     except (TypeError, ValueError):
         return default
+    if lo is not None:
+        value = max(lo, value)
+    if hi is not None:
+        value = min(hi, value)
+    return value
 
 
 # ---- MCP tools (US-009): same store functions, contract shapes ---------------
@@ -172,13 +189,16 @@ async def recall_tool(query: str, scope: str | None = None, k: int = 12) -> dict
 
 
 @mcp.tool(name="profile")
-async def profile_tool(scope: str, budget: int = 20_000) -> dict:
+async def profile_tool(
+    scope: str, budget: int = 20_000, focus: str | None = None
+) -> dict:
     """Domain dump — every section under the `scope` path prefix, assembled into
-    structured markdown. Returns the Context contract
-    {"text", "sources", "truncated"}."""
+    structured markdown. `focus` is an optional query that, only when the dump is
+    over budget, picks which sections survive the degrade. Returns the Context
+    contract {"text", "sources", "truncated"}."""
     try:
         pool = await get_pool()
-        ctx = await profile(pool, scope, budget=budget)
+        ctx = await profile(pool, scope, budget=budget, focus=focus)
     except Exception as e:  # noqa: BLE001 — embed/db failure: clear tool error
         logger.exception("profile (mcp) failed")
         raise RuntimeError(f"profile failed: {e}") from e

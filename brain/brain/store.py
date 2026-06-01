@@ -169,13 +169,19 @@ async def recall(
     (`ts_rank`), each capped at ~50 and scoped to `sources.path` (the exact node
     or its proper subtree), then fuses them with RRF and returns the top-k
     `Chunk`s."""
+    # Empty/whitespace scope means UNSCOPED, not "match the root prefix".
+    if scope is not None:
+        scope = scope.strip() or None
+
     [q_emb] = await asyncio.to_thread(embed, [query], "query")
 
     # Scope = the exact node OR its proper subtree (never a bare prefix, which
-    # over-matches sibling paths). $2 carries the scope when present; when scope
-    # is None there's no path filter, so $2 is the arm limit instead.
-    sem_scope = "" if scope is None else "WHERE (s.path = $2 OR s.path LIKE $2 || '/%')"
-    lex_scope = "" if scope is None else "AND (s.path = $2 OR s.path LIKE $2 || '/%')"
+    # over-matches sibling paths). The subtree arm uses a wildcard-free prefix
+    # compare (`left(...) = scope || '/'`) so `_`/`%`/spaces in a Notion path
+    # are literal, not LIKE metacharacters. $2 carries the scope when present;
+    # when scope is None there's no path filter, so $2 is the arm limit instead.
+    sem_scope = "" if scope is None else "WHERE (s.path = $2 OR left(s.path, length($2) + 1) = $2 || '/')"
+    lex_scope = "" if scope is None else "AND (s.path = $2 OR left(s.path, length($2) + 1) = $2 || '/')"
     limit_ph = "$2" if scope is None else "$3"
     sem_args = [q_emb, _ARM_LIMIT] if scope is None else [q_emb, scope, _ARM_LIMIT]
     lex_args = [query, _ARM_LIMIT] if scope is None else [query, scope, _ARM_LIMIT]
@@ -246,10 +252,14 @@ async def profile(
     scope: str,
     *,
     budget: int = 20_000,
+    focus: str | None = None,
 ) -> Context:
     """'Give me everything about this domain,' assembled. Pulls every chunk under
     the `scope` path prefix ordered by `(path, position)` so the human's structure
     survives, then rebuilds it into structured markdown.
+
+    `focus` is an optional query used only on the over-budget degrade path to pick
+    which sections survive (falls back to `scope` when not given).
 
     Phase 1: a single page always fits, so the common path returns the assembled
     bundle whole with `truncated=False`. The over-budget degrade — fall back to
@@ -257,32 +267,36 @@ async def profile(
     documented here and left as a stub: `_token_estimate` only trips when a future
     multi-section corpus exceeds `budget`.
     """
+    # profile requires a scope; the route rejects empty — just normalize whitespace.
+    scope = scope.strip()
+
     async with pool.acquire() as conn:
         rows = await conn.fetch(
             """
             SELECT s.path, s.id AS source_id, s.title, s.updated_at,
                    c.heading, c.text, c.position
             FROM chunks c JOIN sources s ON s.id = c.source_id
-            WHERE (s.path = $1 OR s.path LIKE $1 || '/%')
+            WHERE (s.path = $1 OR left(s.path, length($1) + 1) = $1 || '/')
             ORDER BY s.path, c.position
             """,
             scope,
         )
 
     bundle = _assemble(rows)
-    provenance = _provenance(rows)
 
     if _token_estimate(bundle) <= budget:
         # Common, safe case: the slice fits — hand it over whole.
-        return Context(text=bundle, sources=provenance, truncated=False)
+        return Context(text=bundle, sources=_provenance(rows), truncated=False)
 
     # Over budget: degrade to recall-within-scope rather than silently truncating,
     # and SAY it was cut. (Phase 1 never reaches here for a single page; this is
     # the documented degrade path for a future multi-section corpus.)
-    focused = await recall(pool, scope, scope=scope, k=40)
+    focused = await recall(pool, focus or scope, scope=scope, k=40)
     return Context(
         text=_assemble_chunks(focused),
-        sources=provenance,
+        # Provenance must match the text actually returned: derive it from the
+        # focused chunks, not the full rows.
+        sources=_provenance_from_chunks(focused),
         truncated=True,
     )
 
@@ -350,6 +364,22 @@ def _provenance(rows: list) -> list:
     return out
 
 
+def _provenance_from_chunks(chunks: list[Chunk]) -> list:
+    """Provenance for the over-budget degrade path, derived from the chunks
+    actually returned so `Context.sources` matches `Context.text`. A `Chunk`
+    only carries `path`, so this lists each distinct path once (in chunk order);
+    source_id/title/last_edited aren't on the chunk and are left absent."""
+    seen: set = set()
+    out: list = []
+    for ch in chunks:
+        path = ch.path or ""
+        if path in seen:
+            continue
+        seen.add(path)
+        out.append({"path": path})
+    return out
+
+
 def _token_estimate(text: str) -> int:
     """Rough token count for the budget check — ~4 chars/token. A cheap proxy; the
     only consumer is profile()'s fits-the-budget gate, where exactness doesn't
@@ -363,8 +393,14 @@ async def map_(pool: asyncpg.Pool, scope: str | None = None) -> list[dict]:
     """Domain discovery: the `(path, title)` source tree under the prefix (or all
     sources), ordered by path — so a consumer that doesn't know its scope can find
     it."""
-    # Scope = the exact node OR its proper subtree; no path filter when scope is None.
-    scope_clause = "" if scope is None else "WHERE (path = $1 OR path LIKE $1 || '/%')"
+    # Empty/whitespace scope means UNSCOPED, not "match the root prefix".
+    if scope is not None:
+        scope = scope.strip() or None
+
+    # Scope = the exact node OR its proper subtree; no path filter when scope is
+    # None. The subtree arm is wildcard-free (`left(...) = scope || '/'`) so
+    # `_`/`%`/spaces in a path are literal, not LIKE metacharacters.
+    scope_clause = "" if scope is None else "WHERE (path = $1 OR left(path, length($1) + 1) = $1 || '/')"
     async with pool.acquire() as conn:
         rows = await conn.fetch(
             f"""

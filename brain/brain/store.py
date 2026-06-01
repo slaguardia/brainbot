@@ -223,6 +223,7 @@ async def recall(
                 FROM chunks c JOIN sources s ON s.id = c.source_id
                 WHERE c.fts @@ plainto_tsquery('english', $1)
                   {lex_scope}
+                ORDER BY ts_rank(c.fts, plainto_tsquery('english', $1)) DESC
                 LIMIT {limit_ph}
                 """,
                 *lex_args,
@@ -311,11 +312,14 @@ async def profile(
     # and SAY it was cut. (Phase 1 never reaches here for a single page; this is
     # the documented degrade path for a future multi-section corpus.)
     focused = await recall(pool, focus or scope, scope=scope, k=40)
+    # Provenance must match the text actually returned AND keep the contract's
+    # 4-key shape. The focused chunks carry only `path`, so recover full provenance
+    # from the rows already fetched, filtered to the paths that survived.
+    focused_paths = {ch.path or "" for ch in focused}
+    degraded_rows = [r for r in rows if (r["path"] or "") in focused_paths]
     return Context(
         text=_assemble_chunks(focused),
-        # Provenance must match the text actually returned: derive it from the
-        # focused chunks, not the full rows.
-        sources=_provenance_from_chunks(focused),
+        sources=_provenance(degraded_rows),
         truncated=True,
     )
 
@@ -380,22 +384,6 @@ def _provenance(rows: list) -> list:
                 "last_edited": updated.isoformat() if updated is not None else None,
             }
         )
-    return out
-
-
-def _provenance_from_chunks(chunks: list[Chunk]) -> list:
-    """Provenance for the over-budget degrade path, derived from the chunks
-    actually returned so `Context.sources` matches `Context.text`. A `Chunk`
-    only carries `path`, so this lists each distinct path once (in chunk order);
-    source_id/title/last_edited aren't on the chunk and are left absent."""
-    seen: set = set()
-    out: list = []
-    for ch in chunks:
-        path = ch.path or ""
-        if path in seen:
-            continue
-        seen.add(path)
-        out.append({"path": path})
     return out
 
 

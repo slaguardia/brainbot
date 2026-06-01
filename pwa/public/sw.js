@@ -50,7 +50,7 @@ self.addEventListener("fetch", (event) => {
           }
           return res;
         })
-        .catch(() => caches.match("/") as Promise<Response>);
+        .catch(() => caches.match("/"));
     })
   );
 });

@@ -1,11 +1,25 @@
-// The documentation view: a single on-theme page that explains how the brain
-// works — the two LLM layers, the endpoints, the graph database, and the
-// reasoning behind the architecture. Static, hand-authored content (no user
-// input ever lands in this HTML, so innerHTML is safe and far more legible
-// than building the tree by hand). Reached via the `#docs` hash route; the
-// router in main.ts toggles it against the capture screen.
+// The documentation view — a knowledge base with a left sidenav. The sidenav
+// carries the brain wordmark on top and a tab per PAGE ("How the brain works",
+// "Evolution", and any future page); the center column holds the active page's
+// article; the right rail is the in-page "on this page" tracker (scrollspy).
+// Static, hand-authored content (no user input ever lands in this HTML, so
+// innerHTML is safe). Reached via `#docs` (and `#docs/<page>`); `#learnings`
+// (and `#learnings/ch<n>`) alias onto the Evolution page so old links resolve.
 
-const SECTIONS: { id: string; label: string }[] = [
+import { EVOLUTION_BODY, EVOLUTION_SECTIONS } from "./learnings";
+
+interface DocSection {
+  id: string;
+  label: string;
+}
+interface DocPage {
+  id: string;
+  label: string;
+  sections: DocSection[];
+  body: string;
+}
+
+const HOW_IT_WORKS_SECTIONS: DocSection[] = [
   { id: "overview", label: "Overview" },
   { id: "capture", label: "Capture pipeline" },
   { id: "recall", label: "Recall & profile" },
@@ -13,10 +27,6 @@ const SECTIONS: { id: string; label: string }[] = [
   { id: "graph", label: "Graph database" },
   { id: "why", label: "Why this design" },
 ];
-
-const NAV = SECTIONS.map(
-  (s) => `<a class="docs-nav-link" data-target="${s.id}" href="#docs/${s.id}">${s.label}</a>`,
-).join("");
 
 // Reusable bits ---------------------------------------------------------------
 
@@ -29,20 +39,7 @@ const LEGEND = `
     <span class="chip c-io">In / out</span>
   </div>`;
 
-const DOCS_HTML = `
-  <div class="docs-topbar">
-    <a class="docs-back" href="#" aria-label="Back to home">
-      <span class="docs-back-arrow" aria-hidden="true">←</span> Home
-    </a>
-    <span class="brand" aria-label="brain">brain</span>
-    <a class="docs-cross" href="#learnings" aria-label="How the brain evolved">Evolution&nbsp;→</a>
-  </div>
-
-  <div class="docs-body">
-    <nav class="docs-nav" aria-label="Documentation sections">${NAV}</nav>
-
-    <article class="docs-article">
-
+const HOW_IT_WORKS_BODY = `
       <header class="docs-hero">
         <h1>How the brain works</h1>
         <p class="docs-lead">
@@ -515,35 +512,122 @@ const DOCS_HTML = `
             <p>At one-user / one-domain scale the whole relevant profile fits in a model's context. On a star topology every concept is ~2 hops from every other through the owner, so node-distance reranking doesn't help — recall uses RRF plus the fact text's own context. Ranking optimization is a scale problem we don't have yet.</p>
           </div>
         </div>
-      </section>
+      </section>`;
 
-      <footer class="docs-foot">
-        <a class="docs-back" href="#"><span class="docs-back-arrow" aria-hidden="true">←</span> Back to home</a>
-      </footer>
+const PAGES: DocPage[] = [
+  {
+    id: "how-it-works",
+    label: "How the brain works",
+    sections: HOW_IT_WORKS_SECTIONS,
+    body: HOW_IT_WORKS_BODY,
+  },
+  {
+    id: "evolution",
+    label: "Evolution",
+    sections: EVOLUTION_SECTIONS,
+    body: EVOLUTION_BODY,
+  },
+];
 
-    </article>
-  </div>`;
+const DEFAULT_PAGE = "how-it-works";
 
-let wired = false;
-
-export function mountDocs(container: HTMLElement): void {
-  container.innerHTML = DOCS_HTML;
-  if (wired) return;
-  wired = true;
-  wireNav(container);
+function shellHTML(): string {
+  const tabs = PAGES.map(
+    (p) => `<a class="kb-tab" data-page="${p.id}" href="#docs/${p.id}">${p.label}</a>`,
+  ).join("");
+  return `
+    <div class="kb">
+      <aside class="kb-side">
+        <a class="brand kb-logo" href="#" aria-label="brain — home">brain</a>
+        <nav class="kb-tabs" aria-label="Documentation pages">${tabs}</nav>
+        <a class="kb-home" href="#"><span class="docs-back-arrow" aria-hidden="true">←</span> Home</a>
+      </aside>
+      <main class="kb-content"><article class="docs-article"></article></main>
+      <nav class="kb-toc" aria-label="On this page"></nav>
+    </div>`;
 }
 
-function wireNav(container: HTMLElement): void {
+// Which page the current hash selects. `#learnings*` aliases onto Evolution;
+// `#docs/<page>` selects by id; anything else (including an old `#docs/<section>`
+// deep link) falls back to the default page.
+function pageFromHash(): string {
+  const h = location.hash.replace(/^#/, "");
+  if (h.startsWith("learnings")) return "evolution";
+  const first = h.replace(/^docs\/?/, "").split("/")[0];
+  return PAGES.some((p) => p.id === first) ? first : DEFAULT_PAGE;
+}
+
+// The section anchor a deep link points at, if any: `#docs/<page>/<section>` or
+// `#learnings/<section>` (or the old `#docs/<section>`). "" when none.
+function sectionFromHash(): string {
+  const h = location.hash.replace(/^#/, "");
+  if (h.startsWith("learnings")) return h.match(/^learnings\/(.+)$/)?.[1] ?? "";
+  const parts = h.replace(/^docs\/?/, "").split("/");
+  return PAGES.some((p) => p.id === parts[0]) ? parts[1] ?? "" : parts[0] ?? "";
+}
+
+let mounted = false;
+let activePage = "";
+let detachSpy: (() => void) | null = null;
+
+export function mountDocs(container: HTMLElement): void {
+  if (!mounted) {
+    container.innerHTML = shellHTML();
+    mounted = true;
+    // Switch pages when the hash changes while we're in docs/learnings.
+    window.addEventListener("hashchange", () => {
+      if (/^#(docs|learnings)/.test(location.hash)) showPage(container, pageFromHash());
+    });
+  }
+  showPage(container, pageFromHash());
+}
+
+function showPage(container: HTMLElement, pageId: string): void {
+  const page = PAGES.find((p) => p.id === pageId) ?? PAGES[0];
+  const switching = activePage !== page.id;
+  activePage = page.id;
+
+  container.querySelectorAll<HTMLAnchorElement>(".kb-tab").forEach((a) => {
+    a.classList.toggle("active", a.dataset.page === page.id);
+  });
+
+  if (switching) {
+    const article = container.querySelector<HTMLElement>(".kb-content .docs-article");
+    if (article) article.innerHTML = page.body;
+    const toc = container.querySelector<HTMLElement>(".kb-toc");
+    if (toc) {
+      toc.innerHTML =
+        `<span class="kb-toc-title">On this page</span>` +
+        page.sections
+          .map(
+            (s) =>
+              `<a class="docs-nav-link" data-target="${s.id}" href="#docs/${page.id}/${s.id}">${s.label}</a>`,
+          )
+          .join("");
+    }
+    wireScrollspy(container, page);
+    window.scrollTo(0, 0);
+  }
+
+  // Honor a section deep link on (re)entry.
+  const sec = sectionFromHash();
+  if (sec) document.getElementById(sec)?.scrollIntoView({ behavior: "auto", block: "start" });
+}
+
+// Right-rail scrollspy for the active page: smooth-scroll on click + highlight
+// the section nearest the top of the viewport. Re-created on every page switch;
+// the previous observer is disconnected first.
+function wireScrollspy(container: HTMLElement, page: DocPage): void {
+  detachSpy?.();
   const links = Array.from(
-    container.querySelectorAll<HTMLAnchorElement>(".docs-nav-link"),
+    container.querySelectorAll<HTMLAnchorElement>(".kb-toc .docs-nav-link"),
   );
   const byId = new Map(links.map((l) => [l.dataset.target ?? "", l]));
-  const sections = Array.from(container.querySelectorAll<HTMLElement>(".docs-section"));
+  const targets = page.sections
+    .map((s) => document.getElementById(s.id))
+    .filter((el): el is HTMLElement => el !== null);
   const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-  // Click a section: smooth-scroll to it and reflect it in the hash (for
-  // sharing) without forcing a re-render — we set the hash with replaceState
-  // so the router's hashchange handler doesn't fire.
   for (const link of links) {
     link.addEventListener("click", (e) => {
       const id = link.dataset.target ?? "";
@@ -551,11 +635,10 @@ function wireNav(container: HTMLElement): void {
       if (!target) return;
       e.preventDefault();
       target.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "start" });
-      history.replaceState(null, "", `#docs/${id}`);
+      history.replaceState(null, "", `#docs/${page.id}/${id}`);
     });
   }
 
-  // Scrollspy: highlight the section nearest the top of the viewport.
   const setActive = (id: string) => {
     for (const l of links) l.classList.remove("active");
     byId.get(id)?.classList.add("active");
@@ -569,17 +652,7 @@ function wireNav(container: HTMLElement): void {
     },
     { rootMargin: "-45% 0px -50% 0px", threshold: 0 },
   );
-  for (const s of sections) observer.observe(s);
-
-  // If we arrived on a deep link (#docs/<id>), jump straight to that section.
-  const deep = location.hash.match(/^#docs\/(.+)$/);
-  if (deep) {
-    const target = document.getElementById(deep[1]);
-    if (target) {
-      target.scrollIntoView({ behavior: "auto", block: "start" });
-      setActive(deep[1]);
-    }
-  } else {
-    setActive(sections[0]?.id ?? "");
-  }
+  for (const t of targets) observer.observe(t);
+  setActive(targets[0]?.id ?? "");
+  detachSpy = () => observer.disconnect();
 }

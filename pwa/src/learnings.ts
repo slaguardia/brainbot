@@ -1,9 +1,10 @@
-// The learnings timeline view: an append-only story of how the brain's design
+// The "Evolution" content: an append-only story of how the brain's design
 // evolved, chapter by chapter. Static, hand-authored content — it mirrors
-// LEARNINGS.md at the repo root (keep them in sync). A separate page from the
-// docs view, but shares its chrome (topbar + nav rail + article) and is reached
-// from the docs topbar's "Evolution" link. Routed at `#learnings` (and
-// `#learnings/ch<n>` deep links) by main.ts. innerHTML is safe — no user input.
+// LEARNINGS.md at the repo root (keep them in sync). This module is just the
+// content (section list + body HTML); the docs view (docs.ts) hosts it as a
+// page in its sidenav and owns the chrome + scrollspy. innerHTML is safe — no
+// user input. The chapter anchors stay `ch<n>` so old `#learnings/ch<n>` deep
+// links keep resolving.
 
 type Phase = { label: string; html: string };
 type Chapter = {
@@ -85,9 +86,10 @@ const CHAPTERS: Chapter[] = [
   },
 ];
 
-const NAV = CHAPTERS.map(
-  (c) => `<a class="docs-nav-link" data-target="ch${c.n}" href="#learnings/ch${c.n}">${c.nav}</a>`,
-).join("");
+// The right-rail "on this page" entries for the Evolution page — one per chapter.
+export const EVOLUTION_SECTIONS: { id: string; label: string }[] = CHAPTERS.map(
+  (c) => ({ id: `ch${c.n}`, label: c.nav }),
+);
 
 function renderChapter(c: Chapter): string {
   const phases = c.phases
@@ -110,89 +112,19 @@ function renderChapter(c: Chapter): string {
     </li>`;
 }
 
-const LEARNINGS_HTML = `
-  <div class="docs-topbar">
-    <a class="docs-back" href="#" aria-label="Back to home">
-      <span class="docs-back-arrow" aria-hidden="true">←</span> Home
-    </a>
-    <span class="brand" aria-label="brain">brain</span>
-    <a class="docs-cross" href="#docs" aria-label="How the brain works">Docs&nbsp;→</a>
-  </div>
+// The Evolution page body — hero + the chapter timeline. The docs shell drops
+// this into its content column and wires the right-rail scrollspy over the
+// `.tl-item` chapters (anchors `ch<n>`).
+export const EVOLUTION_BODY = `
+  <header class="docs-hero">
+    <h1>How the brain got smart</h1>
+    <p class="docs-lead">
+      The brain's value lives in its extraction and modeling layers — and those
+      were <em>learned</em>, not designed up front. This is the story, chapter by
+      chapter: what we believed, what broke, and what each break taught us.
+    </p>
+  </header>
 
-  <div class="docs-body">
-    <nav class="docs-nav" aria-label="Timeline chapters">${NAV}</nav>
-
-    <article class="docs-article">
-      <header class="docs-hero">
-        <h1>How the brain got smart</h1>
-        <p class="docs-lead">
-          The brain's value lives in its extraction and modeling layers — and those
-          were <em>learned</em>, not designed up front. This is the story, chapter by
-          chapter: what we believed, what broke, and what each break taught us.
-        </p>
-      </header>
-
-      <ol class="timeline">
-        ${CHAPTERS.map(renderChapter).join("")}
-      </ol>
-
-      <footer class="docs-foot">
-        <a class="docs-back" href="#docs"><span class="docs-back-arrow" aria-hidden="true">←</span> Back to docs</a>
-      </footer>
-    </article>
-  </div>`;
-
-let wired = false;
-
-export function mountLearnings(container: HTMLElement): void {
-  container.innerHTML = LEARNINGS_HTML;
-  if (wired) return;
-  wired = true;
-  wireNav(container);
-}
-
-// Chapter nav: smooth-scroll on click + scrollspy highlight, mirroring the docs
-// view. Same behaviour, scoped to `#learnings/ch<n>` deep links.
-function wireNav(container: HTMLElement): void {
-  const links = Array.from(container.querySelectorAll<HTMLAnchorElement>(".docs-nav-link"));
-  const byId = new Map(links.map((l) => [l.dataset.target ?? "", l]));
-  const items = Array.from(container.querySelectorAll<HTMLElement>(".tl-item"));
-  const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-
-  for (const link of links) {
-    link.addEventListener("click", (e) => {
-      const id = link.dataset.target ?? "";
-      const target = document.getElementById(id);
-      if (!target) return;
-      e.preventDefault();
-      target.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "start" });
-      history.replaceState(null, "", `#learnings/${id}`);
-    });
-  }
-
-  const setActive = (id: string) => {
-    for (const l of links) l.classList.remove("active");
-    byId.get(id)?.classList.add("active");
-  };
-  const observer = new IntersectionObserver(
-    (entries) => {
-      const visible = entries
-        .filter((en) => en.isIntersecting)
-        .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)[0];
-      if (visible) setActive(visible.target.id);
-    },
-    { rootMargin: "-45% 0px -50% 0px", threshold: 0 },
-  );
-  for (const it of items) observer.observe(it);
-
-  const deep = location.hash.match(/^#learnings\/(.+)$/);
-  if (deep) {
-    const target = document.getElementById(deep[1]);
-    if (target) {
-      target.scrollIntoView({ behavior: "auto", block: "start" });
-      setActive(deep[1]);
-    }
-  } else {
-    setActive(items[0]?.id ?? "");
-  }
-}
+  <ol class="timeline">
+    ${CHAPTERS.map(renderChapter).join("")}
+  </ol>`;

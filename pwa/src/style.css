@@ -479,8 +479,7 @@ main {
    =========================================================================== */
 
 #home-view[hidden],
-#docs-view[hidden],
-#learnings-view[hidden] {
+#docs-view[hidden] {
   display: none;
 }
 
@@ -491,6 +490,189 @@ main {
   --chip-search: var(--maybe); /* amber — search / retrieval */
   --chip-store: var(--yes); /* emerald — graph store */
   --chip-io: var(--fg-faint); /* neutral — in / out */
+}
+
+/* ===========================================================================
+   Knowledge-base shell (#docs). Mobile-first: a sticky top bar (brain logo +
+   horizontal page tabs) over a single content column; the in-page tracker is
+   hidden until there's room. On wide screens it becomes three columns — left
+   page-sidenav, center article, right "on this page" tracker. Reuses the
+   article/section/flow/timeline styles below.
+   =========================================================================== */
+.kb {
+  display: block;
+}
+.kb-side {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px max(16px, env(safe-area-inset-left))
+    calc(12px + env(safe-area-inset-top)) max(16px, env(safe-area-inset-right));
+  padding-top: calc(12px + env(safe-area-inset-top));
+  background: rgba(11, 13, 18, 0.85);
+  -webkit-backdrop-filter: saturate(150%) blur(12px);
+  backdrop-filter: saturate(150%) blur(12px);
+  border-bottom: 1px solid var(--border);
+}
+.kb-logo {
+  font-size: 14px;
+  cursor: pointer;
+}
+.kb-tabs {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.kb-tabs::-webkit-scrollbar {
+  display: none;
+}
+.kb-tab {
+  flex: 0 0 auto;
+  white-space: nowrap;
+  font-size: 13px;
+  color: var(--fg-muted);
+  text-decoration: none;
+  padding: 7px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  border-left: 1px solid var(--border);
+  transition: color var(--dur-fast) var(--ease),
+    border-color var(--dur-fast) var(--ease),
+    background-color var(--dur-fast) var(--ease);
+}
+.kb-tab:hover {
+  color: var(--fg);
+}
+.kb-tab.active {
+  color: var(--fg);
+  border-color: var(--link);
+  background: var(--link-bg);
+}
+.kb-home {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  color: var(--fg-muted);
+  text-decoration: none;
+  font-size: 13px;
+  padding: 6px 8px;
+  border-radius: var(--r-md);
+  transition: color var(--dur-fast) var(--ease);
+}
+.kb-home:hover {
+  color: var(--fg);
+}
+.kb-content {
+  padding: 4px max(16px, env(safe-area-inset-right)) 0
+    max(16px, env(safe-area-inset-left));
+}
+.kb-content .docs-article {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 0;
+}
+/* In-page tracker: hidden on mobile (the article headings carry the structure),
+   shown as the right rail on wide screens. */
+.kb-toc {
+  display: none;
+}
+.kb-toc-title {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--fg-faint);
+  padding: 0 10px 6px;
+}
+/* TOC links: lighter than the default pill — borderless with a left active bar. */
+.kb-toc .docs-nav-link {
+  border: none;
+  background: none;
+  border-radius: 0;
+  border-left: 2px solid transparent;
+  padding: 5px 10px;
+  font-size: 12.5px;
+  color: var(--fg-faint);
+}
+.kb-toc .docs-nav-link:hover {
+  color: var(--fg);
+  background: none;
+}
+.kb-toc .docs-nav-link.active {
+  color: var(--fg);
+  background: none;
+  border-left-color: var(--link);
+}
+
+@media (min-width: 980px) {
+  .kb {
+    display: grid;
+    grid-template-columns: 220px minmax(0, 1fr) 220px;
+    gap: 36px;
+    max-width: 1240px;
+    margin: 0 auto;
+    align-items: start;
+    padding: 0 24px;
+  }
+  .kb-side {
+    position: sticky;
+    top: 0;
+    z-index: auto;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 4px;
+    height: 100vh;
+    padding: 26px 0;
+    background: none;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    border-bottom: none;
+  }
+  .kb-logo {
+    margin: 0 0 20px 10px;
+  }
+  .kb-tabs {
+    flex-direction: column;
+    gap: 2px;
+    overflow: visible;
+  }
+  .kb-tab {
+    border: none;
+    background: none;
+    border-radius: var(--r-md);
+    border-left: 2px solid transparent;
+    padding: 8px 12px;
+    font-size: 14px;
+  }
+  .kb-tab.active {
+    background: var(--bg-elevated);
+    border-color: transparent;
+    border-left-color: var(--accent);
+  }
+  .kb-home {
+    margin: auto 0 0;
+    padding: 8px 12px;
+  }
+  .kb-content {
+    padding: 30px 0;
+    min-width: 0;
+  }
+  .kb-toc {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    padding: 34px 0 30px;
+    overflow-y: auto;
+  }
 }
 
 /* --- Sticky top bar --------------------------------------------------------*/

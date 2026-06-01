@@ -352,7 +352,9 @@ main {
 
 #capture-view[hidden],
 #docs-view[hidden],
-#learnings-view[hidden] {
+#learnings-view[hidden],
+#search-view[hidden],
+#map-view[hidden] {
   display: none;
 }
 

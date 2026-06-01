@@ -268,8 +268,13 @@ async def profile(
     documented here and left as a stub: `_token_estimate` only trips when a future
     multi-section corpus exceeds `budget`.
     """
-    # profile requires a scope; the route rejects empty — just normalize whitespace.
-    scope = scope.strip()
+    # profile requires a non-empty scope and fails closed on empty/whitespace. The
+    # HTTP route rejects empty, but a bare ' ' bypasses that guard and MCP/SDK
+    # callers have no route guard at all — without this, scope='' would match only
+    # empty-path sources and the over-budget degrade would recall the whole brain.
+    scope = (scope or "").strip()
+    if not scope:
+        raise ValueError("profile requires a non-empty scope")
     # A non-positive budget (garbage/negative) means "use the default", not "force
     # the degrade path" — clamp in the core so MCP/SDK callers are guarded too.
     if budget <= 0:

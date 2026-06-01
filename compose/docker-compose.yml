@@ -46,8 +46,10 @@ services:
 
   pwa:
     # One-screen PWA. Free-text capture is currently DISABLED (the brain's write
-    # path is source ingest, not /capture), so the backend serves static assets
-    # only — no brain proxy. The in-PWA docs/evolution views still serve.
+    # path is source ingest, not /capture). The backend serves static assets and
+    # proxies GET-only owner reads (/api/recall, /api/map → BRAIN_SERVICE_URL,
+    # default http://brain:8100) — so a whitelisted user has brain read access
+    # with no bearer. The in-PWA docs/evolution views still serve.
     #
     # Auth lives at the edge: Caddy forward_auth → oauth2-proxy (Google OIDC +
     # email whitelist). The PWA itself is unauthenticated inside brainnet and

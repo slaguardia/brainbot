@@ -56,7 +56,9 @@ def parse_page_id(url: str) -> str:
 
     Accepts dashed or undashed ids; takes the LAST match so a slug that happens to
     contain hex doesn't win over the trailing id. Raises NotionURLError if none."""
-    matches = _HEX32.findall(url or "")
+    # Drop any #fragment (a block anchor) before matching so a trailing block id
+    # can't win over the page id; the query is kept (covers the ?p=<id> form).
+    matches = _HEX32.findall((url or "").split("#", 1)[0])
     if not matches:
         raise NotionURLError(f"no Notion page id found in URL: {url!r}")
     raw = matches[-1].replace("-", "").lower()
@@ -91,7 +93,11 @@ def _get(path: str, cfg: Config, *, params: dict[str, str] | None = None) -> dic
             raise NotionNotSharedError(
                 f"Notion 404 for {path} — is the integration granted access to the page?"
             )
-        resp.raise_for_status()
+        if resp.status_code >= 400:
+            # Mirror the urllib branch: every non-404 error is a NotionError, so
+            # /ingest maps it to a clean 4xx and the best-effort ancestor walk
+            # (which catches NotionError) doesn't abort on a parent's non-404.
+            raise NotionError(f"Notion API error {resp.status_code} for {path}")
         return resp.json()
 
     # stdlib fallback
@@ -246,7 +252,11 @@ def fetch_page(url: str) -> dict:
     page = _get(f"/pages/{page_id}", cfg)  # raises NotionNotSharedError on 404
     title = _page_title(page)
     text = _page_text(page_id, cfg)
-    path = "/".join([*_ancestor_titles(page, cfg), title]).strip("/")
+    # Drop blank segments (an untitled page/ancestor) so we never store path=''
+    # — which the scope predicate would mishandle — or an 'A//B' double slash that
+    # wouldn't match a clean 'A/B' scope. Fall back to the page id if none remain.
+    parts = [t.strip() for t in [*_ancestor_titles(page, cfg), title] if t and t.strip()]
+    path = "/".join(parts) or page_id
     # `id` is the dashed Notion page uuid — the caller uses it as the stable
     # source id so re-ingesting the same page wipe-replaces rather than duplicates.
     return {"id": page_id, "title": title, "text": text, "path": path}

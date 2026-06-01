@@ -62,6 +62,10 @@ async def ingest(request: Request) -> JSONResponse:
     url = (body or {}).get("url")
     if not url:
         return JSONResponse({"error": "missing required field: url"}, status_code=400)
+    if not isinstance(url, str):
+        # A non-string url is a caller-fixable input error (400), not a 502 — else
+        # parse_page_id raises a raw TypeError that the broad except leaks as 502.
+        return JSONResponse({"error": "field 'url' must be a string"}, status_code=400)
 
     try:
         page = await asyncio.to_thread(fetch_page, url)
@@ -98,7 +102,7 @@ async def ingest(request: Request) -> JSONResponse:
 async def recall_route(request: Request) -> JSONResponse:
     """GET /recall?q=&scope=&k= — top-k hybrid-search sections, optionally scoped."""
     q = request.query_params.get("q")
-    if not q:
+    if not (q and q.strip()):
         return JSONResponse({"error": "missing required query param: q"}, status_code=400)
     scope = request.query_params.get("scope") or None
     # Clamp k to >=1 (and a sane cap) so k<=0 never reaches the `[:k]` slice.
@@ -117,7 +121,7 @@ async def recall_route(request: Request) -> JSONResponse:
 async def profile_route(request: Request) -> JSONResponse:
     """GET /profile?scope=&budget= — the assembled domain dump for a path scope."""
     scope = request.query_params.get("scope")
-    if not scope:
+    if not (scope and scope.strip()):
         return JSONResponse(
             {"error": "missing required query param: scope"}, status_code=400
         )
@@ -180,6 +184,10 @@ async def recall_tool(query: str, scope: str | None = None, k: int = 12) -> dict
     """Targeted hybrid retrieval — top-k sections matching `query`, optionally
     within a path subtree (`scope`, e.g. 'Career/Job Search'). Returns
     {"chunks": [{heading, text, score, path}, ...]}."""
+    # Guard empty input here too — the HTTP route does, and without this the MCP
+    # face would leak a raw embedder error instead of a clear "query required".
+    if not (query and query.strip()):
+        raise ValueError("query is required")
     try:
         pool = await get_pool()
         chunks = await recall(pool, query, scope=scope, k=k)
@@ -197,6 +205,10 @@ async def profile_tool(
     structured markdown. `focus` is an optional query that, only when the dump is
     over budget, picks which sections survive the degrade. Returns the Context
     contract {"text", "sources", "truncated"}."""
+    # Same empty-arg guard the HTTP route has — keep the two faces in parity
+    # (without it, profile('') returns a silent empty Context).
+    if not (scope and scope.strip()):
+        raise ValueError("scope is required")
     try:
         pool = await get_pool()
         ctx = await profile(pool, scope, budget=budget, focus=focus)
@@ -232,9 +244,11 @@ def _with_pool_lifespan(app: Starlette) -> None:
     @contextlib.asynccontextmanager
     async def lifespan(app: Starlette) -> AsyncIterator[None]:
         pool = await get_pool()
-        await apply_schema(pool)  # idempotent DDL — ensures sources/chunks exist on a fresh DB
-        logger.info("brain: asyncpg pool opened + schema applied")
         try:
+            # Inside the try so a failing apply_schema still closes the pool —
+            # otherwise the module-global _pool stays set to an open pool.
+            await apply_schema(pool)  # idempotent DDL — ensures sources/chunks exist on a fresh DB
+            logger.info("brain: asyncpg pool opened + schema applied")
             async with inner(app):
                 yield
         finally:

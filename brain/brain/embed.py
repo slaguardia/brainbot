@@ -11,11 +11,14 @@ store with bad embeddings.
 
 from __future__ import annotations
 
+import threading
+
 import voyageai
 
 from .config import EMBED_DIM, Config
 
 _client: voyageai.Client | None = None
+_client_lock = threading.Lock()
 
 
 def _get_client(cfg: Config) -> voyageai.Client:
@@ -24,7 +27,11 @@ def _get_client(cfg: Config) -> voyageai.Client:
     if not cfg.voyage_api_key:
         raise RuntimeError("missing required env: VOYAGE_API_KEY")
     if _client is None:
-        _client = voyageai.Client(api_key=cfg.voyage_api_key)
+        # embed() runs under asyncio.to_thread, so concurrent first-callers can
+        # race — a double-checked lock keeps the single-client invariant real.
+        with _client_lock:
+            if _client is None:
+                _client = voyageai.Client(api_key=cfg.voyage_api_key)
     return _client
 
 

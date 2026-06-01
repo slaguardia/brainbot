@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev:client": "vite",
-    "dev:server": "tsx watch src/server/index.ts",
+    "dev:server": "BRAIN_SERVICE_URL=http://localhost:8100 tsx watch src/server/index.ts",
     "dev": "concurrently -k -n client,server -c cyan,magenta \"npm:dev:client\" \"npm:dev:server\"",
     "build": "tsc -p tsconfig.server.json && vite build",
     "start": "node dist-server/server/index.js",

@@ -1,7 +1,7 @@
 // Minimal app-shell service worker. Pre-caches the index page and the
 // built static assets so the icon launches fast and works briefly
 // offline. /api/* and /oauth2/* are never cached — always hit the network.
-const CACHE = "brain-shell-v1";
+const CACHE = "brain-shell-v2";
 // Icons are optional — listing them here would make the whole install
 // fail if either PNG is missing. Cache them best-effort instead.
 const SHELL = ["/", "/manifest.webmanifest"];
@@ -39,6 +39,26 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(req.url);
   if (req.method !== "GET" || url.pathname.startsWith("/api/") || url.pathname.startsWith("/oauth2/")) return;
 
+  // The HTML document (a navigation) is served NETWORK-FIRST so a new deploy is
+  // picked up on the next load; the cached copy is only an offline fallback.
+  // (Cache-first here froze the app shell at first install — a stale index.html
+  // kept pointing at stale hashed assets, also cached, so updates never showed.)
+  if (req.mode === "navigate") {
+    event.respondWith(
+      fetch(req)
+        .then((res) => {
+          if (res.ok && url.origin === self.location.origin) {
+            const clone = res.clone();
+            caches.open(CACHE).then((cache) => cache.put(req, clone));
+          }
+          return res;
+        })
+        .catch(() => caches.match(req).then((c) => c || caches.match("/"))),
+    );
+    return;
+  }
+
+  // Hashed build assets are immutable by filename, so cache-first is safe here.
   event.respondWith(
     caches.match(req).then((cached) => {
       if (cached) return cached;

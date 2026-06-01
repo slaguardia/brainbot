@@ -184,11 +184,42 @@ def _block_to_md(block: dict, cfg: Config, depth: int = 0) -> list[str]:
         lines.append(f"```{lang}\n{text}\n```")
     elif btype == "divider":
         lines.append("---")
+    elif btype in ("child_page", "child_database"):
+        # A nested sub-page/-database is a SEPARATE document (its own source). Emit
+        # a reference, never inline its body — its `children` are the child's whole
+        # block tree, which would bleed into this page's chunk under the wrong path.
+        ref = body.get("title", "")
+        if ref:
+            lines.append(f"{indent}- [[{ref}]]")
+    elif btype == "table_row":
+        # A row's content is in `cells` (a list of rich_text arrays), not rich_text —
+        # render it so table data isn't silently dropped (whole tables would vanish).
+        row = " | ".join(_rich_text(cell) for cell in body.get("cells", []))
+        if row.strip():
+            lines.append(f"{indent}{row}")
+    elif btype == "equation":
+        expr = body.get("expression", "")
+        if expr:
+            lines.append(f"{indent}{expr}")
+    elif btype in ("image", "file", "video", "pdf", "bookmark", "embed", "link_preview"):
+        # The substance of a media/link block is its caption (+ url), not rich_text.
+        caption = _rich_text(body.get("caption", []))
+        url = (
+            body.get("url")
+            or (body.get("external") or {}).get("url")
+            or (body.get("file") or {}).get("url")
+            or ""
+        )
+        ref = " ".join(p for p in (caption, url) if p)
+        if ref:
+            lines.append(f"{indent}{ref}")
     elif text:
         # paragraph, callout, toggle, and anything else with rich_text
         lines.append(f"{indent}{text}")
 
-    if block.get("has_children"):
+    # Recurse into IN-PAGE children (toggle/list/column/synced bodies) — but never
+    # into child_page/child_database, whose children are a separate document.
+    if block.get("has_children") and btype not in ("child_page", "child_database"):
         for child in _block_children(block["id"], cfg):
             lines.extend(_block_to_md(child, cfg, depth + 1))
     return lines

@@ -106,7 +106,12 @@ async def upsert_source(
     # Embed first (outside the txn) so an embedder failure aborts before we touch
     # the store — never leave a source with stale or zero chunks. The whole page
     # is one chunk in Phase 1; the heading gives the embedding a little context.
-    page_text = raw_text or ""
+    # Postgres text columns can't hold a NUL byte (U+0000); Notion plain_text can
+    # rarely carry one. Strip it everywhere so the page still ingests instead of the
+    # INSERT raising and turning caller-fixable content into a 500.
+    title = (title or "").replace("\x00", "")
+    path = (path or "").replace("\x00", "")
+    page_text = (raw_text or "").replace("\x00", "")
     embed_input = f"{title}\n{page_text}"
     if len(embed_input) > _EMBED_CHAR_BUDGET:
         # A large page would blow Voyage's single-input token cap and 500 /ingest.
@@ -188,36 +193,40 @@ async def recall(
     lex_args = [query, _ARM_LIMIT] if scope is None else [query, scope, _ARM_LIMIT]
 
     async with pool.acquire() as conn:
-        semantic = await conn.fetch(
-            f"""
-            SELECT c.id,
-                   c.heading,
-                   c.text,
-                   s.path,
-                   row_number() OVER (ORDER BY c.embedding <=> $1) AS rank
-            FROM chunks c JOIN sources s ON s.id = c.source_id
-            {sem_scope}
-            ORDER BY c.embedding <=> $1
-            LIMIT {limit_ph}
-            """,
-            *sem_args,
-        )
-        lexical = await conn.fetch(
-            f"""
-            SELECT c.id,
-                   c.heading,
-                   c.text,
-                   s.path,
-                   row_number() OVER (
-                       ORDER BY ts_rank(c.fts, plainto_tsquery('english', $1)) DESC
-                   ) AS rank
-            FROM chunks c JOIN sources s ON s.id = c.source_id
-            WHERE c.fts @@ plainto_tsquery('english', $1)
-              {lex_scope}
-            LIMIT {limit_ph}
-            """,
-            *lex_args,
-        )
+        # Both arms share ONE snapshot so a wipe-replace committing between them
+        # can't make the semantic arm see the old chunk id and the lexical arm the
+        # new one — which would fuse the same page in twice. Read-only: no locks.
+        async with conn.transaction(isolation="repeatable_read", readonly=True):
+            semantic = await conn.fetch(
+                f"""
+                SELECT c.id,
+                       c.heading,
+                       c.text,
+                       s.path,
+                       row_number() OVER (ORDER BY c.embedding <=> $1) AS rank
+                FROM chunks c JOIN sources s ON s.id = c.source_id
+                {sem_scope}
+                ORDER BY c.embedding <=> $1
+                LIMIT {limit_ph}
+                """,
+                *sem_args,
+            )
+            lexical = await conn.fetch(
+                f"""
+                SELECT c.id,
+                       c.heading,
+                       c.text,
+                       s.path,
+                       row_number() OVER (
+                           ORDER BY ts_rank(c.fts, plainto_tsquery('english', $1)) DESC
+                       ) AS rank
+                FROM chunks c JOIN sources s ON s.id = c.source_id
+                WHERE c.fts @@ plainto_tsquery('english', $1)
+                  {lex_scope}
+                LIMIT {limit_ph}
+                """,
+                *lex_args,
+            )
     return _rrf(semantic, lexical)[:k]
 
 

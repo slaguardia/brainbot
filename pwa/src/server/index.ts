@@ -70,13 +70,21 @@ async function proxyRead(
     const v = url.searchParams.get(p);
     if (v !== null) target.searchParams.set(p, v);
   }
+  // Bound the upstream call: undici's fetch has no default timeout, so a brain that
+  // accepts the TCP connection but never responds (pool exhausted, blackholed host)
+  // would otherwise hang the request — and the tab — forever. The abort lands in
+  // the catch below as a 502, making the no-hang promise above actually true.
+  const ac = new AbortController();
+  const deadline = setTimeout(() => ac.abort(), 8000);
   try {
-    const upstream = await fetch(target, { method: "GET" });
+    const upstream = await fetch(target, { method: "GET", signal: ac.signal });
     const body = await upstream.text();
     res.writeHead(upstream.status, { "Content-Type": "application/json; charset=utf-8" });
     res.end(body);
   } catch (err) {
     json(res, 502, { error: "brain unreachable", detail: String(err) });
+  } finally {
+    clearTimeout(deadline);
   }
 }
 

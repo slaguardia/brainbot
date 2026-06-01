@@ -57,15 +57,15 @@ def parse_page_id(url: str) -> str:
 
     Accepts dashed or undashed ids; takes the LAST match so a slug that happens to
     contain hex doesn't win over the trailing id. Raises NotionURLError if none."""
-    # The page id lives in the PATH (notion.so/<slug>-<pageid>). Match there first,
-    # ignoring the query, so a database-view id (?v=<viewid>) or other query token
-    # can't win over the real page id. The #fragment (block anchor) is dropped by
-    # urlsplit. Only when the path has no id do we fall back to an explicit ?p=<id>
-    # (the peek/side-panel form, where the path is just the workspace).
+    # An explicit ?p=<pageid> pointer wins: the database-row side-peek copy-link
+    # form notion.so/<dbid>?v=<viewid>&p=<pageid> carries the parent DATABASE id in
+    # the PATH, so the path would otherwise win over the real page. Fall back to the
+    # path id (the canonical notion.so/<slug>-<pageid> link), which drops a
+    # ?v=<viewid> and the #fragment (urlsplit strips it). Raises if neither has one.
     parts = urlsplit(url or "")
-    matches = _HEX32.findall(parts.path)
+    matches = _HEX32.findall(parse_qs(parts.query).get("p", [""])[0])
     if not matches:
-        matches = _HEX32.findall(parse_qs(parts.query).get("p", [""])[0])
+        matches = _HEX32.findall(parts.path)
     if not matches:
         raise NotionURLError(f"no Notion page id found in URL: {url!r}")
     raw = matches[-1].replace("-", "").lower()

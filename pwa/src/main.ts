@@ -43,10 +43,25 @@ function route() {
 window.addEventListener("hashchange", route);
 route();
 
+// Service worker: register it only for the installed PWA (production). On
+// localhost the app-shell cache just masks fresh dev builds, so instead tear
+// down any SW + caches a previous visit left behind (self-healing dev).
+const onLocalhost = ["localhost", "127.0.0.1", "[::1]", ""].includes(location.hostname);
 if ("serviceWorker" in navigator) {
-  window.addEventListener("load", () => {
-    void navigator.serviceWorker.register("/sw.js").catch(() => {
-      // SW failure is non-fatal — the docs/evolution views still work offline.
+  if (onLocalhost) {
+    void navigator.serviceWorker.getRegistrations().then((regs) => {
+      for (const r of regs) void r.unregister();
     });
-  });
+    if (window.caches) {
+      void caches.keys().then((keys) => {
+        for (const k of keys) void caches.delete(k);
+      });
+    }
+  } else {
+    window.addEventListener("load", () => {
+      void navigator.serviceWorker.register("/sw.js").catch(() => {
+        // SW failure is non-fatal — the docs/evolution views still work offline.
+      });
+    });
+  }
 }

@@ -87,7 +87,7 @@ def _recall_url(prompt: str) -> str:
         raise RuntimeError("BRAIN_URL not set")
     from urllib.parse import urlencode
 
-    qs = urlencode({"q": prompt, "limit": RESULT_LIMIT})
+    qs = urlencode({"q": prompt, "k": RESULT_LIMIT})
     # The brain service exposes plain-HTTP /recall (no MCP handshake needed).
     return f"{base_url.rstrip('/')}/recall?{qs}"
 

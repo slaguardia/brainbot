@@ -172,6 +172,7 @@ async def recall(
     # Empty/whitespace scope means UNSCOPED, not "match the root prefix".
     if scope is not None:
         scope = scope.strip() or None
+    k = max(1, min(k, 100))  # clamp in the core so MCP/SDK callers are guarded, not just the HTTP route
 
     [q_emb] = await asyncio.to_thread(embed, [query], "query")
 
@@ -269,6 +270,10 @@ async def profile(
     """
     # profile requires a scope; the route rejects empty — just normalize whitespace.
     scope = scope.strip()
+    # A non-positive budget (garbage/negative) means "use the default", not "force
+    # the degrade path" — clamp in the core so MCP/SDK callers are guarded too.
+    if budget <= 0:
+        budget = 20_000
 
     async with pool.acquire() as conn:
         rows = await conn.fetch(

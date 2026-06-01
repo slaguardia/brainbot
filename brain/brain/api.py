@@ -121,8 +121,9 @@ async def profile_route(request: Request) -> JSONResponse:
         return JSONResponse(
             {"error": "missing required query param: scope"}, status_code=400
         )
-    # Clamp budget to a sane floor so budget<=0 never flips the degrade gate.
-    budget = _int_param(request, "budget", 20_000, lo=1000)
+    # Parse only; the store core treats budget<=0 as "use the default", so a
+    # garbage/negative budget never artificially flips the degrade gate.
+    budget = _int_param(request, "budget", 20_000)
     focus = request.query_params.get("focus") or None
 
     try:

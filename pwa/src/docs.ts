@@ -540,7 +540,6 @@ function shellHTML(): string {
       <aside class="kb-side">
         <a class="brand kb-logo" href="#" aria-label="brain — home">brain</a>
         <nav class="kb-tabs" aria-label="Documentation pages">${tabs}</nav>
-        <a class="kb-home" href="#"><span class="docs-back-arrow" aria-hidden="true">←</span> Home</a>
       </aside>
       <main class="kb-content"><article class="docs-article"></article></main>
       <nav class="kb-toc" aria-label="On this page"></nav>

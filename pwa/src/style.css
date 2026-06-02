@@ -472,10 +472,9 @@ main {
 }
 
 /* ===========================================================================
-   Documentation view. Same scout palette; UI chrome is sans/mono (the serif
-   stays on the capture surface). Reached via the `#docs` hash route. The
-   diagram legend hues map onto scout's semantic colors: purple = LLM, blue =
-   embeddings, amber = search, emerald = graph store.
+   Documentation view. Same scout palette; UI chrome is sans/mono. Reached via
+   the `#docs` hash route. The diagram legend hues map onto scout's semantic
+   colors: blue = embeddings, amber = search, emerald = store.
    =========================================================================== */
 
 #home-view[hidden],
@@ -485,10 +484,9 @@ main {
 
 #docs-view {
   --topbar-h: calc(52px + env(safe-area-inset-top));
-  --chip-llm: var(--accent); /* purple — generative LLM */
   --chip-vec: var(--link); /* blue — embeddings / vector */
   --chip-search: var(--maybe); /* amber — search / retrieval */
-  --chip-store: var(--yes); /* emerald — graph store */
+  --chip-store: var(--yes); /* emerald — store (Postgres + pgvector) */
   --chip-io: var(--fg-faint); /* neutral — in / out */
 }
 
@@ -869,12 +867,6 @@ main {
   border-radius: 50%;
   background: var(--fg-faint);
 }
-.chip.c-llm {
-  color: var(--chip-llm);
-}
-.chip.c-llm::before {
-  background: var(--chip-llm);
-}
 .chip.c-vec {
   color: var(--chip-vec);
 }
@@ -927,9 +919,6 @@ main {
   color: var(--fg-muted);
   font-size: 14px;
   line-height: 1.55;
-}
-.flow-node.k-llm {
-  border-left-color: var(--chip-llm);
 }
 .flow-node.k-vec {
   border-left-color: var(--chip-vec);
@@ -1044,20 +1033,6 @@ main {
   margin: 10px 0 0 !important;
   font-size: 13px !important;
   color: var(--fg-faint) !important;
-}
-
-/* --- Graph diagram ---------------------------------------------------------*/
-.graph-diagram {
-  border: 1px solid var(--border);
-  background: var(--bg-elevated);
-  border-radius: var(--r-lg);
-  padding: 10px;
-  margin: 16px 0;
-}
-.graph-diagram svg {
-  width: 100%;
-  height: auto;
-  display: block;
 }
 
 /* --- Decision cards --------------------------------------------------------*/

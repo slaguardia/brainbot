@@ -414,60 +414,9 @@ main {
   color: var(--link);
 }
 
-/* Toast: scout's panel toast with a glowing status dot. */
-#toast {
-  position: fixed;
-  left: 50%;
-  bottom: calc(92px + env(safe-area-inset-bottom));
-  transform: translate(-50%, 12px) scale(0.98);
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  background: var(--bg-elevated);
-  border: 1px solid var(--border);
-  color: var(--fg);
-  padding: 10px 16px 10px 14px;
-  border-radius: var(--r-md);
-  font-size: 13px;
-  font-weight: 500;
-  letter-spacing: 0.01em;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity var(--dur-base) var(--ease),
-    transform var(--dur-base) var(--ease);
-  box-shadow: var(--shadow-md);
-  white-space: nowrap;
-}
-#toast::before {
-  content: "";
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--yes);
-  box-shadow: 0 0 8px var(--yes);
-}
-
-#toast.show {
-  opacity: 1;
-  transform: translate(-50%, 0) scale(1);
-}
-
-#toast.error {
-  color: var(--no);
-  border-color: #5a2f33;
-}
-#toast.error::before {
-  background: var(--no);
-  box-shadow: 0 0 8px var(--no);
-}
-
 @media (prefers-reduced-motion: reduce) {
   .brand:hover {
     animation: none;
-  }
-  #toast {
-    transition: opacity 120ms ease;
-    transform: none !important;
   }
 }
 

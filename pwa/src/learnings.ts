@@ -74,7 +74,7 @@ const CHAPTERS: Chapter[] = [
     n: "4",
     nav: "4 · Source of truth",
     title: "Graph as the single source of truth",
-    status: "wip",
+    status: "done",
     phases: [
       { label: "Believe now", html: "Everything leaving the brain must come from the graph. Don't abandon it — make it faithful enough to trust." },
       { label: "Insight", html: "The losses were never “graphs can't”: negatives were an <em>instruction</em> gap, strength a missing <em>attribute</em>. Both fixable in-graph." },
@@ -82,7 +82,34 @@ const CHAPTERS: Chapter[] = [
       { label: "Settled", html: "“Wall vs. weight” is just the <code>strength</code> value (the consumer decides what to do with it). No rule-nodes — the consuming LLM reasons over facts. And the first consumer (scout) must migrate off text-bodies <em>last</em>, only once the graph is faithful." },
     ],
     principle: "Most “fundamental limits” are untuned defaults — make the source of truth trustworthy instead of routing around it.",
-    note: "Superseded — this graph-as-source-of-truth direction was reconsidered; the brain is pivoting to a document substrate (see LEARNINGS Chapter 6). The next chapter gets written when this one breaks.",
+    note: "Superseded — Path A (typed <code>polarity</code>/<code>strength</code> edges) shipped in Chapter 5, then the graph itself was reconsidered: the brain pivoted to a document substrate in Chapter 6.",
+  },
+  {
+    n: "5",
+    nav: "5 · Make the tags fire",
+    title: "Making the tags actually fire",
+    status: "done",
+    phases: [
+      { label: "Believed", html: "With Path A's typed edge and tuned descriptions in place, facts would come back carrying their <code>polarity</code>/<code>strength</code>. Ship it." },
+      { label: "Broke", html: "Two silent failures only a live re-ingest exposed. <strong>Every tag came back <code>null</code></strong>: graphiti matches the extractor's relation label against the registered edge-type name by <em>exact</em> string, and its prompt mandates <code>SCREAMING_SNAKE_CASE</code> — we registered <code>Asserts</code>, the LLM emitted <code>ASSERTS</code>, so the attribute pass never ran. And a <strong>clearly-stated hard gate landed <code>soft</code></strong>: the firmness lived in a “skip everything else” clause — a set-complement with no entity for an entity→entity graph to anchor — so it dropped." },
+      { label: "Learned", html: "A custom edge type is only as good as its <strong>name match</strong> — a flawless schema fails <em>silently</em> if the type name isn't what the extractor actually emits. And a “must be in set S” gate is captured by hard-positive facts <em>on S's members</em>, not by excluding the formless complement." },
+      { label: "Changed", html: "Registered the type as <code>ASSERTS</code>; tuned the rewrite so a gated accept-set states its members as a hard requirement. The same source then landed location <code>hard</code> — requirement and skip both — with the broad soft/hard mix intact." },
+    ],
+    principle: "The model only tags what the substrate's matching rules and the graph's shape allow. Read the graph, not the code, to know what actually landed.",
+  },
+  {
+    n: "6",
+    nav: "6 · Document substrate",
+    title: "The graph doesn't earn its keep",
+    status: "wip",
+    phases: [
+      { label: "Believed", html: "A knowledge graph (FalkorDB via graphiti) was the right substrate — entities, typed edges carrying <code>polarity</code>/<code>strength</code>, bi-temporal facts. The premise: the value is <em>relationships</em>." },
+      { label: "Broke", html: "<code>recall()</code> never uses the graph <em>as</em> a graph — it's hybrid semantic + BM25 (RRF) with <strong>zero multi-hop traversal</strong>, on a star topology where node-distance reranking was disabled because it can't help. The relationships benefit was never cashed in. The only real value was dedup + bi-temporal — and bi-temporal is two timestamp columns and a <code>WHERE</code> filter, not a graph feature. Meanwhile the graph <em>cost</em> us: no human-edit surface, a <code>polarity</code>/<code>strength</code> schema that coupled the brain to one consumer's gating, and a black box over the very RAG pipeline this project exists to learn." },
+      { label: "Learned", html: "Pick the substrate by the <strong>read pattern</strong>, not by “is knowledge a graph.” Ours is semantic search → an LLM — a document/vector workload wearing a graph costume. And because the consumer is an LLM, <strong>structure belongs in the prose, not in columns</strong>: it reads “avoids fintech — hard dealbreaker” straight from the text. Over-decomposing into schema-tagged facts <em>caused</em> the wrinkles we kept fighting; storing the human's own sections fixes them for free." },
+      { label: "Changed", html: "Pivoted to a <strong>document substrate</strong> — source-of-truth docs + derived section-chunks on pgvector. Editing a source wipes and re-derives its chunks, so currency is guaranteed by construction (no <code>invalid_at</code>). The brain is a reusable intelligence library with three reads — <code>recall</code>, <code>profile</code>, <code>map</code>; consumers are read-only; Notion nesting becomes a <code>path</code> for domain delineation." },
+    ],
+    principle: "A graph is a store you query by traversal — if you never traverse, you've paid for a graph and bought a document store. When the consumer is an LLM, keep the structure in the prose: the cleverness you remove is faithfulness you gain.",
+    note: "The core migration has since landed — the brain now runs on the pgvector document substrate this guide's “How the brain works” describes. The next chapter gets written when this one breaks.",
   },
 ];
 

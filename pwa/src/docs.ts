@@ -5,6 +5,11 @@
 // Static, hand-authored content (no user input ever lands in this HTML, so
 // innerHTML is safe). Reached via `#docs` (and `#docs/<page>`); `#learnings`
 // (and `#learnings/ch<n>`) alias onto the Evolution page so old links resolve.
+//
+// The "How the brain works" content below describes the pgvector DOCUMENT
+// SUBSTRATE — the brain is a Postgres + pgvector document store (sources →
+// chunks → hybrid retrieval), not the old graphiti/FalkorDB graph. Keep it in
+// sync with brain/ARCHITECTURE.md + brain/README.md (the authoritative sources).
 
 import { EVOLUTION_BODY, EVOLUTION_SECTIONS } from "./learnings";
 
@@ -21,21 +26,22 @@ interface DocPage {
 
 const HOW_IT_WORKS_SECTIONS: DocSection[] = [
   { id: "overview", label: "Overview" },
-  { id: "capture", label: "Capture pipeline" },
+  { id: "ingest", label: "Ingest pipeline" },
   { id: "recall", label: "Recall & profile" },
+  { id: "store", label: "The document store" },
   { id: "endpoints", label: "Endpoints" },
-  { id: "graph", label: "Graph database" },
   { id: "why", label: "Why this design" },
 ];
 
 // Reusable bits ---------------------------------------------------------------
 
+// Pipeline legend. The new substrate has NO generative LLM — the only model in
+// the loop is the embedder, so there's no purple "LLM" chip.
 const LEGEND = `
   <div class="legend" aria-hidden="true">
-    <span class="chip c-llm">Generative LLM</span>
-    <span class="chip c-vec">Embeddings</span>
-    <span class="chip c-search">Search</span>
-    <span class="chip c-store">Graph store</span>
+    <span class="chip c-vec">Embeddings · Voyage</span>
+    <span class="chip c-search">Hybrid search</span>
+    <span class="chip c-store">Postgres + pgvector</span>
     <span class="chip c-io">In / out</span>
   </div>`;
 
@@ -44,8 +50,10 @@ const HOW_IT_WORKS_BODY = `
         <h1>How the brain works</h1>
         <p class="docs-lead">
           A single self-hosted knowledge service that holds structured truth about
-          one person. This page walks the two LLM layers, the endpoints, the graph
-          underneath, and why it's shaped the way it is.
+          one person — built as a <strong>Postgres + pgvector document store</strong>.
+          Sources go in, get split into embedded chunks, and come back out by hybrid
+          search. This page walks the write path, the read path, the store underneath,
+          the endpoints, and why it's shaped this way.
         </p>
       </header>
 
@@ -60,131 +68,136 @@ const HOW_IT_WORKS_BODY = `
         </p>
 
         <div class="note">
-          <strong>One smart brain, many thin consumers.</strong>
-          All the intelligence — the capture pipeline, the recall scoring — lives
-          in the brain. Everything else (this capture screen, Claude&nbsp;Code in
-          your terminal, any app you build) is a dumb client that calls in over
-          HTTP or MCP. Cross-app knowledge lives in one place instead of being
-          copied into each app.
+          <strong>One store, many thin consumers.</strong>
+          The brain holds your sources and answers three reads — <code>recall</code>,
+          <code>profile</code>, <code>map</code>. Everything else (this PWA,
+          Claude&nbsp;Code in your terminal, any app you build) is a dumb client that
+          calls in over HTTP or MCP. Cross-app knowledge lives in one place instead of
+          being copied into each app.
         </div>
 
         <h3>A librarian, not an oracle</h3>
         <p>
-          Ask the brain a question and it hands back the relevant facts it holds,
+          Ask the brain a question and it hands back the relevant passages it holds,
           each scored by how on-target it is. It never synthesizes, infers, or
-          decides — that's the consumer's job. It can never reason wrong, because
-          it never reasons. The line in one sentence:
-          <em>the brain hands back what it knows; the app reasons and decides.</em>
+          decides — that's the consumer's job. There's deliberately no <code>ask</code>
+          endpoint; "asking the brain" <em>is</em> <code>recall</code>. The line in one
+          sentence: <em>the brain hands back what it knows; the app reasons and
+          decides.</em>
         </p>
 
-        <div class="layers" role="img" aria-label="Three-layer model: app, brain, graph engine">
+        <div class="layers" role="img" aria-label="Three-layer model: app, brain, document store">
           <div class="layer k-app">
             <span class="layer-tag">App &nbsp;·&nbsp; scout, calendar prep, …</span>
-            <strong>Task → questions → decision</strong>
-            <p>Turns a task into the questions it needs answered, then reasons over the returned facts and decides: pursue / skip / maybe.</p>
+            <strong>Task → scope / query → decision</strong>
+            <p>Turns a task into the questions it needs answered, then reasons over the returned passages and decides: pursue / skip / maybe.</p>
           </div>
-          <div class="layer-gap"><span>questions&nbsp;↓</span><span>↑&nbsp;relevant facts</span></div>
+          <div class="layer-gap"><span>recall / profile&nbsp;↓</span><span>↑&nbsp;scored passages</span></div>
           <div class="layer k-brain">
             <span class="layer-tag">Brain &nbsp;·&nbsp; this service</span>
-            <strong>Question → relevant facts</strong>
-            <p>The librarian. No synthesis, no inference. Returns scored facts, with the faithful captures behind them available for tracing.</p>
+            <strong>Query → relevant passages</strong>
+            <p>The librarian. No synthesis, no inference, no write-time LLM. Returns scored chunks with the source path behind each for tracing.</p>
           </div>
-          <div class="layer-gap"><span>add_episode&nbsp;↓</span><span>↑&nbsp;search</span></div>
+          <div class="layer-gap"><span>SQL · vector · FTS&nbsp;↓</span><span>↑&nbsp;rows</span></div>
           <div class="layer k-engine">
-            <span class="layer-tag">graphiti-core → FalkorDB</span>
-            <strong>Extraction · dedup · bi-temporal facts · hybrid search</strong>
-            <p>Constructed in-process by the brain. The graph engine and the only persistent store.</p>
+            <span class="layer-tag">Postgres + pgvector</span>
+            <strong>sources · chunks · HNSW + tsvector indexes</strong>
+            <p>The only persistent store. One asyncpg pool, opened on startup; the schema is applied idempotently on boot.</p>
           </div>
+        </div>
+
+        <div class="note">
+          <strong>Sources are the truth; chunks are a disposable index.</strong> A
+          <em>source</em> is a canonical document (a Notion page today). Its
+          <em>chunks</em> are derived — split, embedded, and FK'd back to the source —
+          and rebuilt from scratch on every ingest. That single rule, <em>currency by
+          construction</em>, is what lets the rest of the design stay simple.
         </div>
       </section>
 
-      <!-- CAPTURE -------------------------------------------------------------->
-      <section class="docs-section" id="capture">
-        <h2>Capture pipeline <span class="dir-badge dir-write">write path</span></h2>
+      <!-- INGEST --------------------------------------------------------------->
+      <section class="docs-section" id="ingest">
+        <h2>Ingest pipeline <span class="dir-badge dir-write">write path</span></h2>
         <p class="docs-lead">
-          When you capture a thought it passes through <strong>two LLM layers</strong>
-          before it lands in the graph. Capture is slow on purpose — both layers run
-          before it returns — which is why this screen acknowledges optimistically and
-          never makes you wait on it.
+          Free-text capture is retired. The write path is <strong>source ingest</strong>:
+          point the brain at a document and it (re)derives that source's chunks. New
+          capture, a human edit, and a re-sync are all the same call — and there's
+          <strong>no generative LLM</strong> on this path. The only model it touches is
+          the embedder.
         </p>
 
         ${LEGEND}
 
-        <div class="flow" role="img" aria-label="Capture pipeline flowchart">
+        <div class="flow" role="img" aria-label="Ingest pipeline flowchart">
           <div class="flow-node k-io">
             <span class="chip c-io">Input</span>
-            <strong>Raw capture</strong>
-            <p>Messy, first-person, as you'd type it: <em>"I only want forward-deployed roles with real customer contact — anything purely backend is a skip."</em></p>
+            <strong>POST /ingest { url }</strong>
+            <p>A Notion page URL. Notion is the first migrator we ship; it's one of many possible source types.</p>
           </div>
           <div class="flow-arrow" aria-hidden="true"></div>
 
-          <div class="flow-node k-llm">
-            <span class="chip c-llm">LLM · Sonnet</span>
-            <strong>1 · Decompose</strong>
+          <div class="flow-node k-io">
+            <span class="chip c-io">Fetch · Notion</span>
+            <strong>1 · Fetch + flatten</strong>
             <p>
-              Rewrites the raw text into faithful, named-subject prose the extractor
-              can read well. "I/me/my" become your name. Rules stay rules — a hard
-              gate stays one statement instead of shattering into a fact per excluded
-              thing — and strength is preserved (a dealbreaker stays a dealbreaker).
-              Invents nothing. Emits a short <code>topic</code> label plus a clean
-              <code>body</code>.
+              Walk the page's block tree into markdown. Child pages stay as
+              <code>[[refs]]</code> — they're separate sources, never inlined. The
+              page's <code>path</code> is its Notion ancestry (parent titles joined by
+              <code>/</code>, e.g. <code>Career/Job Search/Target Role</code>), and its
+              real <code>last_edited_time</code> is kept as provenance.
             </p>
           </div>
           <div class="flow-arrow" aria-hidden="true"></div>
 
-          <div class="flow-node k-llm">
-            <span class="chip c-llm">LLM · Haiku</span>
-            <strong>2 · Extract</strong>
+          <div class="flow-node k-search">
+            <span class="chip c-search">Chunk</span>
+            <strong>2 · Split into chunks</strong>
             <p>
-              Inside graphiti. Reads the rewritten body and pulls out entities
-              (Person, Organization, Topic, …) and the relationships between them,
-              each as a natural-language fact. A custom instruction override tells it
-              to capture values, goals, and preferences — graphiti's stock prompt
-              refuses "abstract concepts," which for a personal brain is exactly
-              backwards.
+              <em>Phase 1: the whole page is one chunk</em> (position&nbsp;0, heading =
+              the page title). The schema already carries <code>heading</code> and
+              <code>position</code>, so heading-based section splitting is a drop-in
+              next step.
             </p>
           </div>
           <div class="flow-arrow" aria-hidden="true"></div>
 
           <div class="flow-node k-vec">
             <span class="chip c-vec">Embed · Voyage</span>
-            <strong>3 · Vectorize</strong>
-            <p>Each entity and each fact is embedded into a vector so semantic search can find it later.</p>
-          </div>
-          <div class="flow-arrow" aria-hidden="true"></div>
-
-          <div class="flow-node k-store">
-            <span class="chip c-store">graphiti</span>
-            <strong>4 · Dedup + bi-temporal merge</strong>
+            <strong>3 · Embed</strong>
             <p>
-              Each entity is matched against existing nodes (one node per real-world
-              thing). When a new fact contradicts an old one, the old fact is
-              <em>superseded</em> — not overwritten — so history survives.
+              Each chunk is embedded with <code>voyage-3-lite</code> into a 512-dim
+              vector (<code>input_type=document</code>). Embedding happens
+              <em>before</em> the write, so an embedder failure aborts the ingest
+              rather than leaving the source with stale or empty chunks.
             </p>
           </div>
           <div class="flow-arrow" aria-hidden="true"></div>
 
           <div class="flow-node k-store">
-            <span class="chip c-store">FalkorDB</span>
-            <strong>5 · Store</strong>
-            <p>The entities, the facts, and the original episode body land in the graph.</p>
+            <span class="chip c-store">Postgres</span>
+            <strong>4 · Upsert source + wipe-replace chunks</strong>
+            <p>
+              The <code>sources</code> row is upserted under the Notion page id (its
+              stable source id). Then, in one transaction, that source's chunks are
+              <code>DELETE</code>d and the fresh ones inserted. Re-posting the same URL
+              is idempotent and always current.
+            </p>
           </div>
         </div>
 
-        <h3>The three design choices baked in here</h3>
+        <h3>The three things baked in here</h3>
         <ul class="reasons">
-          <li><strong>Decompose before extract.</strong> graphiti's extractor works on named-subject, domain-explicit statements — not first-person preference prose. The rewrite reshapes the input into what it reads well, without losing rules or strength.</li>
-          <li><strong>Override the extractor.</strong> The stock prompt says <em>"NEVER extract abstract concepts."</em> But your values and goals <em>are</em> the point of a personal brain. The override flips that — validated at 2&nbsp;→&nbsp;20 entities on the same input.</li>
-          <li><strong>One episode, not many.</strong> An earlier design exploded each capture into one episode per atomic fact. It over-atomized (a single location rule shattered into a node per city), duplicated, and was slow. Now the tuned extractor gets one clean episode and pulls the facts itself.</li>
+          <li><strong>Currency by construction.</strong> Because re-ingest wipes and replaces a source's chunks, <em>only current chunks ever exist</em>. There's no "valid until" timestamp to filter on and no write-time merge — the staleness problem is dissolved, not solved.</li>
+          <li><strong>One source is the unit of truth.</strong> A new capture, a human edit in the editing surface, and a Notion re-sync are the same <code>upsert_source</code> call. Re-posting the same id never duplicates.</li>
+          <li><strong>No write-time LLM.</strong> Ingest is fetch → split → embed → insert. The old pipeline ran two LLM passes (decompose + extract) on every capture; this one runs none. Meaning stays in the prose, where the consumer's LLM reads it.</li>
         </ul>
 
         <div class="note">
-          <strong>The graph is the source of truth.</strong> The extracted facts —
-          including negatives and gates, each carrying <code>polarity</code>
-          (positive / negative) and <code>strength</code> (hard / soft) — are what
-          consumers read. The rewritten episode body is kept alongside as the faithful
-          capture: provenance you can trace back to, not the knowledge surface. Why
-          that matters shows up in recall, next.
+          <strong>Whole-page chunking is Phase 1.</strong> A very large page is
+          truncated to an embed-input budget so ingest keeps working; real section
+          splitting (and diff-and-re-embed instead of re-embedding the whole doc) is
+          the planned next step. The source's faithful text is always stored intact —
+          chunks are just the derived search index over it.
         </div>
       </section>
 
@@ -192,9 +205,9 @@ const HOW_IT_WORKS_BODY = `
       <section class="docs-section" id="recall">
         <h2>Recall &amp; profile <span class="dir-badge dir-read">read path</span></h2>
         <p class="docs-lead">
-          Reads are fast and — notably — use <strong>no generative LLM</strong>. The
-          brain retrieves and scores; the actual reasoning happens in whatever
-          consumer asked.
+          Reads are fast and use <strong>no generative LLM</strong> — just vector
+          search, full-text search, and string assembly. The brain retrieves and
+          scores; the reasoning happens in whatever consumer asked.
         </p>
 
         ${LEGEND}
@@ -202,75 +215,122 @@ const HOW_IT_WORKS_BODY = `
         <div class="flow" role="img" aria-label="Recall pipeline flowchart">
           <div class="flow-node k-io">
             <span class="chip c-io">Input</span>
-            <strong>Question</strong>
-            <p><em>"what does the user want in a job?"</em> — sent verbatim as the query.</p>
+            <strong>Question (+ optional scope)</strong>
+            <p><em>"what does the user want in a role?"</em> — sent verbatim as the query, optionally narrowed to a path subtree.</p>
           </div>
           <div class="flow-arrow" aria-hidden="true"></div>
 
           <div class="flow-node k-search">
-            <span class="chip c-search">Hybrid search · RRF</span>
-            <strong>1 · Find candidates</strong>
+            <span class="chip c-search">Two arms · in parallel</span>
+            <strong>1 · Semantic + lexical</strong>
             <p>
-              graphiti runs a keyword search (BM25) and a vector search in parallel,
-              then fuses the two rankings with reciprocal rank fusion. Running both
-              means a fragmented graph still degrades gracefully instead of returning
-              nothing.
+              A <strong>semantic</strong> arm (cosine distance over the pgvector HNSW
+              index — the <code>&lt;=&gt;</code> operator, query embedded with
+              <code>input_type=query</code>) and a <strong>lexical</strong> arm
+              (<code>ts_rank</code> over a GIN <code>tsvector</code>) each pull ~50
+              candidates. Running both means a thin or fragmented store still degrades
+              gracefully.
             </p>
           </div>
           <div class="flow-arrow" aria-hidden="true"></div>
 
-          <div class="flow-node k-vec">
-            <span class="chip c-vec">Embed + cosine · Voyage</span>
-            <strong>2 · Score</strong>
+          <div class="flow-node k-search">
+            <span class="chip c-search">RRF · c=60</span>
+            <strong>2 · Fuse</strong>
             <p>
-              The question is embedded; each candidate fact's stored embedding is
-              fetched and the absolute cosine similarity is computed — an on-target
-              <code>score</code> in roughly [0, 1]. The brain <em>reports</em> the
-              score; it does not threshold. If every fact scores low, the brain
-              simply doesn't know — no separate "I don't know" needed.
-            </p>
-          </div>
-          <div class="flow-arrow" aria-hidden="true"></div>
-
-          <div class="flow-node k-store">
-            <span class="chip c-store">Result</span>
-            <strong>3 · Return scored facts</strong>
-            <p>
-              <code>facts</code> — precise and scored, each carrying
-              <code>polarity</code> and <code>strength</code>. The extractor now
-              captures negatives and gates as first-class facts, so "avoids&nbsp;X"
-              and hard rules come back here too. The faithful episode bodies are
-              returned only with <code>?debug=true</code> — provenance for tracing,
-              not a knowledge surface.
+              The two rankings are merged with Reciprocal Rank Fusion: each chunk
+              scores <code>Σ 1/(60 + rank)</code> across the arms, and the top
+              <code>k</code> survive. Both arms read one snapshot, so a wipe-replace
+              committing mid-query can't fuse the same page in twice.
             </p>
           </div>
           <div class="flow-arrow" aria-hidden="true"></div>
 
           <div class="flow-node k-io">
             <span class="chip c-io">Output</span>
-            <strong>Consumer reasons &amp; decides</strong>
-            <p>The brain stops at "here's what I know." The consumer's own LLM filters, synthesizes, and decides.</p>
+            <strong>3 · Scored chunks → consumer decides</strong>
+            <p>
+              <code>{ heading, text, score, path }</code> per hit. The brain reports
+              the fused score; it never thresholds. The consumer's own LLM filters,
+              synthesizes, and decides.
+            </p>
           </div>
         </div>
 
-        <h3>Profile — the whole picture, not one answer</h3>
+        <h3>Profile — the whole domain, assembled</h3>
         <p>
-          <code>profile</code> is a flat list of every current fact — each with its
-          <code>polarity</code> and <code>strength</code>. Use it when a consumer needs
-          the complete record rather than the answer to a single question. At
-          single-user scale the whole profile fits in a model's context, so handing
-          back every fact sidesteps blind spots entirely.
+          Where <code>recall</code> finds the few best passages, <code>profile</code>
+          takes a path <code>scope</code> and returns <em>every</em> chunk under it,
+          ordered by <code>(path, position)</code> and reassembled into structured
+          markdown — so a consumer that wants the complete record of a domain (not the
+          answer to one question) gets it whole. If the bundle ever exceeds a token
+          budget it degrades to recall-within-scope and says so (<code>truncated:
+          true</code>) rather than silently cutting; at single-page scale it always
+          fits.
+        </p>
+
+        <h3>Map — discovery</h3>
+        <p>
+          <code>map</code> returns the <code>(path, title)</code> tree of ingested
+          sources, optionally under a scope — so a consumer that doesn't yet know its
+          scope can find one. Scope everywhere means <em>the exact path node or its
+          subtree</em>, never a bare prefix that would over-match siblings.
         </p>
 
         <div class="note">
-          <strong>Why the facts are enough.</strong> An earlier extractor pulled only
-          positive facts and dropped negatives and rules — so an avoid-list or a hard
-          gate survived only in the episode <em>body</em>, and recall had to hand back
-          bodies to be complete. The extractor now captures those as first-class facts
-          (with <code>polarity</code> and <code>strength</code>), so the graph carries
-          the whole picture. Episodes are still stored as provenance and surface only
-          under <code>?debug=true</code>. <em>Read the facts; the body is just the
-          receipt.</em>
+          <strong>Scored, not thresholded.</strong> Recall attaches an on-target score
+          and stops. The right cutoff is task-dependent — a gate question wants
+          precision, a profile question wants completeness — and only the consumer
+          knows the task. If everything scores low, the brain simply doesn't know.
+        </div>
+      </section>
+
+      <!-- STORE ---------------------------------------------------------------->
+      <section class="docs-section" id="store">
+        <h2>The document store</h2>
+        <p class="docs-lead">
+          One engine holds everything: <strong>Postgres with the pgvector extension</strong>
+          — relational rows, vector search, and full-text search in the same place. No
+          graph database, no second store.
+        </p>
+
+        <h3>Two tables</h3>
+        <div class="flow" role="img" aria-label="sources owns chunks">
+          <div class="flow-node k-store">
+            <span class="chip c-store">sources</span>
+            <strong>The canonical document</strong>
+            <p>
+              <code>id</code>, <code>kind</code>, <code>title</code>,
+              <code>raw_text</code>, <code>path</code>, <code>version</code>, plus two
+              timestamps that mean different things: <code>source_last_edited</code>
+              (the origin's real edit time) and <code>updated_at</code> (our last sync).
+            </p>
+          </div>
+          <div class="flow-arrow" aria-hidden="true"></div>
+          <div class="flow-node k-vec">
+            <span class="chip c-vec">chunks</span>
+            <strong>The derived, disposable index</strong>
+            <p>
+              <code>source_id</code> (FK, cascade), <code>heading</code>,
+              <code>text</code>, <code>position</code>, <code>embedding vector(512)</code>,
+              and a generated <code>fts tsvector</code>. Wiped and rebuilt whenever its
+              source is re-ingested.
+            </p>
+          </div>
+        </div>
+
+        <h3>Two indexes do the retrieval</h3>
+        <ul class="reasons">
+          <li><strong>HNSW</strong> on <code>chunks.embedding</code> with <code>vector_cosine_ops</code> — the semantic arm. Approximate-nearest-neighbour over 512-dim Voyage vectors.</li>
+          <li><strong>GIN</strong> on the generated <code>chunks.fts</code> tsvector — the lexical arm (<code>plainto_tsquery</code> / <code>ts_rank</code>).</li>
+          <li>A <strong>btree</strong> on <code>sources.path</code> for fast scope (exact-node-or-subtree) matching.</li>
+        </ul>
+
+        <div class="note">
+          <strong>The embedding is just an index.</strong> The source's text is the
+          truth; the vector and the tsvector are derived columns rebuilt on every
+          ingest. Lose them and you re-embed — you never lose knowledge. The schema is
+          applied idempotently on boot, so a fresh database self-provisions.
         </div>
       </section>
 
@@ -280,59 +340,66 @@ const HOW_IT_WORKS_BODY = `
         <p class="docs-lead">
           Two front doors, one service: plain <strong>HTTP/JSON</strong> for typed
           consumers, and <strong>MCP</strong> (streamable HTTP at <code>/mcp</code>)
-          exposing the same operations as tools for Claude&nbsp;Code. Three
-          operations — capture, recall, profile — plus a health probe.
+          exposing the reads as tools for Claude&nbsp;Code. Three reads — recall,
+          profile, map — plus ingest and a health probe.
         </p>
 
         <div class="endpoint">
           <div class="endpoint-head">
             <span class="method post">POST</span>
-            <span class="path">/capture</span>
+            <span class="path">/ingest</span>
             <span class="endpoint-tag">write</span>
           </div>
-          <p>Runs the full decompose → extract pipeline, then returns. Seconds, not milliseconds.</p>
+          <p>Fetch a Notion page, upsert it as a source, and re-derive its chunks (wipe-replace).</p>
           <pre><code>// request
-{ "text": "Talked to Beatrice from Globex; she's worried about Kafka cost." }
+{ "url": "https://www.notion.so/Target-Role-abc123…" }
 
-// 202
-{ "mode": "rewrite", "episodes": 1, "topic": "Globex / Kafka cost concern" }</code></pre>
-          <p class="endpoint-note"><code>400</code> if <code>text</code> is missing or blank. <code>mode</code> is <code>"raw"</code> when decomposition is disabled.</p>
+// 200
+{ "source_id": "abc123…", "chunks": 1, "path": "Career/Job Search/Target Role", "title": "Target Role" }</code></pre>
+          <p class="endpoint-note">A missing/non-string <code>url</code>, a bad token, or a page the integration can't see comes back as a clear <code>400</code>; an unreachable Notion as <code>502</code>.</p>
         </div>
 
         <div class="endpoint">
           <div class="endpoint-head">
             <span class="method get">GET</span>
-            <span class="path">/recall?q=&amp;limit=&amp;debug=</span>
+            <span class="path">/recall?q=&amp;scope=&amp;k=</span>
             <span class="endpoint-tag">read</span>
           </div>
-          <p><code>q</code> required; <code>limit</code> defaults to 20. Scored, not thresholded. Returns scored facts; pass <code>debug=true</code> to also get the episode bodies behind them.</p>
+          <p><code>q</code> required; <code>scope</code> optional (a path subtree); <code>k</code> defaults to 12 (clamped 1–100). Scored, not thresholded.</p>
           <pre><code>{
-  "query": "what does the user want in a job",
-  "facts": [
-    { "fact": "The user wants a forward-deployed engineering role.",
-      "name": "WANTS", "score": 0.7421, "polarity": "positive", "strength": "soft",
-      "valid_at": "2026-05-25T22:30:18+00:00", "invalid_at": null }
-  ],
-  "fact_count": 1
-}
-// with ?debug=true, an "episodes" array of faithful rewrites is included for tracing</code></pre>
-        </div>
-
-        <div class="endpoint">
-          <div class="endpoint-head">
-            <span class="method get">GET</span>
-            <span class="path">/profile</span>
-            <span class="endpoint-tag">read</span>
-          </div>
-          <p>Every current fact, each with its polarity and strength.</p>
-          <pre><code>{
-  "count": 1,
-  "facts": [
-    { "fact": "The user wants a forward-deployed engineering role.",
-      "name": "WANTS", "polarity": "positive", "strength": "soft",
-      "valid_at": "2026-05-25T22:30:18+00:00", "invalid_at": null }
+  "chunks": [
+    { "heading": "Target Role",
+      "text": "Wants a forward-deployed engineering role…",
+      "score": 0.0312, "path": "Career/Job Search/Target Role" }
   ]
 }</code></pre>
+        </div>
+
+        <div class="endpoint">
+          <div class="endpoint-head">
+            <span class="method get">GET</span>
+            <span class="path">/profile?scope=&amp;budget=&amp;focus=</span>
+            <span class="endpoint-tag">read</span>
+          </div>
+          <p>Every chunk under <code>scope</code>, assembled into markdown. <code>focus</code> only matters on the over-budget degrade path.</p>
+          <pre><code>{
+  "text": "# Career/Job Search\\n## Target Role\\n…",
+  "sources": [
+    { "path": "Career/Job Search/Target Role", "source_id": "abc123…",
+      "title": "Target Role", "last_edited": "2026-05-31T18:04:00+00:00" }
+  ],
+  "truncated": false
+}</code></pre>
+        </div>
+
+        <div class="endpoint">
+          <div class="endpoint-head">
+            <span class="method get">GET</span>
+            <span class="path">/map?scope=</span>
+            <span class="endpoint-tag">read</span>
+          </div>
+          <p>The <code>(path, title)</code> source tree, optionally under a scope. Discovery for a consumer that doesn't know its scope yet.</p>
+          <pre><code>{ "sources": [ { "path": "Career/Job Search/Target Role", "title": "Target Role" } ] }</code></pre>
         </div>
 
         <div class="endpoint">
@@ -341,133 +408,18 @@ const HOW_IT_WORKS_BODY = `
             <span class="path">/health</span>
             <span class="endpoint-tag">liveness</span>
           </div>
-          <p>Process-up only. Brain construction is lazy, so this does <em>not</em> verify the database or the LLM — it's a cheap probe for healthchecks.</p>
+          <p>Process-up only — it does <em>not</em> check the database. A cheap probe for healthchecks.</p>
           <pre><code>{ "ok": true }</code></pre>
         </div>
 
         <div class="note">
-          <strong>MCP face.</strong> The same logic is exposed as tools
-          <code>capture(text)</code>, <code>recall(query, limit=20)</code>, and
-          <code>profile()</code> at <code>/mcp</code> — one shared brain instance.
-          <code>health</code> is HTTP-only. The old standalone Graphiti MCP server's
-          broad surface (<code>add_memory</code>, <code>search_nodes</code>,
-          <code>clear_graph</code>, …) is deliberately <em>not</em> exposed — the
-          contract is three operations.
-        </div>
-      </section>
-
-      <!-- GRAPH ---------------------------------------------------------------->
-      <section class="docs-section" id="graph">
-        <h2>The graph database</h2>
-
-        <h3>Episodes vs. facts</h3>
-        <p>
-          The brain holds two layers. An <strong>episode</strong> is one thing you
-          captured — a passage of text, saved as-is: the faithful provenance record.
-          A <strong>fact</strong> is a single structured claim the brain extracted
-          from an episode ("X is CTO at Y"), stored as a connection in the graph and
-          carrying its own polarity and strength. <strong>One episode produces many
-          facts.</strong>
-        </p>
-        <p>
-          The clearest picture is a <em>document and the structured record built from
-          it</em>: the episode is the raw document, kept so any claim can be traced
-          back; the facts are the graph the brain actually reads from — and because
-          the extractor now captures "don'ts" and rules too, the facts carry the whole
-          picture. Rule of thumb: <em>read the facts; reach for the episode only when
-          you want to see where a fact came from.</em>
-        </p>
-
-        <h3>Nodes and edges</h3>
-        <div class="graph-diagram">
-          <svg viewBox="0 0 520 300" role="img" aria-label="Graph: owner hub with RELATES_TO facts, and an episode hub with MENTIONS edges">
-            <defs>
-              <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-                <path d="M0,0 L10,5 L0,10 z" fill="#6c7484"></path>
-              </marker>
-            </defs>
-            <!-- edges -->
-            <g stroke="#2d3243" stroke-width="1.5" fill="none" marker-end="url(#arrow)">
-              <line x1="250" y1="150" x2="95"  y2="70"></line>
-              <line x1="250" y1="150" x2="95"  y2="230"></line>
-              <line x1="250" y1="150" x2="420" y2="95"></line>
-            </g>
-            <g stroke="#403a5c" stroke-width="1.5" stroke-dasharray="4 4" fill="none" marker-end="url(#arrow)">
-              <line x1="420" y1="215" x2="285" y2="170"></line>
-              <line x1="420" y1="215" x2="430" y2="120"></line>
-            </g>
-            <!-- edge labels -->
-            <text x="150" y="100" fill="#9099a8" font-size="11">RELATES_TO</text>
-            <text x="150" y="205" fill="#9099a8" font-size="11">RELATES_TO</text>
-            <text x="335" y="115" fill="#9099a8" font-size="11">RELATES_TO</text>
-            <text x="318" y="205" fill="#a594ff" font-size="11">MENTIONS</text>
-            <!-- owner hub -->
-            <circle cx="250" cy="150" r="34" fill="#14171f" stroke="#8b6dff" stroke-width="2"></circle>
-            <text x="250" y="154" text-anchor="middle" fill="#e8eaf0" font-size="13" font-weight="600">You</text>
-            <!-- entity nodes -->
-            <circle cx="78" cy="62" r="26" fill="#14171f" stroke="#7aa9ff" stroke-width="1.5"></circle>
-            <text x="78" y="58" text-anchor="middle" fill="#c7d2e8" font-size="10">Topic</text>
-            <text x="78" y="71" text-anchor="middle" fill="#8b94a6" font-size="9">forward-deployed</text>
-            <circle cx="78" cy="238" r="26" fill="#14171f" stroke="#7aa9ff" stroke-width="1.5"></circle>
-            <text x="78" y="234" text-anchor="middle" fill="#c7d2e8" font-size="10">Person</text>
-            <text x="78" y="247" text-anchor="middle" fill="#8b94a6" font-size="9">Beatrice</text>
-            <circle cx="445" cy="88" r="26" fill="#14171f" stroke="#7aa9ff" stroke-width="1.5"></circle>
-            <text x="445" y="84" text-anchor="middle" fill="#c7d2e8" font-size="10">Org</text>
-            <text x="445" y="97" text-anchor="middle" fill="#8b94a6" font-size="9">Globex</text>
-            <!-- episode hub -->
-            <rect x="402" y="196" width="86" height="40" rx="9" fill="rgba(139,109,255,0.08)" stroke="#8b6dff" stroke-width="1.5"></rect>
-            <text x="445" y="214" text-anchor="middle" fill="#c2b8ff" font-size="10">Episodic</text>
-            <text x="445" y="227" text-anchor="middle" fill="#9a90c0" font-size="9">a capture's body</text>
-          </svg>
-        </div>
-        <p>
-          Two node labels: <strong>Episodic</strong> (a capture's body) and
-          <strong>Entity</strong> (an extracted thing, also tagged Person,
-          Organization, Location, Event, Document, or Topic). Two edge types:
-          <strong>RELATES_TO</strong> (entity → entity — the fact itself, carrying the
-          sentence, its embedding, and timestamps) and <strong>MENTIONS</strong>
-          (episode → entity — provenance: which capture a thing came from). There's no
-          schema you define up front; the types are strings the extractor produces on
-          the fly. Capture a sailboat tomorrow and you get a <code>Boat</code> entity
-          with no code change.
-        </p>
-
-        <h3>Two hubs</h3>
-        <p>
-          Because everything is about one person, the graph naturally forms two
-          well-connected hubs: the <strong>owner node</strong> (the web of what's true
-          about you — the knowledge index) and each <strong>episode node</strong>
-          (links to everything that capture produced — the source index, so any fact
-          traces back to where it came from). Single-user by design, so the owner
-          staying central is correct, not clutter.
-        </p>
-
-        <h3>Dedup</h3>
-        <p>
-          Before adding a <code>Maya</code> node, graphiti checks embeddings and name:
-          is this the Maya we already have? If so, the new facts attach to the
-          existing node instead of forking a duplicate. One node per real-world thing
-          — the thing that's genuinely tedious to get right by hand.
-        </p>
-
-        <h3>Bi-temporal facts</h3>
-        <p>
-          Every fact carries <em>when it's true in the world</em>
-          (<code>valid_at</code> / <code>invalid_at</code>) and <em>when the system
-          learned it</em> (<code>created_at</code>). A correction doesn't overwrite —
-          it supersedes. "Maya left Acme for a stealth startup" sets
-          <code>invalid_at</code> on the old "Maya is CTO at Acme" fact and adds the
-          new one. Both stay; <em>"where does Maya work now?"</em> returns only facts
-          with <code>invalid_at = null</code>. In a plain vector store the stale
-          sentence would keep surfacing forever — bi-temporal is what makes
-          corrections actually stick.
-        </p>
-
-        <div class="note">
-          <strong>FalkorDB underneath.</strong> The graph lives in FalkorDB — a Redis
-          module that speaks Cypher, roughly 6× more memory-efficient than Neo4j (fits
-          a small VPS), with vector indexes built in. graphiti supports Neo4j too, so
-          switching is a config change, not a rewrite.
+          <strong>MCP face.</strong> The same reads are exposed as tools
+          <code>recall</code>, <code>profile</code>, and <code>map</code> at
+          <code>/mcp</code> — one shared brain. <code>ingest</code> is HTTP-only. The
+          legacy <code>POST /capture</code> is <strong>retired</strong>: this PWA
+          answers it with <code>410 Gone</code>, and the brain has no such route. The
+          PWA itself is read-only against the brain — it proxies only
+          <code>/recall</code> and <code>/map</code>.
         </div>
       </section>
 
@@ -475,41 +427,46 @@ const HOW_IT_WORKS_BODY = `
       <section class="docs-section" id="why">
         <h2>Why this design</h2>
         <p class="docs-lead">
-          Every decision here is meant to be defensible. The short version of each:
+          The brain used to be a knowledge graph (graphiti over FalkorDB). It isn't
+          anymore. The short version of each decision:
         </p>
 
         <div class="decisions">
           <div class="decision">
-            <h3>One smart brain, thin consumers</h3>
-            <p>All the intelligence lives in the brain. Consumers stay dumb and narrow — this capture screen is just a proxy to <code>/capture</code>. Knowledge lives in one place instead of being copied into every app.</p>
+            <h3>A document store, not a graph</h3>
+            <p>Look at what recall actually did and the graph was never used <em>as</em> a graph — it was semantic + keyword search with zero multi-hop traversal, on a star topology where everything hung off the user. A document/vector workload wearing a graph costume. Pick the substrate by the read pattern: ours is semantic search → an LLM.</p>
           </div>
           <div class="decision">
-            <h3>graphiti-core directly, not its MCP server</h3>
-            <p>The standalone MCP server throws away the extraction override (the 2&nbsp;→&nbsp;20 entities hook), won't forward entity/edge type controls, and hardcodes a search recipe that bled domains. In-process, graphiti exposes every lever. The MCP server is kept only for Claude&nbsp;Code, where MCP is required.</p>
+            <h3>Postgres + pgvector, one store</h3>
+            <p>Vectors, full-text, and relational rows in a single engine you already understand. No graph DB to operate, no second store to keep in sync. The only persistent store; logs go to stderr.</p>
           </div>
           <div class="decision">
-            <h3>Keep graphiti; don't go raw FalkorDB</h3>
-            <p>Two things are genuinely hard to rebuild and are the real differentiators: entity <strong>dedup</strong> and <strong>bi-temporal</strong> fact invalidation. graphiti does both well, so we keep it rather than talking to FalkorDB directly.</p>
+            <h3>Currency by construction</h3>
+            <p>A source owns its chunks; re-ingest wipes and replaces them. That dissolves the two things the graph was genuinely good at — bi-temporal invalidation and write-time dedup — into "only current rows exist." Bi-temporal was two timestamp columns and a filter, not a reason to keep a graph.</p>
           </div>
           <div class="decision">
-            <h3>The graph is the source of truth</h3>
-            <p>Extraction now captures negatives and gates as first-class facts ("avoids X", "only Y counts"), each carrying polarity and strength. So the graph holds the whole picture — recall and profile return facts. Episodes are still stored as provenance and surface only under <code>debug</code>.</p>
+            <h3>No write-time LLM</h3>
+            <p>The old capture ran a decompose pass and an extraction pass on every note. The new ingest just splits and embeds. Cheaper, faster, and far less to go wrong — and the meaning isn't lost, it stays in the prose.</p>
+          </div>
+          <div class="decision">
+            <h3>Structure in the prose, not columns</h3>
+            <p>The consumer is an LLM, so typed fields like <code>polarity</code>/<code>strength</code> were the librarian doing the analyst's job. An LLM reads "avoids fintech — hard dealbreaker" straight from the text. Storing the human's own sections keeps negatives, gates, and nuance for free.</p>
+          </div>
+          <div class="decision">
+            <h3>Hybrid retrieval with RRF</h3>
+            <p>Semantic catches paraphrase; lexical catches exact terms and rare tokens. Reciprocal Rank Fusion blends them with no weight to tune, so the system stays robust when one arm is weak.</p>
           </div>
           <div class="decision">
             <h3>A librarian, not an oracle</h3>
-            <p>The brain returns facts; it never synthesizes or decides. There's deliberately no <code>ask</code> endpoint — "asking the brain" is just <code>recall</code>. Keeping reasoning out is what lets it serve every consumer without learning any one domain.</p>
+            <p>The brain returns scored passages; it never synthesizes or decides. No <code>ask</code> endpoint. Keeping reasoning out is what lets one brain serve every consumer without learning any one domain.</p>
           </div>
           <div class="decision">
-            <h3>Scored, not thresholded</h3>
-            <p>Recall attaches an absolute on-target score to every fact and stops. The right cutoff is task-dependent — a gate question wants precision, a profile question wants recall — and only the consumer knows the task.</p>
+            <h3>RAG with the hood open</h3>
+            <p>The graph was a black box over the very retrieval pipeline this project exists to learn. Now chunking, the embedder and its dimension, the HNSW index, the cosine query, the lexical arm, and the fusion are all owned and tunable — textbook RAG, in your hands.</p>
           </div>
           <div class="decision">
-            <h3>FalkorDB over Neo4j</h3>
-            <p>Memory efficiency on a small VPS, Cypher-compatible, built-in vectors. Neo4j has deeper tooling; for a single-user brain the memory win wins. Swappable via config if that ever changes.</p>
-          </div>
-          <div class="decision">
-            <h3>Retrieve broadly; don't over-tune ranking</h3>
-            <p>At one-user / one-domain scale the whole relevant profile fits in a model's context. On a star topology every concept is ~2 hops from every other through the owner, so node-distance reranking doesn't help — recall uses RRF plus the fact text's own context. Ranking optimization is a scale problem we don't have yet.</p>
+            <h3>Pluggable migrators</h3>
+            <p>Notion is the first source we ship a migrator for, not <em>the</em> source — Obsidian, Roam, plain markdown are plausible siblings. The shared layer stays implicit until a second migrator earns it.</p>
           </div>
         </div>
       </section>`;

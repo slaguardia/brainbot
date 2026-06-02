@@ -642,6 +642,9 @@ main {
   .kb-content {
     padding: 30px 0;
     min-width: 0;
+    /* Hard stop: keep wide content (code blocks, cards) inside its column so it
+       can never paint over the right-rail tracker. */
+    overflow: hidden;
   }
   .kb-toc {
     display: flex;
@@ -735,6 +738,8 @@ main {
   padding: 1px 5px;
   border-radius: var(--r-sm);
   color: #cdd5e6;
+  /* Long inline code (paths, identifiers) wraps instead of widening the column. */
+  overflow-wrap: anywhere;
 }
 .docs-article pre {
   background: var(--bg-2);
@@ -742,6 +747,7 @@ main {
   border-radius: var(--r-lg);
   padding: 14px 16px;
   overflow-x: auto;
+  max-width: 100%;
   margin: 14px 0;
 }
 .docs-article pre code {
@@ -1084,7 +1090,7 @@ main {
     scroll-margin-top: 24px;
   }
   .decisions {
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   }
 }
 

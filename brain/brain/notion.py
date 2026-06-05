@@ -168,8 +168,12 @@ def _page_title(page: dict) -> str:
     props = page.get("properties", {})
     for prop in props.values():
         if prop.get("type") == "title":
-            return _rich_text(prop.get("title", []))
-    # Fallback: some objects carry a top-level title array (e.g. databases).
+            text = _rich_text(prop.get("title", []))
+            if text:
+                return text
+    # Databases carry their real title as a top-level rich-text array — their
+    # `properties` is the SCHEMA, whose title-typed entry is an empty definition,
+    # so the loop above yields '' for them and must fall through (not return).
     if isinstance(page.get("title"), list):
         return _rich_text(page["title"])
     return ""

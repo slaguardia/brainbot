@@ -510,15 +510,25 @@ a.brand {
 .disc-branch > summary::-webkit-details-marker {
   display: none;
 }
+/* Border-drawn chevron (the ▸ glyph rendered as a barely-visible dot in some
+   fonts): points right when closed, down when open. */
 .disc-branch > summary::before {
-  content: "▸";
-  color: var(--fg-faint);
-  font-size: 11px;
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-right: 2px solid var(--fg-muted);
+  border-bottom: 2px solid var(--fg-muted);
+  border-radius: 1px;
+  transform: rotate(-45deg);
   flex: 0 0 auto;
+  margin-right: 2px;
   transition: transform 0.12s ease;
 }
+.disc-branch > summary:hover::before {
+  border-color: var(--link);
+}
 .disc-branch[open] > summary::before {
-  transform: rotate(90deg);
+  transform: rotate(45deg);
 }
 /* A database node: its "children" are rows, not sub-pages — folder styling. */
 .src-label.is-db {

@@ -1,23 +1,24 @@
 """The document substrate — ingest + the three reads, over asyncpg + pgvector.
 
-This is the whole brain in one file (the plan's "~200-line" skeleton, Phase-1
-shape):
+This is the whole brain in one file (the plan's "~200-line" skeleton):
 
 - **ingest** — `upsert_source` is capture = human-edit = Notion re-sync, all one
   call. It upserts the source row, then WIPES that source's chunks and re-inserts
   fresh, so re-posting the same URL is idempotent and always current
-  ("currency by construction"). Phase 1 chunking is deliberately trivial: the
-  WHOLE page is ONE chunk (position 0, heading = the page title) — no section
-  splitting yet.
+  ("currency by construction"). The page is split into SECTIONS by its own
+  heading structure (`_split_sections`) — one chunk per section, each embedded on
+  its own so recall can discriminate within a page (a query about one section's
+  topic ranks it above the others, instead of the whole page scoring flat).
 - **recall(query, scope)** — targeted hybrid retrieval. A semantic select (cosine
   distance over the HNSW index) and a lexical select (`ts_rank` over the GIN
   `tsvector`), each prefix-scoped by `sources.path` when a scope is given, fused
   by Reciprocal Rank Fusion (c=60) — reproducing graphiti's
-  COMBINED_HYBRID_SEARCH_RRF. Returns the top-k `Chunk`s.
+  COMBINED_HYBRID_SEARCH_RRF. Returns the top-k `Chunk`s — or, with `min_score`,
+  every chunk above that fused-score threshold (k stays a safety cap).
 - **profile(scope, budget)** — domain dump. Every chunk under the path prefix,
   ordered by `(path, position)`, re-assembled into structured markdown as one
-  `Context`. In Phase 1 a single page always fits the budget; the over-budget
-  degrade-to-recall path is stubbed and documented below.
+  `Context`. A small corpus fits the budget; the over-budget degrade-to-recall
+  path is documented below.
 - **map_(scope)** — domain discovery: the `(path, title)` source tree under the
   prefix, so a consumer that doesn't know its scope can find it.
 
@@ -30,6 +31,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 from dataclasses import asdict, dataclass
 from datetime import datetime
 
@@ -50,10 +52,13 @@ _ARM_LIMIT = 50
 
 # Embed-input char budget. voyage-3-lite caps a single input near ~32K tokens; at
 # a conservative ~4 chars/token that's ~110K chars (≈28K tokens, with headroom).
-# Phase 1 stores the whole page as one chunk, so a very large page is truncated to
-# this before embedding to keep /ingest working — section-splitting is the real
-# later fix.
+# A very large section is truncated to this before embedding so /ingest never
+# 500s on Voyage's single-input cap.
 _EMBED_CHAR_BUDGET = 110_000
+
+# A markdown heading line: 1-6 '#' then whitespace then the heading text. Notion's
+# flattener (notion.py) emits h1-h3, but match h1-h6 so any markdown source splits.
+_HEADING_RE = re.compile(r"^(#{1,6})\s+(.*)$")
 
 
 @dataclass
@@ -107,6 +112,67 @@ def _parse_iso(value: str | None) -> datetime | None:
         return None
 
 
+def _split_sections(title: str, text: str) -> list[tuple[str, str]]:
+    """Split a page's markdown into (heading, body) sections by its OWN heading
+    structure — one section per heading line, plus a leading section for any
+    preamble before the first heading (whose heading is the page title).
+
+    This is the foundation of recall precision: each section is embedded on its
+    own, so a query about one topic ranks that section above the others on the
+    same page instead of the whole page scoring flat. A page with no headings
+    stays a single (title, body) section — same shape as before.
+
+    Heading lines are consumed into the section's `heading`, never its `body`;
+    profile re-emits '### heading' when it reassembles, so the human's structure
+    round-trips. A real heading section is kept even with an empty body (the
+    heading is signal); the synthetic preamble section is kept only when it has
+    body, so a page that leads with a heading doesn't gain an empty title chunk.
+    The guard at the end guarantees at least one section for an empty page.
+    """
+    sections: list[tuple[str, str]] = []
+    heading = title.strip()
+    body_lines: list[str] = []
+    is_preamble = True  # the leading section's heading is the title, not a real header
+
+    def flush() -> None:
+        body = "\n".join(body_lines).strip()
+        if body or (heading and not is_preamble):
+            sections.append((heading, body))
+
+    for line in text.splitlines():
+        m = _HEADING_RE.match(line)
+        if m:
+            flush()
+            heading = m.group(2).strip()
+            body_lines = []
+            is_preamble = False
+        else:
+            body_lines.append(line)
+    flush()
+
+    if not sections:
+        sections.append((title.strip(), ""))
+    return sections
+
+
+def _embed_input(heading: str, body: str) -> str:
+    """The text embedded for a section: its heading + body, truncated to the
+    embedder's single-input budget. Deliberately section-LOCAL (the page title is
+    NOT injected) so sections of the same page stay distinguishable in vector
+    space — injecting a shared title would pull them back together and defeat the
+    point of section chunking."""
+    text = f"{heading}\n{body}".strip() if heading else body.strip()
+    if len(text) > _EMBED_CHAR_BUDGET:
+        logger.warning(
+            "section embed input %d chars exceeds budget %d; truncating (heading=%r)",
+            len(text),
+            _EMBED_CHAR_BUDGET,
+            heading,
+        )
+        text = text[:_EMBED_CHAR_BUDGET]
+    return text
+
+
 async def upsert_source(
     pool: asyncpg.Pool,
     *,
@@ -116,19 +182,16 @@ async def upsert_source(
     path: str,
     source_id: str | None = None,
     last_edited: str | None = None,
-) -> str:
+) -> tuple[str, int]:
     """Create or replace a source, then re-derive its chunks (wipe-replace).
 
     New capture, a human edit in the PWA, and a Notion re-sync are the same call.
-    The source row is upserted; then every chunk it owns is DELETEd and a single
-    whole-page chunk (position 0, heading = title) is re-inserted with its
-    embedding. Re-posting the same `source_id` is idempotent and always current.
+    The source row is upserted; then every chunk it owns is DELETEd and one chunk
+    per SECTION (`_split_sections`) is re-inserted, each with its own embedding.
+    Re-posting the same `source_id` is idempotent and always current.
 
-    Returns the source id (string uuid).
+    Returns (source id, chunk count).
     """
-    # Embed first (outside the txn) so an embedder failure aborts before we touch
-    # the store — never leave a source with stale or zero chunks. The whole page
-    # is one chunk in Phase 1; the heading gives the embedding a little context.
     # Postgres text columns can't hold a NUL byte (U+0000); Notion plain_text can
     # rarely carry one. Strip it everywhere so the page still ingests instead of the
     # INSERT raising and turning caller-fixable content into a 500.
@@ -138,21 +201,13 @@ async def upsert_source(
     # The source's real edit time (e.g. Notion's last_edited_time), parsed to a
     # datetime for the timestamptz column. None when the origin doesn't supply it.
     last_edited_dt = _parse_iso(last_edited)
-    embed_input = f"{title}\n{page_text}"
-    if len(embed_input) > _EMBED_CHAR_BUDGET:
-        # A large page would blow Voyage's single-input token cap and 500 /ingest.
-        # Truncate to the budget so ingest keeps working (whole-page is Phase 1;
-        # section-splitting is the real later fix).
-        logger.warning(
-            "upsert_source: embed input %d chars exceeds budget %d; truncating "
-            "(source title=%r path=%r)",
-            len(embed_input),
-            _EMBED_CHAR_BUDGET,
-            title,
-            path,
-        )
-        embed_input = embed_input[:_EMBED_CHAR_BUDGET]
-    [embedding] = await asyncio.to_thread(embed, [embed_input])
+
+    # Split into sections, then embed all of them in ONE batched Voyage call.
+    # Embed first (outside the txn) so an embedder failure aborts before we touch
+    # the store — never leave a source with stale or zero chunks.
+    sections = _split_sections(title, page_text)
+    embed_inputs = [_embed_input(h, b) for h, b in sections]
+    embeddings = await asyncio.to_thread(embed, embed_inputs)
 
     async with pool.acquire() as conn:
         async with conn.transaction():
@@ -172,19 +227,22 @@ async def upsert_source(
                 path,
                 last_edited_dt,
             )
-            # Wipe-replace: drop this source's chunks, re-insert the fresh one.
+            # Wipe-replace: drop this source's chunks, re-insert one per section
+            # (position = document order, so profile reassembles in the human's order).
             await conn.execute("DELETE FROM chunks WHERE source_id=$1", src_id)
-            await conn.execute(
+            await conn.executemany(
                 """
                 INSERT INTO chunks (source_id, heading, text, position, embedding)
-                VALUES ($1, $2, $3, 0, $4)
+                VALUES ($1, $2, $3, $4, $5)
                 """,
-                src_id,
-                title,
-                page_text,
-                embedding,
+                [
+                    (src_id, heading, body, position, embedding)
+                    for position, ((heading, body), embedding) in enumerate(
+                        zip(sections, embeddings)
+                    )
+                ],
             )
-    return str(src_id)
+    return str(src_id), len(sections)
 
 
 # ---- recall (Mode 1): targeted hybrid retrieval, path-scoped -----------------
@@ -195,12 +253,20 @@ async def recall(
     *,
     scope: str | None = None,
     k: int = 12,
+    min_score: float | None = None,
 ) -> list[Chunk]:
-    """'Look something up.' Top-k sections matching `query`, optionally within a
-    path subtree. Runs a semantic select (cosine distance) and a lexical select
+    """'Look something up.' Sections matching `query`, optionally within a path
+    subtree. Runs a semantic select (cosine distance) and a lexical select
     (`ts_rank`), each capped at ~50 and scoped to `sources.path` (the exact node
-    or its proper subtree), then fuses them with RRF and returns the top-k
-    `Chunk`s."""
+    or its proper subtree), then fuses them with RRF.
+
+    By default returns the top-k. When `min_score` is given, switches to THRESHOLD
+    mode: returns every fused chunk whose `score` (the RRF fused score, the same
+    value in `Chunk.score`) is >= `min_score`, with `k` kept as a safety cap. This
+    is the 'return everything relevant' mode — a completeness-sensitive consumer
+    sets a threshold instead of guessing k. Note the threshold is on the RRF score
+    (rank-fusion, not cosine), so its useful range is small (~0.016 = a single
+    rank-1 arm hit); tune it against observed scores, don't assume a 0–1 scale."""
     # Empty/whitespace scope means UNSCOPED, not "match the root prefix".
     if scope is not None:
         scope = scope.strip() or None
@@ -257,7 +323,11 @@ async def recall(
                 """,
                 *lex_args,
             )
-    return _rrf(semantic, lexical)[:k]
+    fused = _rrf(semantic, lexical)
+    if min_score is not None:
+        # Threshold mode: keep everything at/above the cutoff; k still caps the set.
+        fused = [ch for ch in fused if ch.score >= min_score]
+    return fused[:k]
 
 
 def _rrf(*rankings: list, c: int = _RRF_C) -> list[Chunk]:

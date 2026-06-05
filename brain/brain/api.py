@@ -104,21 +104,22 @@ async def ingest(request: Request) -> JSONResponse:
 
 @mcp.custom_route("/recall", methods=["GET"])
 async def recall_route(request: Request) -> JSONResponse:
-    """GET /recall?q=&scope=&k=&min_score= — hybrid-search sections, optionally
-    scoped. Default top-k; pass `min_score` for threshold mode (every chunk above
-    the fused-score cutoff, k as a safety cap)."""
+    """GET /recall?q=&scope=&k=&complete= — hybrid-search sections, optionally
+    scoped. Default top-k; pass `complete=true` to have the brain return
+    everything IT judges relevant (the cutoff is the brain's own, k stays a
+    safety cap — consumers never see a score scale)."""
     q = request.query_params.get("q")
     if not (q and q.strip()):
         return JSONResponse({"error": "missing required query param: q"}, status_code=400)
     scope = request.query_params.get("scope") or None
     # Clamp k to >=1 (and a sane cap) so k<=0 never reaches the `[:k]` slice.
     k = _int_param(request, "k", 12, lo=1, hi=100)
-    # Threshold mode is opt-in: absent/garbage min_score -> None -> plain top-k.
-    min_score = _float_param(request, "min_score")
+    # Opt-in: anything but an explicit true-ish value falls back to plain top-k.
+    complete = request.query_params.get("complete") in ("1", "true")
 
     try:
         pool = await get_pool()
-        chunks = await recall(pool, q, scope=scope, k=k, min_score=min_score)
+        chunks = await recall(pool, q, scope=scope, k=k, complete=complete)
     except Exception as e:  # noqa: BLE001 — embed/db failure: surface, don't 500
         logger.exception("recall failed")
         return JSONResponse({"error": f"recall failed: {e}"}, status_code=502)
@@ -185,29 +186,16 @@ def _int_param(
     return value
 
 
-def _float_param(request: Request, name: str) -> float | None:
-    """Parse an optional float query param, returning None on missing/garbage so a
-    bad value just falls back to default behavior (here: plain top-k) rather than
-    erroring."""
-    raw = request.query_params.get(name)
-    if raw is None:
-        return None
-    try:
-        return float(raw)
-    except (TypeError, ValueError):
-        return None
-
-
 # ---- MCP tools (US-009): same store functions, contract shapes ---------------
 
 @mcp.tool(name="recall")
 async def recall_tool(
-    query: str, scope: str | None = None, k: int = 12, min_score: float | None = None
+    query: str, scope: str | None = None, k: int = 12, complete: bool = False
 ) -> dict:
     """Targeted hybrid retrieval — sections matching `query`, optionally within a
     path subtree (`scope`, e.g. 'Career/Job Search'). Default returns the top-k;
-    pass `min_score` for threshold mode (every chunk whose fused `score` is above
-    the cutoff, k as a safety cap). Returns
+    pass `complete=true` to have the brain return everything IT judges relevant
+    (its own cutoff, k as a safety cap). Returns
     {"chunks": [{heading, text, score, path}, ...]}."""
     # Guard empty input here too — the HTTP route does, and without this the MCP
     # face would leak a raw embedder error instead of a clear "query required".
@@ -215,7 +203,7 @@ async def recall_tool(
         raise ValueError("query is required")
     try:
         pool = await get_pool()
-        chunks = await recall(pool, query, scope=scope, k=k, min_score=min_score)
+        chunks = await recall(pool, query, scope=scope, k=k, complete=complete)
     except Exception as e:  # noqa: BLE001 — embed/db failure: clear tool error
         logger.exception("recall (mcp) failed")
         raise RuntimeError(f"recall failed: {e}") from e

@@ -143,7 +143,7 @@ const server = createServer((req, res) => {
   }
   // Owner read-views: recall search + source map, proxied GET-only to the brain.
   if (req.method === "GET" && url.pathname === "/api/recall") {
-    void proxyRead(res, url, "/recall", ["q", "k", "scope", "min_score"]);
+    void proxyRead(res, url, "/recall", ["q", "k", "scope", "complete"]);
     return;
   }
   if (req.method === "GET" && url.pathname === "/api/map") {

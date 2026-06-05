@@ -13,8 +13,9 @@ This is the whole brain in one file (the plan's "~200-line" skeleton):
   distance over the HNSW index) and a lexical select (`ts_rank` over the GIN
   `tsvector`), each prefix-scoped by `sources.path` when a scope is given, fused
   by Reciprocal Rank Fusion (c=60) — reproducing graphiti's
-  COMBINED_HYBRID_SEARCH_RRF. Returns the top-k `Chunk`s — or, with `min_score`,
-  every chunk above that fused-score threshold (k stays a safety cap).
+  COMBINED_HYBRID_SEARCH_RRF. Returns the top-k `Chunk`s — or, with
+  `complete=True`, everything the brain itself judges relevant (it derives the
+  cutoff from its own semantic similarities; k stays a safety cap).
 - **profile(scope, budget)** — domain dump. Every chunk under the path prefix,
   ordered by `(path, position)`, re-assembled into structured markdown as one
   `Context`. A small corpus fits the budget; the over-budget degrade-to-recall
@@ -49,6 +50,12 @@ _RRF_C = 60
 # lexical selects, fuse, then slice to k. Wide enough that fusion has signal,
 # small enough to stay cheap.
 _ARM_LIMIT = 50
+
+# Complete-mode cutoff: keep semantic candidates whose cosine similarity is
+# within this fraction of the best hit's. Brain-INTERNAL — consumers say
+# `complete=true` and never see a score scale; this can be tuned (or replaced
+# with something smarter) without any contract change.
+_COMPLETE_SIM_FLOOR = 0.85
 
 # Embed-input char budget. voyage-3-lite caps a single input near ~32K tokens; at
 # a conservative ~4 chars/token that's ~110K chars (≈28K tokens, with headroom).
@@ -253,20 +260,19 @@ async def recall(
     *,
     scope: str | None = None,
     k: int = 12,
-    min_score: float | None = None,
+    complete: bool = False,
 ) -> list[Chunk]:
     """'Look something up.' Sections matching `query`, optionally within a path
     subtree. Runs a semantic select (cosine distance) and a lexical select
     (`ts_rank`), each capped at ~50 and scoped to `sources.path` (the exact node
     or its proper subtree), then fuses them with RRF.
 
-    By default returns the top-k. When `min_score` is given, switches to THRESHOLD
-    mode: returns every fused chunk whose `score` (the RRF fused score, the same
-    value in `Chunk.score`) is >= `min_score`, with `k` kept as a safety cap. This
-    is the 'return everything relevant' mode — a completeness-sensitive consumer
-    sets a threshold instead of guessing k. Note the threshold is on the RRF score
-    (rank-fusion, not cosine), so its useful range is small (~0.016 = a single
-    rank-1 arm hit); tune it against observed scores, don't assume a 0–1 scale."""
+    By default returns the top-k. With `complete=True` — the 'return everything
+    relevant' mode for completeness-sensitive consumers — the BRAIN decides where
+    relevance ends: it trims the semantic candidates at its own similarity cutoff
+    (`_trim_to_relevant`) before fusion, with `k` kept as a safety cap. The
+    consumer never supplies or sees a score scale; how the cutoff is chosen is
+    the librarian's business and can change without any contract change."""
     # Empty/whitespace scope means UNSCOPED, not "match the root prefix".
     if scope is not None:
         scope = scope.strip() or None
@@ -297,7 +303,8 @@ async def recall(
                        c.text,
                        s.path,
                        s.id AS source_id,
-                       row_number() OVER (ORDER BY c.embedding <=> $1) AS rank
+                       row_number() OVER (ORDER BY c.embedding <=> $1) AS rank,
+                       1 - (c.embedding <=> $1) AS sim
                 FROM chunks c JOIN sources s ON s.id = c.source_id
                 {sem_scope}
                 ORDER BY c.embedding <=> $1
@@ -323,11 +330,31 @@ async def recall(
                 """,
                 *lex_args,
             )
-    fused = _rrf(semantic, lexical)
-    if min_score is not None:
-        # Threshold mode: keep everything at/above the cutoff; k still caps the set.
-        fused = [ch for ch in fused if ch.score >= min_score]
-    return fused[:k]
+    if complete:
+        # Trim the semantic arm at the brain's own relevance cutoff BEFORE fusion;
+        # lexical hits survive untrimmed (plainto_tsquery ANDs every lexeme, so a
+        # lexical match is strong evidence of relevance on its own).
+        semantic = _trim_to_relevant(semantic)
+    return _rrf(semantic, lexical)[:k]
+
+
+def _trim_to_relevant(semantic: list) -> list:
+    """Complete-mode cutoff — the brain's own judgment of where relevance ends.
+
+    Keeps the semantic candidates whose cosine similarity (`sim`) is within
+    `_COMPLETE_SIM_FLOOR` of the best hit's. The cutoff works on similarity
+    MAGNITUDES, not the RRF fused score: RRF is rank-only (1/(c+rank) sums), so
+    it carries no signal about how close anything actually is and can't be
+    thresholded meaningfully. A relative floor degrades gracefully: a flat,
+    undifferentiated corpus keeps everything (k still caps) instead of cutting
+    on noise."""
+    if len(semantic) < 2:
+        return semantic
+    top = semantic[0]["sim"]
+    if top <= 0:
+        return semantic
+    floor = top * _COMPLETE_SIM_FLOOR
+    return [r for r in semantic if r["sim"] >= floor]
 
 
 def _rrf(*rankings: list, c: int = _RRF_C) -> list[Chunk]:

@@ -183,8 +183,9 @@ transforms) are backlogged in the exploration plan, not built in Phase 1.
 - **Section-aware re-extract.** Wipe-replace per whole doc is correct but coarse;
   diff-and-only-re-embed-changed-sections is a later optimization (not v1).
 - **Closed-set legibility.** "Allowed verticals are exactly these four" must
-  survive as a set when chunks split. Phase 1 (whole-page chunk) preserves it
-  trivially; revisit when section-splitting lands.
+  survive as a set when chunks split. Section-splitting (landed) keeps a closed
+  set intact as long as it lives under one heading — its section is one chunk;
+  verify that holds as real pages get messier.
 - **Cross-links across branches.** The `path` tree captures containment, not
   sideways Notion relations/backlinks. Fine for an LLM consumer that synthesizes;
   a join table covers light cross-linking if it's ever needed.

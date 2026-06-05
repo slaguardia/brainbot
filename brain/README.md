@@ -43,8 +43,9 @@ is no synthesis, no LLM, no graph. This is a document/vector RAG substrate:
 | `sources` | one row per doc/capture/notion_page | `id` IS the origin's stable id (the Notion page uuid) — renames never move it; `raw_text` is the canonical, human-edited content (what `/doc` serves verbatim); `path` is the materialized ancestry (`Career/Job Search/Target Role`), display-only; `parent_id` is the origin's parent page/database uuid (provenance, deliberately not an FK — the parent may not be synced). |
 | `chunks` | one row per **section** of a source | `text` carries the meaning (the consumer is an LLM — no polarity/strength/typed columns); `embedding vector(512)`; a generated `fts tsvector` for lexical search. `ON DELETE CASCADE` makes wipe-replace a one-liner. |
 
-Phase 1 chunking is deliberately trivial: the **whole page = one chunk**
-(position 0, heading = page title). Section-splitting is a later refinement.
+Chunking is **section-level**: each page splits at its own markdown headings
+(one chunk per section, heading + position preserved), so recall discriminates
+within a page. A page with no headings stays a single chunk.
 
 ## Why this shape (the architecture decision)
 
@@ -69,8 +70,9 @@ Notion page (POST /ingest {url})
   → fetch_page(url): title + blocks-flattened-to-markdown + path (ancestor chain)
   → upsert_source(): UPSERT the source row (recompute path), bump version
   → wipe-replace:    DELETE this source's chunks
-  → embed():         Voyage embeds the chunk text (batched)
-  → INSERT:          one chunk row (Phase 1: whole page) with its vector
+  → split:           _split_sections() — one section per heading line
+  → embed():         Voyage embeds every section (one batched call)
+  → INSERT:          one chunk row per section, position = document order
 ```
 
 No fact-extraction LLM, no schema-tagging, no decomposition. Splitting a source
@@ -83,7 +85,10 @@ same URL is idempotent and always current.
   index) and a lexical select (`ts_rank` over the GIN `tsvector`), each
   path-prefix-scoped by `sources.path` and capped, then fused with RRF (`c=60`).
   Returns top-k `Chunk{id, heading, text, score, path}` — `id` is the owning
-  document's stable id, the `doc()` key.
+  document's stable id, the `doc()` key. With `complete=true` the brain instead
+  returns everything IT judges relevant: the semantic arm is trimmed at a
+  brain-internal relative similarity floor before fusion (consumers never see a
+  score scale), with `k` kept as a safety cap.
 - **`doc(id)`** — one row: `{id, title, path, version, text}`. `text` is
   `sources.raw_text` VERBATIM (never reassembled from chunks); `version` is
   `md5` over the served `{title, text}` (length-prefixed title; computed in SQL
@@ -149,9 +154,10 @@ ingests a Notion page then asserts recall/profile/map return its chunk.
 
 ## Known gaps / deliberate Phase-1 limits
 
-- **Whole-page chunking.** Phase 1 stores each page as one chunk. Section-aware
-  splitting (heading-based, with self-contained sections) is the planned
-  refinement — the schema (`heading`, `position`) already supports it.
+- **Complete-mode floor is provisional.** `complete=true` trims at a relative
+  cosine floor (`_COMPLETE_SIM_FLOOR = 0.85`) validated against a 3-page corpus
+  (live A/B on scout's four questions, 2026-06-04); recalibrate as the corpus
+  grows. Brain-internal — tuning it never touches the consumer contract.
 - **Wipe-replace is per whole doc.** Re-ingesting an edited source re-embeds the
   whole page. Diff-and-only-re-embed-changed-sections is a later optimization;
   full re-embed per edited doc is cheap and simplest for now.

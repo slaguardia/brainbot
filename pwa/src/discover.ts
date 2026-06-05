@@ -77,6 +77,10 @@ interface PageNode {
   children: PageNode[];
 }
 
+// The last-rendered tree, by page id — lets the pull handler find a clicked
+// page's children for the pull-with-children modal.
+let nodeById = new Map<string, PageNode>();
+
 // Roots = pages whose parent isn't itself a visible page (workspace/database/
 // block parents, or a parent page that wasn't shared with the integration).
 function buildTree(pages: NotionPage[]): PageNode[] {
@@ -84,6 +88,7 @@ function buildTree(pages: NotionPage[]): PageNode[] {
   for (const p of pages) {
     if (p.id) nodes.set(p.id, { page: p, children: [] });
   }
+  nodeById = nodes;
   const roots: PageNode[] = [];
   for (const node of nodes.values()) {
     const parent = node.page.parent_id ? nodes.get(node.page.parent_id) : undefined;
@@ -129,7 +134,7 @@ function rowHTML(node: PageNode): string {
     ? `<span class="disc-count">${node.children.length} page${node.children.length === 1 ? "" : "s"}</span>`
     : p.ingested
       ? `<span class="disc-badge is-ingested">in brain</span>`
-      : `<button class="disc-pull" type="button" data-url="${esc(p.url ?? "")}">pull</button>`;
+      : `<button class="disc-pull" type="button" data-id="${esc(p.id ?? "")}" data-url="${esc(p.url ?? "")}">pull</button>`;
   return `
       ${isDb ? `<span class="disc-kind-db">db</span>` : ""}
       <span class="src-label">${title}</span>
@@ -167,8 +172,98 @@ function wireIngest(body: HTMLElement): void {
     e.preventDefault();
     const url = btn.getAttribute("data-url");
     if (!url) return;
-    void pullPage(btn as HTMLButtonElement, url);
+    // A page with pullable descendants gets a choice; a leaf pulls directly.
+    const node = nodeById.get(btn.getAttribute("data-id") ?? "");
+    const kids = node ? collectChildPages(node) : [];
+    if (kids.length === 0) {
+      void pullPage(btn as HTMLButtonElement, url);
+      return;
+    }
+    showPullModal(body, btn as HTMLButtonElement, node!, kids);
   });
+}
+
+// Pullable descendants of a page: walk the subtree, skipping database branches
+// entirely (their rows are property-shaped, not documents — pull those
+// individually) and skipping pages already in the brain.
+function collectChildPages(node: PageNode): NotionPage[] {
+  const out: NotionPage[] = [];
+  const walk = (n: PageNode) => {
+    for (const c of n.children) {
+      if (c.page.kind === "database") continue;
+      if (!c.page.ingested && c.page.url) out.push(c.page);
+      walk(c);
+    }
+  };
+  walk(node);
+  return out;
+}
+
+// --- pull-with-children modal -------------------------------------------------
+
+function showPullModal(
+  body: HTMLElement,
+  btn: HTMLButtonElement,
+  node: PageNode,
+  kids: NotionPage[],
+): void {
+  const title = node.page.title || "(untitled)";
+  const n = kids.length;
+  const overlay = document.createElement("div");
+  overlay.className = "disc-modal-overlay";
+  overlay.innerHTML = `
+    <div class="disc-modal" role="dialog" aria-modal="true" aria-label="Pull options">
+      <p class="disc-modal-text">
+        <strong>${esc(title)}</strong> has ${n} child page${n === 1 ? "" : "s"} not yet
+        in the brain. Pull them too?
+      </p>
+      <div class="disc-modal-actions">
+        <button type="button" class="disc-pull" data-act="one">Just this page</button>
+        <button type="button" class="disc-pull" data-act="all">Page + ${n} child${n === 1 ? "" : "ren"}</button>
+        <button type="button" class="disc-modal-cancel" data-act="cancel">Cancel</button>
+      </div>
+    </div>`;
+  overlay.addEventListener("click", (e) => {
+    const t = e.target as HTMLElement;
+    const act = t === overlay ? "cancel" : t.getAttribute("data-act");
+    if (!act) return;
+    overlay.remove();
+    if (act === "one") void pullPage(btn, node.page.url ?? "");
+    if (act === "all") {
+      const urls = [node.page.url, ...kids.map((k) => k.url)].filter(Boolean) as string[];
+      void pullBatch(body, btn, urls);
+    }
+  });
+  document.body.appendChild(overlay);
+}
+
+// Sequential batch pull: ingest each page in turn (the brain embeds per page —
+// parallel posts would just queue there anyway), narrating progress on the
+// button, then re-render the whole tree from the server so every affected row
+// flips to "in brain" at once.
+async function pullBatch(body: HTMLElement, btn: HTMLButtonElement, urls: string[]): Promise<void> {
+  btn.disabled = true;
+  let failed = 0;
+  for (let i = 0; i < urls.length; i++) {
+    btn.textContent = `pulling ${i + 1}/${urls.length}…`;
+    try {
+      const res = await fetch(`/api/ingest`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: urls[i] }),
+      });
+      if (!res.ok) failed++;
+    } catch {
+      failed++;
+    }
+  }
+  await loadPages(body);
+  if (failed > 0) {
+    body.insertAdjacentHTML(
+      "afterbegin",
+      `<p class="home-status">${failed} of ${urls.length} pulls failed — retry from the tree.</p>`,
+    );
+  }
 }
 
 async function pullPage(btn: HTMLButtonElement, url: string): Promise<void> {

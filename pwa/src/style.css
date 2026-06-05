@@ -585,6 +585,52 @@ a.brand {
   background: transparent;
   cursor: default;
 }
+/* Pull-with-children modal: a small centered panel over a dimmed backdrop. */
+.disc-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(5, 7, 11, 0.6);
+  padding: 20px;
+}
+.disc-modal {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-lg);
+  padding: 18px 20px;
+  max-width: 380px;
+  width: 100%;
+}
+.disc-modal-text {
+  margin: 0 0 14px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--fg);
+}
+.disc-modal-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.disc-modal-actions .disc-pull {
+  font-size: 13px;
+  padding: 6px 12px;
+}
+.disc-modal-cancel {
+  margin-left: auto;
+  color: var(--fg-muted);
+  background: none;
+  border: none;
+  font-size: 13px;
+  cursor: pointer;
+}
+.disc-modal-cancel:hover {
+  color: var(--fg);
+}
 
 #docs-view {
   --topbar-h: calc(52px + env(safe-area-inset-top));

@@ -7,23 +7,30 @@ faces — plain HTTP and MCP — on port 8100:
 - `POST /ingest {url}` — fetch a Notion page, upsert it as a **source**, and
   re-derive its **chunks** (wipe-replace). Capture = human edit = re-sync are the
   same operation.
-- `GET /recall?q=&scope=&k=` — targeted hybrid retrieval: cosine (pgvector) +
-  full-text (`tsvector`), fused with Reciprocal Rank Fusion. Top-k sections.
+- `GET /recall?q=&scope=&k=&complete=` — targeted hybrid retrieval: cosine
+  (pgvector) + full-text (`tsvector`), fused with Reciprocal Rank Fusion.
+  Top-k sections, each carrying its owning document's stable `id`.
+- `GET /doc?id=` — one whole document by stable id: the stored text VERBATIM
+  plus title/path and a content-derived `version` stamp. 404 on unknown id.
 - `GET /profile?scope=&budget=` — domain dump: every chunk under a path prefix,
   assembled into one structured `Context`.
-- `GET /map?scope=` — domain discovery: the `(path, title)` source tree.
+- `GET /map?scope=` — discovery: the source tree — stable ids, titles, paths,
+  parent links, version stamps.
 - `GET /health` — process liveness.
 
-The same reads are exposed as MCP tools (`recall`, `profile`, `map`) at `/mcp`
-for Claude Code.
+The same reads are exposed as MCP tools (`recall`, `doc`, `profile`, `map`) at
+`/mcp` for Claude Code.
 
-**Consumer contract = `recall(query)` only.** Dumb consumer apps (scout, …) ask a
-question and get the relevant chunks; they never need to know the brain's folder
-structure (a *scope*). `profile(scope)` and `map(scope)` are **not consumer
-endpoints** — they're brain-side machinery (`map` → sync reconciliation + maintenance;
-`profile` → self-enrichment: assemble a domain, distill a digest that `recall` then
-surfaces) and owner tools (the authed PWA browsing your own folders). See the design
-doc's "Brain ↔ consumer interface" correction for the rationale.
+**Consumer contract = `recall` + `doc` + `map`.** `recall(query)` stays the
+search read: dumb consumer apps ask a question and get the relevant chunks.
+`doc(id)` and `map()` are the *deterministic* reads: map is where a consumer
+discovers the stable document ids (titles/paths are display-only), doc fetches a
+pinned document whole and byte-exact, and its `version` stamp is the cache key.
+`profile(scope)` remains **not a consumer endpoint** — it assembles/synthesizes
+a domain (brain-side self-enrichment + owner browse), which is exactly the line
+consumers don't cross: they get faithful content, never an assembled view. See
+[`../plans/scout-migration.md`](../plans/scout-migration.md) for the consumer
+contract in full (cache rules, 404 semantics, what `version` covers).
 
 ## What the brain is
 
@@ -33,7 +40,7 @@ is no synthesis, no LLM, no graph. This is a document/vector RAG substrate:
 
 | Table | Holds | Notes |
 |---|---|---|
-| `sources` | one row per doc/capture/notion_page | `raw_text` is the canonical, human-edited content; `path` is the materialized ancestry (`Career/Job Search/Target Role`); `parent_id` mirrors the source tree. |
+| `sources` | one row per doc/capture/notion_page | `id` IS the origin's stable id (the Notion page uuid) — renames never move it; `raw_text` is the canonical, human-edited content (what `/doc` serves verbatim); `path` is the materialized ancestry (`Career/Job Search/Target Role`), display-only; `parent_id` is the origin's parent page/database uuid (provenance, deliberately not an FK — the parent may not be synced). |
 | `chunks` | one row per **section** of a source | `text` carries the meaning (the consumer is an LLM — no polarity/strength/typed columns); `embedding vector(512)`; a generated `fts tsvector` for lexical search. `ON DELETE CASCADE` makes wipe-replace a one-liner. |
 
 Phase 1 chunking is deliberately trivial: the **whole page = one chunk**
@@ -75,16 +82,27 @@ same URL is idempotent and always current.
 - **`recall(query, scope)`** — a semantic select (cosine `<=>` over the HNSW
   index) and a lexical select (`ts_rank` over the GIN `tsvector`), each
   path-prefix-scoped by `sources.path` and capped, then fused with RRF (`c=60`).
-  Returns top-k `Chunk{heading, text, score, path}`.
+  Returns top-k `Chunk{id, heading, text, score, path}` — `id` is the owning
+  document's stable id, the `doc()` key.
+- **`doc(id)`** — one row: `{id, title, path, version, text}`. `text` is
+  `sources.raw_text` VERBATIM (never reassembled from chunks); `version` is
+  `md5` over the served `{title, text}` (length-prefixed title; computed in SQL
+  at read time) — it moves iff content/title change, never on a mere re-sync or
+  a path (ancestor-rename) change.
 - **`profile(scope, budget)`** — pulls every chunk under the `scope` path prefix
   ordered by `(path, position)` and rebuilds the subtree into structured markdown
   with provenance. Returns the `Context{text, sources, truncated}` contract. If
   the slice exceeds `budget` it degrades to recall-within-scope and flags
   `truncated=True` rather than silently cutting.
-- **`map(scope)`** — `SELECT path, title FROM sources WHERE path LIKE $scope`, so
-  a consumer that doesn't know its scope can discover it.
+- **`map(scope)`** — the source tree: `{id, title, path, parent_id, version}`
+  per source, ordered by path. `parent_id` is resolved against the synced set
+  (null when the origin parent was never synced — ids of unsynced pages don't
+  leak); `version` is the same stamp `doc()` serves.
 
-All reads are read-only. Writes come only from sources (ingest / re-sync).
+All reads are read-only and knob-free for consumers — `scope`/`k`/`budget`
+shape *what* is asked, never how the brain ranks or cuts.
+
+Writes come only from sources (ingest / re-sync).
 
 ## Modules
 
@@ -93,9 +111,10 @@ All reads are read-only. Writes come only from sources (ingest / re-sync).
 | `brain/config.py` | env config (`PG_DSN`, `VOYAGE_API_KEY`, `BRAIN_EMBED_MODEL`, `NOTION_TOKEN`) + `EMBED_DIM`. |
 | `brain/db.py` | the single asyncpg pool (pgvector registered per connection) + `apply_schema` (the idempotent DDL). |
 | `brain/embed.py` | `embed(texts)` — Voyage, batched. |
-| `brain/notion.py` | `fetch_page(url) -> {title, text, path}`. |
-| `brain/store.py` | `upsert_source` / `recall` / `profile` / `map_` and the `Chunk` / `Context` shapes. |
+| `brain/notion.py` | `fetch_page(url) -> {id, title, text, path, parent_id, last_edited_time}`. |
+| `brain/store.py` | `upsert_source` / `recall` / `doc` / `profile` / `map_` and the `Chunk` / `Context` shapes. |
 | `brain/api.py` | the FastMCP app: custom HTTP routes + the MCP tools. |
+| `tests/` | pytest suite — byte-exact `/doc` round-trip, version-stamp semantics, map/recall contracts. Needs `PG_DSN` (derives its own `<dbname>_test` database); skips cleanly without one. |
 
 ## Config (env)
 
@@ -120,6 +139,7 @@ curl -s localhost:8100/health
 curl -s -X POST localhost:8100/ingest -H 'Content-Type: application/json' \
   -d '{"url":"https://www.notion.so/Some-Page-<id>"}'
 curl -s 'localhost:8100/recall?q=which%20locations%20is%20the%20user%20open%20to'
+curl -s 'localhost:8100/doc?id=<stable-source-id>'
 curl -s 'localhost:8100/profile?scope=Career/Job%20Search/Target%20Role'
 curl -s 'localhost:8100/map'
 ```

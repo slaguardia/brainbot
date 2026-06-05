@@ -20,8 +20,13 @@ This is the whole brain in one file (the plan's "~200-line" skeleton):
   ordered by `(path, position)`, re-assembled into structured markdown as one
   `Context`. A small corpus fits the budget; the over-budget degrade-to-recall
   path is documented below.
-- **map_(scope)** — domain discovery: the `(path, title)` source tree under the
-  prefix, so a consumer that doesn't know its scope can find it.
+- **doc(id)** — one whole document, deterministically: the source row's
+  `raw_text` VERBATIM (never reassembled from chunks), plus title/path and a
+  content-derived `version` stamp. The consumer pin-by-id / cache-by-version
+  primitive.
+- **map_(scope)** — discovery: the source tree under the prefix — stable ids,
+  titles, paths, parent links, version stamps — so a consumer can find ids to
+  pin (and an owner can see the tree).
 
 `embed()` (Voyage) and `fetch_page()` (Notion) are synchronous; async callers
 here wrap `embed` with `asyncio.to_thread`. The asyncpg pool is owned by db.py
@@ -67,13 +72,31 @@ _EMBED_CHAR_BUDGET = 110_000
 # flattener (notion.py) emits h1-h3, but match h1-h6 so any markdown source splits.
 _HEADING_RE = re.compile(r"^(#{1,6})\s+(.*)$")
 
+# The consumer version stamp: a content hash over exactly what /doc serves —
+# title + raw_text. Changes iff the served {title, text} change; deliberately
+# NOT the `version` int column (which bumps on every re-sync, changed or not)
+# and deliberately EXCLUDES `path` (display ancestry — an ancestor rename must
+# not invalidate a byte-identical pinned document). The title is length-prefixed
+# (netstring-style) so (title, text) boundaries can never collide — a plain
+# separator would let ('A', sep+'B') and ('A'+sep, 'B') hash identically.
+# Computed in SQL at read time so it covers every existing row with no backfill;
+# md5() hashes the server-encoding bytes, so it assumes a UTF8 database (the
+# compose pgvector image default). One fragment shared by doc() and map_() so
+# `version` means the same thing on both reads. Expects the sources row to be
+# aliased `s`.
+_VERSION_SQL = (
+    "md5(length(coalesce(s.title,''))::text || ':' || coalesce(s.title,'') || s.raw_text)"
+)
+
 
 @dataclass
 class Chunk:
     """One retrieved section — self-contained; the consumer LLM reads meaning
-    straight from `text`. The public recall contract is heading/text/score/path
-    (see `to_dict`). `source_id` is internal provenance (which source the chunk came
-    from), used by profile()'s degrade path; it is deliberately NOT in `to_dict`."""
+    straight from `text`. The public recall contract is id/heading/text/score/path
+    (see `to_dict`). `source_id` is which source the chunk came from; it is exposed
+    as `id` so a consumer can escalate a hit to the whole document via doc(id)
+    deterministically — without it, recall→doc would force title/path matching,
+    which the consumer contract forbids (paths are display-only, not keys)."""
 
     heading: str
     text: str
@@ -82,8 +105,10 @@ class Chunk:
     source_id: str = ""
 
     def to_dict(self) -> dict:
-        # The 4-key recall contract — source_id stays internal.
+        # The 5-key recall contract — `id` is the owning source's stable id, the
+        # key doc()/map_() speak.
         return {
+            "id": self.source_id,
             "heading": self.heading,
             "text": self.text,
             "score": self.score,
@@ -188,6 +213,7 @@ async def upsert_source(
     raw_text: str,
     path: str,
     source_id: str | None = None,
+    parent_id: str | None = None,
     last_edited: str | None = None,
 ) -> tuple[str, int]:
     """Create or replace a source, then re-derive its chunks (wipe-replace).
@@ -196,6 +222,11 @@ async def upsert_source(
     The source row is upserted; then every chunk it owns is DELETEd and one chunk
     per SECTION (`_split_sections`) is re-inserted, each with its own embedding.
     Re-posting the same `source_id` is idempotent and always current.
+
+    `parent_id` is the parent document's id at the origin (e.g. the Notion parent
+    page/database uuid) — provenance for map_()'s parent links, deliberately NOT
+    FK-checked (the parent may never have been synced). None when the origin has
+    no parent document (workspace root) or doesn't supply one.
 
     Returns (source id, chunk count).
     """
@@ -220,11 +251,11 @@ async def upsert_source(
         async with conn.transaction():
             src_id = await conn.fetchval(
                 """
-                INSERT INTO sources (id, kind, title, raw_text, path, source_last_edited)
-                VALUES (COALESCE($1::uuid, gen_random_uuid()), $2, $3, $4, $5, $6)
+                INSERT INTO sources (id, kind, title, raw_text, path, parent_id, source_last_edited)
+                VALUES (COALESCE($1::uuid, gen_random_uuid()), $2, $3, $4, $5, $6::uuid, $7)
                 ON CONFLICT (id) DO UPDATE
-                  SET kind=$2, title=$3, raw_text=$4, path=$5, source_last_edited=$6,
-                      version=sources.version+1, updated_at=now()
+                  SET kind=$2, title=$3, raw_text=$4, path=$5, parent_id=$6::uuid,
+                      source_last_edited=$7, version=sources.version+1, updated_at=now()
                 RETURNING id
                 """,
                 source_id,
@@ -232,6 +263,7 @@ async def upsert_source(
                 title,
                 page_text,
                 path,
+                parent_id,
                 last_edited_dt,
             )
             # Wipe-replace: drop this source's chunks, re-insert one per section
@@ -529,12 +561,53 @@ def _token_estimate(text: str) -> int:
     return len(text) // 4
 
 
+# ---- doc (deterministic fetch): one whole document by stable id ---------------
+
+async def doc(pool: asyncpg.Pool, doc_id: str) -> dict | None:
+    """One whole document, deterministically: `{id, title, path, version, text}`
+    for the source with this stable id, or None when no such source exists.
+
+    `text` is the source row's `raw_text` VERBATIM — never reassembled from
+    chunks, whose derivation strips and transforms — so what a consumer pinned is
+    exactly what it gets back, byte for byte (for all storable text: Postgres
+    itself refuses NUL bytes — stripped at ingest — and lone surrogates).
+    `version` is the content stamp (`_VERSION_SQL`): cache on it, re-fetch when
+    it moves. `path` is display provenance only — it can change under a stable id
+    (ancestor renames) without moving `version`. A dumb single-row SELECT: no
+    search, no LLM, no knobs."""
+    async with pool.acquire() as conn:
+        r = await conn.fetchrow(
+            f"""
+            SELECT s.id, s.title, s.path, s.raw_text, {_VERSION_SQL} AS version
+            FROM sources s
+            WHERE s.id = $1::uuid
+            """,
+            doc_id,
+        )
+    if r is None:
+        return None
+    return {
+        "id": str(r["id"]),
+        "title": r["title"] or "",
+        "path": r["path"] or "",
+        "version": r["version"],
+        "text": r["raw_text"],
+    }
+
+
 # ---- map (discovery): the source tree ----------------------------------------
 
 async def map_(pool: asyncpg.Pool, scope: str | None = None) -> list[dict]:
-    """Domain discovery: the `(path, title)` source tree under the prefix (or all
-    sources), ordered by path — so a consumer that doesn't know its scope can find
-    it."""
+    """Discovery: the source tree under the prefix (or all sources), ordered by
+    path — `{id, title, path, parent_id, version}` per source. This is where a
+    consumer finds the stable ids to pin (`doc(id)`) and the version stamps to
+    diff for cheap change detection; title/path are display-only.
+
+    `parent_id` is the parent document's id when that parent is itself a synced
+    source, else None — resolved at read time (LEFT JOIN) so ids of pages that
+    were never synced don't leak into the consumer surface. Null is therefore
+    overloaded (true root OR parent-not-synced): a best-effort linkage hint, not
+    an authoritative tree. No chunk contents, no sync metadata."""
     # Empty/whitespace scope means UNSCOPED, not "match the root prefix".
     if scope is not None:
         scope = scope.strip() or None
@@ -542,15 +615,24 @@ async def map_(pool: asyncpg.Pool, scope: str | None = None) -> list[dict]:
     # Scope = the exact node OR its proper subtree; no path filter when scope is
     # None. The subtree arm is wildcard-free (`left(...) = scope || '/'`) so
     # `_`/`%`/spaces in a path are literal, not LIKE metacharacters.
-    scope_clause = "" if scope is None else "WHERE (path = $1 OR left(path, length($1) + 1) = $1 || '/')"
+    scope_clause = "" if scope is None else "WHERE (s.path = $1 OR left(s.path, length($1) + 1) = $1 || '/')"
     async with pool.acquire() as conn:
         rows = await conn.fetch(
             f"""
-            SELECT path, title
-            FROM sources
+            SELECT s.id, s.title, s.path, p.id AS parent_id, {_VERSION_SQL} AS version
+            FROM sources s LEFT JOIN sources p ON p.id = s.parent_id
             {scope_clause}
-            ORDER BY path
+            ORDER BY s.path
             """,
             *([scope] if scope is not None else []),
         )
-    return [{"path": r["path"] or "", "title": r["title"] or ""} for r in rows]
+    return [
+        {
+            "id": str(r["id"]),
+            "title": r["title"] or "",
+            "path": r["path"] or "",
+            "parent_id": str(r["parent_id"]) if r["parent_id"] is not None else None,
+            "version": r["version"],
+        }
+        for r in rows
+    ]

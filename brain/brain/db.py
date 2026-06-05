@@ -33,7 +33,7 @@ CREATE TABLE IF NOT EXISTS sources (
     kind       text NOT NULL,
     title      text,
     raw_text   text NOT NULL,
-    parent_id  uuid REFERENCES sources(id) ON DELETE CASCADE,
+    parent_id  uuid,
     path       text NOT NULL DEFAULT '',
     version    integer NOT NULL DEFAULT 1,
     created_at timestamptz NOT NULL DEFAULT now(),
@@ -46,6 +46,14 @@ CREATE TABLE IF NOT EXISTS sources (
 -- unknown for sources whose origin doesn't supply it. Added idempotently so DBs
 -- created before this column gain it on the next startup.
 ALTER TABLE sources ADD COLUMN IF NOT EXISTS source_last_edited timestamptz;
+
+-- parent_id is the parent document's id AT THE ORIGIN (e.g. the Notion parent
+-- page/database uuid) — provenance for /map's parent/child links, NOT a foreign
+-- key. The parent may never have been synced, so the original inline FK would
+-- reject valid ingests, and its ON DELETE CASCADE (drop a parent -> silently
+-- delete child docs) is unwanted. Dropped idempotently so DBs created when the
+-- FK was inline lose it on the next startup; a no-op everywhere else.
+ALTER TABLE sources DROP CONSTRAINT IF EXISTS sources_parent_id_fkey;
 
 CREATE TABLE IF NOT EXISTS chunks (
     id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),

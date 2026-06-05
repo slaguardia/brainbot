@@ -250,7 +250,7 @@ const HOW_IT_WORKS_BODY = `
             <span class="chip c-io">Output</span>
             <strong>3 · Scored chunks → consumer decides</strong>
             <p>
-              <code>{ heading, text, score, path }</code> per hit. The brain reports
+              <code>{ id, heading, text, score, path }</code> per hit. The brain reports
               the fused score; it never thresholds. The consumer's own LLM filters,
               synthesizes, and decides.
             </p>
@@ -271,9 +271,11 @@ const HOW_IT_WORKS_BODY = `
 
         <h3>Map — discovery</h3>
         <p>
-          <code>map</code> returns the <code>(path, title)</code> tree of ingested
-          sources, optionally under a scope — so a consumer that doesn't yet know its
-          scope can find one. Scope everywhere means <em>the exact path node or its
+          <code>map</code> returns the tree of ingested sources — stable ids,
+          display titles/paths, parent links, and content <code>version</code> stamps —
+          optionally under a scope. It's the consumer discovery surface: where an app
+          finds the ids to pin (<code>doc</code>) and the versions to diff for cheap
+          change detection. Scope everywhere means <em>the exact path node or its
           subtree</em>, never a bare prefix that would over-match siblings.
         </p>
 
@@ -368,7 +370,8 @@ const HOW_IT_WORKS_BODY = `
           <p><code>q</code> required; <code>scope</code> optional (a path subtree); <code>k</code> defaults to 12 (clamped 1–100). Scored, not thresholded.</p>
           <pre><code>{
   "chunks": [
-    { "heading": "Target Role",
+    { "id": "32b7973a-5453-8058-b68b-e43c694fc7cb",
+      "heading": "Target Role",
       "text": "Wants a forward-deployed engineering role…",
       "score": 0.0312, "path": "Career/Job Search/Target Role" }
   ]
@@ -395,11 +398,27 @@ const HOW_IT_WORKS_BODY = `
         <div class="endpoint">
           <div class="endpoint-head">
             <span class="method get">GET</span>
+            <span class="path">/doc?id=</span>
+            <span class="endpoint-tag">read</span>
+          </div>
+          <p>One whole document by stable id — the stored text <em>verbatim, byte-exact</em> (never reassembled from chunks), with a content <code>version</code> stamp that moves iff title/text change. Pin by id, cache by version. <code>400</code> malformed id, <code>404</code> unknown.</p>
+          <pre><code>{ "id": "32b7973a-5453-8058-b68b-e43c694fc7cb", "title": "Target Role",
+  "path": "Career/Job Search/Target Role",
+  "version": "4cc30a1615b77a10350b57a76c75ad04",
+  "text": "# Mission\nWants a forward-deployed engineering role…" }</code></pre>
+        </div>
+
+        <div class="endpoint">
+          <div class="endpoint-head">
+            <span class="method get">GET</span>
             <span class="path">/map?scope=</span>
             <span class="endpoint-tag">read</span>
           </div>
-          <p>The <code>(path, title)</code> source tree, optionally under a scope. Discovery for a consumer that doesn't know its scope yet.</p>
-          <pre><code>{ "sources": [ { "path": "Career/Job Search/Target Role", "title": "Target Role" } ] }</code></pre>
+          <p>The source tree, optionally under a scope — stable ids, display titles/paths, parent links (resolved only within the synced set), and the same <code>version</code> stamps <code>/doc</code> serves. Consumer discovery: the ids to pin, the versions to diff.</p>
+          <pre><code>{ "sources": [ { "id": "32b7973a-5453-8058-b68b-e43c694fc7cb",
+      "title": "Target Role", "path": "Career/Job Search/Target Role",
+      "parent_id": "3287973a-5453-805f-b5de-ef8a45706d4b",
+      "version": "4cc30a1615b77a10350b57a76c75ad04" } ] }</code></pre>
         </div>
 
         <div class="endpoint">
@@ -414,7 +433,7 @@ const HOW_IT_WORKS_BODY = `
 
         <div class="note">
           <strong>MCP face.</strong> The same reads are exposed as tools
-          <code>recall</code>, <code>profile</code>, and <code>map</code> at
+          <code>recall</code>, <code>doc</code>, <code>profile</code>, and <code>map</code> at
           <code>/mcp</code> — one shared brain. <code>ingest</code> is HTTP-only. The
           legacy <code>POST /capture</code> is <strong>retired</strong>: this PWA
           answers it with <code>410 Gone</code>, and the brain has no such route. The

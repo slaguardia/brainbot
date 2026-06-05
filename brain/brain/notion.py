@@ -270,13 +270,27 @@ def _ancestor_titles(page: dict, cfg: Config) -> list[str]:
 
 # ---- public entrypoint -------------------------------------------------------
 
+def _parent_id(page: dict) -> str | None:
+    """The page's immediate parent document id — Notion's parent page or database
+    uuid (already dashed in the API payload), or None for workspace/block parents
+    (no parent *document* to link). Read straight off the page object the caller
+    already fetched; no extra API call."""
+    parent = page.get("parent", {})
+    ptype = parent.get("type")
+    if ptype in ("page_id", "database_id"):
+        return parent.get(ptype) or None
+    return None
+
+
 def fetch_page(url: str) -> dict:
-    """Fetch a Notion page as {id, title, text, path, last_edited_time}.
+    """Fetch a Notion page as {id, title, text, path, parent_id, last_edited_time}.
 
     - id:    the dashed Notion page uuid (used as the stable source id).
     - title: the page title.
     - text:  blocks flattened to markdown (the canonical content to chunk/embed).
     - path:  ancestor titles + this page's title joined by '/'.
+    - parent_id: the immediate parent page/database uuid, or None — the stable
+      parent link /map serves (path is display-only; ids are the keys).
     - last_edited_time: Notion's real last-edited timestamp (ISO 8601), or None.
 
     Raises NotionTokenError / NotionURLError / NotionNotSharedError for the three
@@ -304,5 +318,6 @@ def fetch_page(url: str) -> dict:
         "title": title,
         "text": text,
         "path": path,
+        "parent_id": _parent_id(page),
         "last_edited_time": last_edited,
     }

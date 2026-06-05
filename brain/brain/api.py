@@ -1,12 +1,13 @@
 """The brain's network face — ONE app, TWO protocols (FastMCP shell).
 
-- MCP (streamable HTTP at /mcp): tools `recall`, `profile`, `map`.
-- Plain HTTP (custom routes): /health, /ingest, /recall, /profile, /map.
+- MCP (streamable HTTP at /mcp): tools `recall`, `doc`, `profile`, `map`.
+- Plain HTTP (custom routes): /health, /ingest, /recall, /doc, /profile, /map.
 
 Both faces are thin: they parse input, call the same `store` functions, and
-return the contract shapes (`Chunk` / `Context` / the source tree) as JSON.
-graphiti is gone — this is the pgvector document substrate. The app opens a
-single asyncpg pool on startup and closes it on shutdown (see the lifespan).
+return the contract shapes (`Chunk` / `Context` / the document / the source
+tree) as JSON. graphiti is gone — this is the pgvector document substrate. The
+app opens a single asyncpg pool on startup and closes it on shutdown (see the
+lifespan).
 
 Run: `uvicorn brain.api:app` (app = the Starlette app FastMCP builds).
 """
@@ -16,6 +17,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+import uuid
 from collections.abc import AsyncIterator
 
 from mcp.server.fastmcp import FastMCP
@@ -26,7 +28,7 @@ from starlette.responses import JSONResponse
 from .config import Config
 from .db import apply_schema, close_pool, get_pool
 from .notion import NotionError, fetch_page
-from .store import map_, profile, recall, upsert_source
+from .store import doc, map_, profile, recall, upsert_source
 
 logger = logging.getLogger(__name__)
 
@@ -35,8 +37,9 @@ mcp = FastMCP(
     "brain",
     instructions=(
         "Personal knowledge brain — a pgvector document store. Reads are "
-        "recall (targeted hybrid search), profile (domain dump), and map "
-        "(source tree). All reads are read-only; writes come only from sources."
+        "recall (targeted hybrid search), doc (one whole document by stable "
+        "id), profile (domain dump), and map (source tree: ids, titles, "
+        "versions). All reads are read-only; writes come only from sources."
     ),
 )
 
@@ -88,6 +91,8 @@ async def ingest(request: Request) -> JSONResponse:
             # Notion page id (a uuid) is the stable source id, so re-ingesting the
             # same URL wipe-replaces that source instead of creating a duplicate.
             source_id=page["id"],
+            # The parent page/database id — the stable parent link /map serves.
+            parent_id=page.get("parent_id"),
             # Notion's real last-edited time (provenance), kept distinct from our
             # ingest/sync time (sources.updated_at).
             last_edited=page.get("last_edited_time"),
@@ -126,6 +131,28 @@ async def recall_route(request: Request) -> JSONResponse:
     return JSONResponse({"chunks": [c.to_dict() for c in chunks]})
 
 
+@mcp.custom_route("/doc", methods=["GET"])
+async def doc_route(request: Request) -> JSONResponse:
+    """GET /doc?id=<stable-source-id> — one whole document, deterministically:
+    {id, title, path, version, text}. `text` is the stored document verbatim;
+    `version` is the content stamp to cache on. 400 on a missing/malformed id,
+    404 on an unknown one."""
+    doc_id = _id_param(request)
+    if doc_id is None:
+        return JSONResponse(
+            {"error": "query param 'id' must be a document uuid"}, status_code=400
+        )
+    try:
+        pool = await get_pool()
+        document = await doc(pool, doc_id)
+    except Exception as e:  # noqa: BLE001 — db failure: surface, don't 500
+        logger.exception("doc failed")
+        return JSONResponse({"error": f"doc failed: {e}"}, status_code=502)
+    if document is None:
+        return JSONResponse({"error": f"no document with id {doc_id}"}, status_code=404)
+    return JSONResponse(document)
+
+
 @mcp.custom_route("/profile", methods=["GET"])
 async def profile_route(request: Request) -> JSONResponse:
     """GET /profile?scope=&budget= — the assembled domain dump for a path scope."""
@@ -150,7 +177,9 @@ async def profile_route(request: Request) -> JSONResponse:
 
 @mcp.custom_route("/map", methods=["GET"])
 async def map_route(request: Request) -> JSONResponse:
-    """GET /map?scope= — the (path, title) source tree under the scope (or all)."""
+    """GET /map?scope= — the source tree under the scope (or all):
+    {id, title, path, parent_id, version} per source. The discovery surface —
+    where a consumer finds the stable ids to pin and the versions to diff."""
     scope = request.query_params.get("scope") or None
     try:
         pool = await get_pool()
@@ -159,6 +188,19 @@ async def map_route(request: Request) -> JSONResponse:
         logger.exception("map failed")
         return JSONResponse({"error": f"map failed: {e}"}, status_code=502)
     return JSONResponse({"sources": tree})
+
+
+def _id_param(request: Request) -> str | None:
+    """Parse the `id` query param as a document uuid, returning the canonical
+    dashed form — or None on missing/malformed (the route 400s). Liberal in
+    what it accepts (dashed or undashed hex), canonical in what it passes on."""
+    raw = request.query_params.get("id")
+    if not (raw and raw.strip()):
+        return None
+    try:
+        return str(uuid.UUID(raw.strip()))
+    except ValueError:
+        return None
 
 
 def _int_param(
@@ -196,7 +238,8 @@ async def recall_tool(
     path subtree (`scope`, e.g. 'Career/Job Search'). Default returns the top-k;
     pass `complete=true` to have the brain return everything IT judges relevant
     (its own cutoff, k as a safety cap). Returns
-    {"chunks": [{heading, text, score, path}, ...]}."""
+    {"chunks": [{id, heading, text, score, path}, ...]} — `id` is the owning
+    document's stable id (escalate to the whole document with `doc`)."""
     # Guard empty input here too — the HTTP route does, and without this the MCP
     # face would leak a raw embedder error instead of a clear "query required".
     if not (query and query.strip()):
@@ -208,6 +251,28 @@ async def recall_tool(
         logger.exception("recall (mcp) failed")
         raise RuntimeError(f"recall failed: {e}") from e
     return {"chunks": [c.to_dict() for c in chunks]}
+
+
+@mcp.tool(name="doc")
+async def doc_tool(id: str) -> dict:
+    """One whole document by stable id, deterministically — the stored text
+    VERBATIM (not chunks), plus title/path and the content `version` stamp to
+    cache on. Returns {id, title, path, version, text}. Raises on a malformed
+    or unknown id."""
+    # Same liberal-in/canonical-out id handling as the HTTP route — parity.
+    try:
+        doc_id = str(uuid.UUID((id or "").strip()))
+    except ValueError as e:
+        raise ValueError("id must be a document uuid") from e
+    try:
+        pool = await get_pool()
+        document = await doc(pool, doc_id)
+    except Exception as e:  # noqa: BLE001 — db failure: clear tool error
+        logger.exception("doc (mcp) failed")
+        raise RuntimeError(f"doc failed: {e}") from e
+    if document is None:
+        raise ValueError(f"no document with id {doc_id}")
+    return document
 
 
 @mcp.tool(name="profile")
@@ -233,8 +298,10 @@ async def profile_tool(
 
 @mcp.tool(name="map")
 async def map_tool(scope: str | None = None) -> dict:
-    """Domain discovery — the (path, title) source tree under `scope` (or all
-    sources). Returns {"sources": [{path, title}, ...]}."""
+    """Discovery — the source tree under `scope` (or all sources): the stable
+    ids to pin (see `doc`), display titles/paths, parent links, and the content
+    `version` stamps to diff for cheap change detection. Returns
+    {"sources": [{id, title, path, parent_id, version}, ...]}."""
     try:
         pool = await get_pool()
         tree = await map_(pool, scope)

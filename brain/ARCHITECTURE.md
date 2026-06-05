@@ -38,7 +38,7 @@ lets it serve all of them.
                 ▼                             │
 ┌──────────────────────────────────────────────────────────────┐
 │ BRAIN  (this service)                                          │
-│   recall(query, scope) · profile(scope) · map(scope)          │
+│   recall(query) · doc(id) · map() · profile(scope) [owner]    │
 │     librarian: retrieves + assembles faithful content,         │
 │     never synthesizes, never decides                           │
 └───────────────┬───────────────────────────▲──────────────────┘
@@ -64,15 +64,23 @@ decides.**
 
 ## Interfaces
 
-Reads are **read-only** (writes come only from sources). **Only `recall` is the
-consumer surface** — `profile`/`map` are internal (brain machinery) + owner tools,
-not for dumb consumer apps.
+Reads are **read-only** (writes come only from sources). **The consumer
+surface is `recall` + `doc` + `map`**: recall for search, map for discovering
+the stable document ids (titles/paths are display-only), doc for fetching a
+pinned document whole, byte-exact, with a content `version` stamp to cache on.
+`profile` stays internal (brain machinery) + owner-only — it *assembles* a
+domain, and an assembled view is exactly what consumers don't get (they get
+faithful content and do their own reasoning). This deliberately reverses the
+earlier "only recall is the consumer surface" line: deterministic whole-doc
+reads needed first-class ids, and `map` is where ids live. What stays walled
+off is *synthesis* (`profile`) — not *discovery*.
 
 | Operation | Status | Shape | Notes |
 |---|---|---|---|
-| `recall(query, scope=None)` | built | query → top-k `Chunk`s | Hybrid: cosine (pgvector `<=>`) + full-text (`tsvector`), fused with RRF (`c=60`). **The consumer contract** — dumb apps ask a question; no scope knowledge needed. Completeness via a threshold/high-`k` mode. |
+| `recall(query, scope=None)` | built | query → top-k `Chunk`s | Hybrid: cosine (pgvector `<=>`) + full-text (`tsvector`), fused with RRF (`c=60`). **Consumer** — dumb apps ask a question; no scope knowledge needed. Completeness via `complete=true` (the brain's own cutoff). Each `Chunk` carries its document's stable `id`. |
+| `doc(id)` | built | stable id → `{id, title, path, version, text}` | **Consumer** — one whole document, deterministically: `text` is the stored doc VERBATIM (byte-exact), `version` is a content hash over the served `{title, text}` (the cache key; path changes don't move it). 404 on unknown id; no knobs. |
 | `profile(scope, budget)` | built | scope → one assembled `Context` | Every chunk under the `path` prefix, rebuilt into structured markdown. **Not a consumer endpoint** — brain-side self-enrichment (assemble a domain → distill a digest `recall` surfaces) + owner browse. Degrades past `budget`, flagging `truncated`. |
-| `map(scope=None)` | built | scope → `(path, title)` tree | **Not a consumer endpoint** — brain-side sync reconciliation + maintenance, and owner navigation. |
+| `map(scope=None)` | built | scope → `{id, title, path, parent_id, version}` tree | **Consumer (discovery)** — where a consumer finds the ids to pin and the versions to diff; also brain-side sync reconciliation + owner navigation. `parent_id` resolves only within the synced set (else null). |
 | `ingest(url)` | built | Notion URL → source + chunk(s) | Fetch → upsert source → wipe-replace chunks → embed. Capture = edit = re-sync. |
 
 Decision (settled): **there is no `ask` method.** The brain is a librarian (no
@@ -80,8 +88,8 @@ synthesis), so "ask the brain" *is* `recall` / `profile` — the app reasons ove
 the returned content itself. A synthesizing `ask` would pull reasoning into the
 brain, which we explicitly don't want.
 
-Two faces, one service: HTTP (`/ingest`, `/recall`, `/profile`, `/map`) for apps,
-MCP (`/mcp`, tools `recall`/`profile`/`map`) for Claude Code.
+Two faces, one service: HTTP (`/ingest`, `/recall`, `/doc`, `/profile`, `/map`)
+for apps, MCP (`/mcp`, tools `recall`/`doc`/`profile`/`map`) for Claude Code.
 
 ### The reusable contract
 

@@ -27,11 +27,12 @@ curl -sS http://127.0.0.1:8100/health      # -> {"ok":true}
 | Call | What | Notes |
 |---|---|---|
 | `POST /ingest {url}` | fetch a Notion page → upsert source → re-derive chunks (wipe-replace) | idempotent: re-posting the same URL replaces its chunks. Phase 1: whole page = one chunk. |
-| `GET /recall?q=...&scope=...&k=N` | top-k sections, hybrid cosine + full-text fused by RRF | each `Chunk` has `heading, text, score, path`. `scope` is a `path` prefix. |
+| `GET /recall?q=...&scope=...&k=N` | top-k sections, hybrid cosine + full-text fused by RRF | each `Chunk` has `id, heading, text, score, path`. `scope` is a `path` prefix. |
+| `GET /doc?id=...` | one whole document by stable id | `{id, title, path, version, text}` — `text` is the stored doc verbatim (byte-exact); `version` moves iff title/text change. 404 unknown id. |
 | `GET /profile?scope=...&budget=N` | every chunk under a path, assembled into one `Context` | returns `Context{text, sources, truncated}`. Completeness over precision. |
-| `GET /map?scope=...` | the source tree | list of `{path, title}` for domain discovery. |
+| `GET /map?scope=...` | the source tree | list of `{id, title, path, parent_id, version}` — consumer discovery (ids to pin, versions to diff). |
 
-MCP face (for Claude Code) is the same reads at `/mcp` (tools `recall`, `profile`, `map`).
+MCP face (for Claude Code) is the same reads at `/mcp` (tools `recall`, `doc`, `profile`, `map`).
 
 ## Wiping / re-seeding
 

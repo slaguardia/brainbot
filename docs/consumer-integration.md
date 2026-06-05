@@ -8,27 +8,37 @@
 
 How your app talks to the brain, in brief.
 
-## The consumer surface is `recall(query)`
+## The consumer surface: `recall` + `doc` + `map`
 
-A consumer app (scout, …) asks a question and gets back the relevant sections:
+A consumer app (scout, …) searches with a question, and fetches known documents
+deterministically:
 
 - **`recall(query)`** — `GET /recall?q=…` (and the `recall` MCP tool). Hybrid
   retrieval (cosine over pgvector + full-text `tsvector`, fused with RRF) that
-  returns top-k chunks. Each chunk is `{heading, text, score, path}` — `text`
-  carries the meaning (the consumer is an LLM; there is no `polarity`/`strength`
-  schema), and `score` is reported, not thresholded — your consumer decides what
-  counts as relevant.
+  returns top-k chunks. Each chunk is `{id, heading, text, score, path}` —
+  `text` carries the meaning (the consumer is an LLM; there is no
+  `polarity`/`strength` schema), `score` is reported, not thresholded — your
+  consumer decides what counts as relevant — and `id` is the owning document's
+  stable id, the bridge to `doc`.
+- **`doc(id)`** — `GET /doc?id=…`. One whole document by stable id: the stored
+  text **verbatim, byte-exact**, plus a content `version` stamp to cache on.
+  Pin pages by id; re-fetch when the stamp moves. 404 on an unknown id.
+- **`map()`** — `GET /map`. The synced document tree
+  (`{id, title, path, parent_id, version}`): where a consumer discovers the ids
+  to pin. Titles/paths are display-only — never lookup keys.
 
-That's the whole consumer contract. Consumers are **read-only** and never need to
-know the brain's folder structure (a *scope*).
+Consumers are **read-only**, and for *search* they never need to know the
+brain's folder structure (a *scope*). The full contract — cache rules, 404
+semantics, what `version` covers — lives in
+[`../plans/scout-migration.md`](../plans/scout-migration.md).
 
-## Not consumer endpoints
+## Not a consumer endpoint
 
-`profile(scope)` and `map(scope)` exist but are **brain-side machinery + owner
-tools**, not consumer endpoints: `map` powers sync reconciliation/maintenance,
-`profile` powers self-enrichment (assemble a domain → distill a digest that
-`recall` surfaces), and both back the authed PWA where the owner browses their own
-folders. Don't build a dumb consumer against them.
+`profile(scope)` exists but is **brain-side machinery + an owner tool**: it
+powers self-enrichment (assemble a domain → distill a digest that `recall`
+surfaces) and backs the authed PWA where the owner browses their own folders.
+Consumers get faithful content, never an assembled view — don't build a dumb
+consumer against it.
 
 ## The write path
 

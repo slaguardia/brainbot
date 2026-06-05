@@ -303,16 +303,21 @@ def _ancestor_titles(page: dict, cfg: Config) -> list[str]:
 # ---- discovery: every page shared with the integration ------------------------
 
 def list_pages() -> list[dict]:
-    """List every Notion PAGE the integration has been granted access to, via the
-    search API (empty query = everything shared, children included). Returns raw
-    per-page facts — the caller decides how to present them:
+    """List everything the integration has been granted access to — pages AND
+    databases — via the search API (empty query = everything shared, children
+    included). Databases matter because in Notion every database ROW is itself a
+    page (parent type `database_id`); returning the database too lets a consumer
+    hang its rows under one node instead of flooding its root. Raw per-item
+    facts — the caller decides how to present them:
 
-    - id:        the dashed page uuid (matches sources.id after ingest).
-    - title:     the page title ('' if untitled).
-    - parent_id: the dashed uuid of the parent PAGE, or None when the parent is
-                 a workspace/database/block (the consumer treats those as roots).
+    - id:        the dashed uuid (for pages: matches sources.id after ingest).
+    - kind:      'page' | 'database'.
+    - title:     the title ('' if untitled).
+    - parent_id: the dashed uuid of the parent page OR database, or None for
+                 workspace/block parents (the consumer treats those as roots).
     - last_edited_time: Notion's last-edited timestamp (ISO 8601), or None.
-    - url:       the canonical notion.so URL (what /ingest accepts).
+    - url:       the canonical notion.so URL (what /ingest accepts; pages only —
+                 a database has no block tree to flatten).
 
     Raises NotionTokenError (no token) / NotionError (API failure). Synchronous —
     wrap with asyncio.to_thread in async callers.
@@ -321,33 +326,34 @@ def list_pages() -> list[dict]:
     if not cfg.notion_token:
         raise NotionTokenError("missing required env: NOTION_TOKEN")
 
-    pages: list[dict] = []
-    cursor: str | None = None
-    while True:
-        body: dict = {
-            "filter": {"property": "object", "value": "page"},
-            "page_size": 100,
-        }
-        if cursor:
-            body["start_cursor"] = cursor
-        data = _post("/search", cfg, body)
-        for page in data.get("results", []):
-            parent = page.get("parent", {})
-            pages.append(
-                {
-                    "id": page.get("id", ""),
-                    "title": _page_title(page),
-                    "parent_id": parent.get("page_id") if parent.get("type") == "page_id" else None,
-                    "last_edited_time": page.get("last_edited_time"),
-                    "url": page.get("url", ""),
-                }
-            )
-        if not data.get("has_more"):
-            break
-        cursor = data.get("next_cursor")
-        if not cursor:
-            break
-    return pages
+    items: list[dict] = []
+    for kind in ("page", "database"):
+        cursor: str | None = None
+        while True:
+            body: dict = {
+                "filter": {"property": "object", "value": kind},
+                "page_size": 100,
+            }
+            if cursor:
+                body["start_cursor"] = cursor
+            data = _post("/search", cfg, body)
+            for item in data.get("results", []):
+                items.append(
+                    {
+                        "id": item.get("id", ""),
+                        "kind": kind,
+                        "title": _page_title(item),
+                        "parent_id": _parent_id(item),
+                        "last_edited_time": item.get("last_edited_time"),
+                        "url": item.get("url", ""),
+                    }
+                )
+            if not data.get("has_more"):
+                break
+            cursor = data.get("next_cursor")
+            if not cursor:
+                break
+    return items
 
 
 # ---- public entrypoint -------------------------------------------------------

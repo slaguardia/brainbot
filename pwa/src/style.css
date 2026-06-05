@@ -467,13 +467,21 @@ main {
   color: var(--fg-faint);
   margin: 0;
 }
+/* The brand wordmark doubles as the home link wherever it appears. */
+a.brand {
+  cursor: pointer;
+}
 .disc-refresh {
   color: var(--link);
+  background: var(--link-bg);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
+  padding: 5px 12px;
   font-size: 13px;
   text-decoration: none;
 }
 .disc-refresh:hover {
-  text-decoration: underline;
+  border-color: var(--link);
 }
 .disc-sub {
   margin: 6px 0 14px;
@@ -492,6 +500,37 @@ main {
   display: flex;
   align-items: center;
   gap: 10px;
+}
+/* Collapsible branch: a leading caret that rotates when open. The summary IS
+   the row, so the whole line is the toggle target. */
+.disc-branch > summary {
+  cursor: pointer;
+  list-style: none;
+}
+.disc-branch > summary::-webkit-details-marker {
+  display: none;
+}
+.disc-branch > summary::before {
+  content: "▸";
+  color: var(--fg-faint);
+  font-size: 11px;
+  flex: 0 0 auto;
+  transition: transform 0.12s ease;
+}
+.disc-branch[open] > summary::before {
+  transform: rotate(90deg);
+}
+/* A database node: its "children" are rows, not sub-pages — folder styling. */
+.src-label.is-db {
+  color: var(--fg-muted);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  letter-spacing: 0.02em;
+}
+.disc-count {
+  color: var(--fg-faint);
+  font-size: 12px;
+  font-family: var(--font-mono);
 }
 .disc-row .src-label {
   flex: 1;

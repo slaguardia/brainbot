@@ -18,6 +18,7 @@ function esc(s: unknown): string {
 
 interface NotionPage {
   id?: string;
+  kind?: string; // 'page' | 'database' — database rows are pages parented by a database
   title?: string;
   parent_id?: string | null;
   last_edited_time?: string | null;
@@ -28,9 +29,8 @@ interface NotionPage {
 export function mountDiscover(container: HTMLElement): void {
   container.innerHTML = `
     <header class="cap-head">
-      <span class="brand" aria-label="brain">brain</span>
+      <a class="brand" href="#" aria-label="brain — back to home">brain</a>
       <nav class="cap-nav" aria-label="Brain views">
-        <a href="#">home</a>
         <a href="#docs">docs</a>
       </nav>
     </header>
@@ -110,31 +110,48 @@ function renderPages(body: HTMLElement, pages: NotionPage[]): void {
     return;
   }
   const roots = buildTree(pages);
-  const n = pages.length;
-  const nIn = pages.filter((p) => p.ingested).length;
+  const real = pages.filter((p) => p.kind !== "database");
+  const n = real.length;
+  const nIn = real.filter((p) => p.ingested).length;
   body.innerHTML = `
     <p class="disc-counts">${n} page${n === 1 ? "" : "s"} visible · ${nIn} in the brain</p>
     <ul class="src-list disc-tree">${roots.map(renderNode).join("")}</ul>`;
 }
 
-function renderNode(node: PageNode): string {
+// One row: title grows, edited date + action hug the right. Databases aren't
+// pullable (ingest is page-only) — they show a row count instead.
+function rowHTML(node: PageNode): string {
   const p = node.page;
+  const isDb = p.kind === "database";
   const title = esc(p.title || "(untitled)");
-  const edited = p.last_edited_time ? esc(p.last_edited_time.slice(0, 10)) : "";
-  const action = p.ingested
-    ? `<span class="disc-badge is-ingested">in brain</span>`
-    : `<button class="disc-pull" type="button" data-url="${esc(p.url ?? "")}">pull</button>`;
-  const childHTML = node.children.length
-    ? `<ul class="src-list">${node.children.map(renderNode).join("")}</ul>`
-    : "";
+  const edited = !isDb && p.last_edited_time ? esc(p.last_edited_time.slice(0, 10)) : "";
+  const action = isDb
+    ? `<span class="disc-count">${node.children.length} page${node.children.length === 1 ? "" : "s"}</span>`
+    : p.ingested
+      ? `<span class="disc-badge is-ingested">in brain</span>`
+      : `<button class="disc-pull" type="button" data-url="${esc(p.url ?? "")}">pull</button>`;
+  return `
+      <span class="src-label ${isDb ? "is-db" : ""}">${title}</span>
+      ${edited ? `<span class="disc-edited">${edited}</span>` : ""}
+      ${action}`;
+}
+
+function renderNode(node: PageNode): string {
+  // A parent (page with sub-pages, or a database with rows) renders as a native
+  // <details> so it collapses; collapsed by default keeps big databases (every
+  // row is a page) from flooding the view. Leaves stay plain rows.
+  if (node.children.length) {
+    return `
+    <li class="src-node is-source">
+      <details class="disc-branch">
+        <summary class="disc-row">${rowHTML(node)}</summary>
+        <ul class="src-list">${node.children.map(renderNode).join("")}</ul>
+      </details>
+    </li>`;
+  }
   return `
     <li class="src-node is-source">
-      <span class="disc-row">
-        <span class="src-label">${title}</span>
-        ${edited ? `<span class="disc-edited">${edited}</span>` : ""}
-        ${action}
-      </span>
-      ${childHTML}
+      <span class="disc-row">${rowHTML(node)}</span>
     </li>`;
 }
 
@@ -144,6 +161,9 @@ function wireIngest(body: HTMLElement): void {
   body.addEventListener("click", (e) => {
     const btn = e.target as HTMLElement;
     if (!btn.classList.contains("disc-pull")) return;
+    // A pull button can sit inside a <summary>; without this the click ALSO
+    // toggles the branch open/closed.
+    e.preventDefault();
     const url = btn.getAttribute("data-url");
     if (!url) return;
     void pullPage(btn as HTMLButtonElement, url);

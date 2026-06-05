@@ -131,6 +131,7 @@ function rowHTML(node: PageNode): string {
       ? `<span class="disc-badge is-ingested">in brain</span>`
       : `<button class="disc-pull" type="button" data-url="${esc(p.url ?? "")}">pull</button>`;
   return `
+      ${isDb ? `<span class="disc-kind-db">db</span>` : ""}
       <span class="src-label ${isDb ? "is-db" : ""}">${title}</span>
       ${edited ? `<span class="disc-edited">${edited}</span>` : ""}
       ${action}`;

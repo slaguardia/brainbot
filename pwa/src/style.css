@@ -530,9 +530,23 @@ a.brand {
 .disc-branch[open] > summary::before {
   transform: rotate(45deg);
 }
-/* A database node: its "children" are rows, not sub-pages — folder styling. */
+/* A database node: its "children" are rows, not sub-pages. An amber 'db' tag
+   chip + amber-tinted title set it apart from pages at a glance (amber = the
+   docs view's search/retrieval hue — data-shaped things). */
+.disc-kind-db {
+  flex: 0 0 auto;
+  color: var(--maybe);
+  background: var(--maybe-bg);
+  border-radius: var(--r-sm);
+  padding: 1px 6px;
+  font-size: 10px;
+  font-family: var(--font-mono);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
 .src-label.is-db {
-  color: var(--fg-muted);
+  color: var(--maybe);
   font-family: var(--font-mono);
   font-size: 13px;
   letter-spacing: 0.02em;

@@ -5,7 +5,7 @@ import { mountHome } from "./home";
 const homeView = document.getElementById("home-view") as HTMLElement;
 const homeBody = document.getElementById("home-body") as HTMLElement;
 const docsView = document.getElementById("docs-view") as HTMLDivElement;
-const discoverView = document.getElementById("discover-view") as HTMLDivElement;
+const discoverView = document.getElementById("discover-view") as HTMLElement;
 
 // The landing view is the home hub: stat tiles + an embedded recall search box +
 // a hierarchical source map, all reading the brain through /api/*. (Search and

@@ -561,6 +561,15 @@ def _token_estimate(text: str) -> int:
     return len(text) // 4
 
 
+async def source_ids(pool: asyncpg.Pool) -> set[str]:
+    """The ids of every ingested source — lets /notion/pages flag which of the
+    integration-visible pages are already in the brain (Notion page uuid == our
+    source id)."""
+    async with pool.acquire() as conn:
+        rows = await conn.fetch("SELECT id FROM sources")
+    return {str(r["id"]) for r in rows}
+
+
 # ---- doc (deterministic fetch): one whole document by stable id ---------------
 
 async def doc(pool: asyncpg.Pool, doc_id: str) -> dict | None:

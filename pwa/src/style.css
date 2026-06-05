@@ -427,8 +427,90 @@ main {
    =========================================================================== */
 
 #home-view[hidden],
-#docs-view[hidden] {
+#docs-view[hidden],
+#discover-view[hidden] {
   display: none;
+}
+
+/* ===========================================================================
+   Discovery view (#discover). What the Notion integration can see vs. what's
+   in the brain, as a parent/child page tree with a per-page "pull" action.
+   Reuses the home shell (.home section, .src-list tree rails).
+   =========================================================================== */
+
+.disc-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+.disc-head h2 {
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--fg-faint);
+  margin: 0;
+}
+.disc-refresh {
+  color: var(--link);
+  font-size: 13px;
+  text-decoration: none;
+}
+.disc-refresh:hover {
+  text-decoration: underline;
+}
+.disc-sub {
+  margin: 6px 0 14px;
+  color: var(--fg-muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.disc-counts {
+  margin: 0 0 8px;
+  color: var(--fg-faint);
+  font-size: 12.5px;
+  font-family: var(--font-mono);
+}
+/* One page row: title grows, edited date + action hug the right edge. */
+.disc-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.disc-row .src-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.disc-edited {
+  color: var(--fg-faint);
+  font-size: 12px;
+  font-family: var(--font-mono);
+}
+.disc-badge.is-ingested {
+  color: var(--yes);
+  background: var(--yes-bg);
+  border-radius: var(--r-sm);
+  padding: 2px 8px;
+  font-size: 12px;
+}
+.disc-pull {
+  color: var(--link);
+  background: var(--link-bg);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-sm);
+  padding: 2px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.disc-pull:hover {
+  border-color: var(--link);
+}
+.disc-pull:disabled {
+  color: var(--fg-faint);
+  background: transparent;
+  cursor: default;
 }
 
 #docs-view {

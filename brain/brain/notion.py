@@ -124,6 +124,38 @@ def _get(path: str, cfg: Config, *, params: dict[str, str] | None = None) -> dic
         raise NotionError(f"Notion API error {e.code} for {path}") from e
 
 
+def _post(path: str, cfg: Config, body: dict) -> dict:
+    """POST {NOTION_API}{path} with a JSON body and return the parsed JSON.
+
+    Same httpx-preferred / stdlib-fallback split and error mapping as `_get` —
+    404 -> NotionNotSharedError, any other 4xx/5xx -> NotionError."""
+    headers = _headers(cfg)
+    url = f"{NOTION_API}{path}"
+    payload = json.dumps(body).encode("utf-8")
+    try:
+        import httpx  # transitively available via the service deps
+    except ImportError:
+        httpx = None
+
+    if httpx is not None:
+        resp = httpx.post(url, headers=headers, content=payload, timeout=30.0)
+        if resp.status_code == 404:
+            raise NotionNotSharedError(f"Notion 404 for {path}")
+        if resp.status_code >= 400:
+            raise NotionError(f"Notion API error {resp.status_code} for {path}")
+        return resp.json()
+
+    # stdlib fallback
+    req = urllib.request.Request(url, data=payload, headers=headers, method="POST")
+    try:
+        with urllib.request.urlopen(req, timeout=30.0) as r:
+            return json.loads(r.read().decode("utf-8"))
+    except urllib.error.HTTPError as e:  # noqa: PERF203
+        if e.code == 404:
+            raise NotionNotSharedError(f"Notion 404 for {path}") from e
+        raise NotionError(f"Notion API error {e.code} for {path}") from e
+
+
 # ---- title + rich-text helpers ----------------------------------------------
 
 def _rich_text(parts: list[dict]) -> str:
@@ -266,6 +298,56 @@ def _ancestor_titles(page: dict, cfg: Config) -> list[str]:
         parent = ancestor.get("parent", {})
     titles.reverse()  # root -> immediate parent
     return titles
+
+
+# ---- discovery: every page shared with the integration ------------------------
+
+def list_pages() -> list[dict]:
+    """List every Notion PAGE the integration has been granted access to, via the
+    search API (empty query = everything shared, children included). Returns raw
+    per-page facts — the caller decides how to present them:
+
+    - id:        the dashed page uuid (matches sources.id after ingest).
+    - title:     the page title ('' if untitled).
+    - parent_id: the dashed uuid of the parent PAGE, or None when the parent is
+                 a workspace/database/block (the consumer treats those as roots).
+    - last_edited_time: Notion's last-edited timestamp (ISO 8601), or None.
+    - url:       the canonical notion.so URL (what /ingest accepts).
+
+    Raises NotionTokenError (no token) / NotionError (API failure). Synchronous —
+    wrap with asyncio.to_thread in async callers.
+    """
+    cfg = Config()
+    if not cfg.notion_token:
+        raise NotionTokenError("missing required env: NOTION_TOKEN")
+
+    pages: list[dict] = []
+    cursor: str | None = None
+    while True:
+        body: dict = {
+            "filter": {"property": "object", "value": "page"},
+            "page_size": 100,
+        }
+        if cursor:
+            body["start_cursor"] = cursor
+        data = _post("/search", cfg, body)
+        for page in data.get("results", []):
+            parent = page.get("parent", {})
+            pages.append(
+                {
+                    "id": page.get("id", ""),
+                    "title": _page_title(page),
+                    "parent_id": parent.get("page_id") if parent.get("type") == "page_id" else None,
+                    "last_edited_time": page.get("last_edited_time"),
+                    "url": page.get("url", ""),
+                }
+            )
+        if not data.get("has_more"):
+            break
+        cursor = data.get("next_cursor")
+        if not cursor:
+            break
+    return pages
 
 
 # ---- public entrypoint -------------------------------------------------------

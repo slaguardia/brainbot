@@ -18,8 +18,10 @@ import { fileURLToPath } from "node:url";
 const PORT = Number(process.env.PORT ?? 8787);
 
 // Brain service base. Reads are proxied here so the owner PWA can surface the
-// brain's recall/map without the browser talking to the brain directly. Writes
-// are never proxied — the PWA stays read-only against the brain.
+// brain's recall/map without the browser talking to the brain directly. The one
+// proxied write is POST /api/ingest — the discovery view's "pull this page into
+// the brain" action, forwarding to the brain's existing /ingest. Free-text
+// capture stays disabled.
 const BRAIN = process.env.BRAIN_SERVICE_URL ?? "http://brain:8100";
 
 const HERE = fileURLToPath(new URL(".", import.meta.url));
@@ -64,6 +66,7 @@ async function proxyRead(
   url: URL,
   brainPath: string,
   params: readonly string[],
+  timeoutMs = 8000,
 ): Promise<void> {
   const target = new URL(brainPath, BRAIN);
   for (const p of params) {
@@ -75,12 +78,45 @@ async function proxyRead(
   // would otherwise hang the request — and the tab — forever. The abort lands in
   // the catch below as a 502, making the no-hang promise above actually true.
   const ac = new AbortController();
-  const deadline = setTimeout(() => ac.abort(), 8000);
+  const deadline = setTimeout(() => ac.abort(), timeoutMs);
   try {
     const upstream = await fetch(target, { method: "GET", signal: ac.signal });
     const body = await upstream.text();
     res.writeHead(upstream.status, { "Content-Type": "application/json; charset=utf-8" });
     res.end(body);
+  } catch (err) {
+    json(res, 502, { error: "brain unreachable", detail: String(err) });
+  } finally {
+    clearTimeout(deadline);
+  }
+}
+
+// POST proxy for the discovery view's ingest action: forward the JSON body to
+// the brain's /ingest verbatim. A longer deadline than the read proxy — ingest
+// walks the page's block tree and embeds its chunks, which takes real seconds.
+async function proxyIngest(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  const body = await new Promise<string>((resolve, reject) => {
+    const parts: Buffer[] = [];
+    req.on("data", (c: Buffer) => parts.push(c));
+    req.on("end", () => resolve(Buffer.concat(parts).toString("utf-8")));
+    req.on("error", reject);
+  }).catch(() => null);
+  if (body === null) {
+    json(res, 400, { error: "could not read request body" });
+    return;
+  }
+  const ac = new AbortController();
+  const deadline = setTimeout(() => ac.abort(), 60_000);
+  try {
+    const upstream = await fetch(new URL("/ingest", BRAIN), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body,
+      signal: ac.signal,
+    });
+    const text = await upstream.text();
+    res.writeHead(upstream.status, { "Content-Type": "application/json; charset=utf-8" });
+    res.end(text);
   } catch (err) {
     json(res, 502, { error: "brain unreachable", detail: String(err) });
   } finally {
@@ -150,6 +186,17 @@ const server = createServer((req, res) => {
     void proxyRead(res, url, "/map", ["scope"]);
     return;
   }
+  // Discovery: every Notion page the integration can see, flagged ingested/not.
+  // Longer deadline — the brain pages through Notion's search API upstream.
+  if (req.method === "GET" && url.pathname === "/api/notion/pages") {
+    void proxyRead(res, url, "/notion/pages", [], 30_000);
+    return;
+  }
+  // Selective pull: the discovery view's per-page ingest action.
+  if (req.method === "POST" && url.pathname === "/api/ingest") {
+    void proxyIngest(req, res);
+    return;
+  }
   if (req.method === "GET" || req.method === "HEAD") {
     void serveStatic(req, res);
     return;
@@ -158,5 +205,5 @@ const server = createServer((req, res) => {
 });
 
 server.listen(PORT, () => {
-  console.error(`[pwa] listening on :${PORT} (capture disabled — static serving only)`);
+  console.error(`[pwa] listening on :${PORT} (capture disabled; reads + ingest proxied to ${BRAIN})`);
 });

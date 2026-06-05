@@ -1,9 +1,11 @@
+import { mountDiscover } from "./discover";
 import { mountDocs } from "./docs";
 import { mountHome } from "./home";
 
 const homeView = document.getElementById("home-view") as HTMLElement;
 const homeBody = document.getElementById("home-body") as HTMLElement;
 const docsView = document.getElementById("docs-view") as HTMLDivElement;
+const discoverView = document.getElementById("discover-view") as HTMLDivElement;
 
 // The landing view is the home hub: stat tiles + an embedded recall search box +
 // a hierarchical source map, all reading the brain through /api/*. (Search and
@@ -17,16 +19,24 @@ mountHome(homeBody);
 // Evolution page so old links resolve. Anything else is the home hub. The docs
 // view is mounted lazily on first visit so it never costs the home path
 // anything; docs.ts handles page switching on later hash changes.
+// `#discover` shows the Notion discovery view (what the integration can see vs.
+// what's ingested, with per-page pull). Remounted on each entry so the page list
+// is fresh — discovery is a "what's out there right now" question.
 let docsMounted = false;
 function route() {
   const hash = location.hash.replace(/^#/, "");
   const onDocs = hash.startsWith("docs") || hash.startsWith("learnings");
+  const onDiscover = hash.startsWith("discover");
   if (onDocs && !docsMounted) {
     mountDocs(docsView);
     docsMounted = true;
   }
+  if (onDiscover) {
+    mountDiscover(discoverView);
+  }
   docsView.hidden = !onDocs;
-  homeView.hidden = onDocs;
+  discoverView.hidden = !onDiscover;
+  homeView.hidden = onDocs || onDiscover;
   if (onDocs && !/^#(docs|learnings)\//.test(location.hash)) {
     // Land at the top for a plain entry, but let a `#docs/<page>/<section>` deep
     // link keep the scroll position docs.ts set on mount.

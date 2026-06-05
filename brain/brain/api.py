@@ -1,7 +1,8 @@
 """The brain's network face — ONE app, TWO protocols (FastMCP shell).
 
 - MCP (streamable HTTP at /mcp): tools `recall`, `doc`, `profile`, `map`.
-- Plain HTTP (custom routes): /health, /ingest, /recall, /doc, /profile, /map.
+- Plain HTTP (custom routes): /health, /ingest, /recall, /doc, /profile, /map,
+  /notion/pages (discovery: what the integration can see vs. what's ingested).
 
 Both faces are thin: they parse input, call the same `store` functions, and
 return the contract shapes (`Chunk` / `Context` / the document / the source
@@ -27,8 +28,8 @@ from starlette.responses import JSONResponse
 
 from .config import Config
 from .db import apply_schema, close_pool, get_pool
-from .notion import NotionError, fetch_page
-from .store import doc, map_, profile, recall, upsert_source
+from .notion import NotionError, fetch_page, list_pages
+from .store import doc, map_, profile, recall, source_ids, upsert_source
 
 logger = logging.getLogger(__name__)
 
@@ -105,6 +106,33 @@ async def ingest(request: Request) -> JSONResponse:
     return JSONResponse(
         {"source_id": source_id, "chunks": chunk_count, "path": page["path"], "title": page["title"]}
     )
+
+
+@mcp.custom_route("/notion/pages", methods=["GET"])
+async def notion_pages(_request: Request) -> JSONResponse:
+    """GET /notion/pages — every Notion page shared with the integration (the
+    discovery universe), each flagged `ingested` by checking its uuid against the
+    sources table. Raw facts only — tree-building/presentation is the consumer's.
+    """
+    try:
+        pages = await asyncio.to_thread(list_pages)
+    except NotionError as e:
+        # Missing token / API refusal — caller-visible config problem, so 400.
+        return JSONResponse({"error": str(e)}, status_code=400)
+    except Exception as e:  # noqa: BLE001 — surface the cause, don't swallow it
+        logger.exception("notion/pages: list_pages failed")
+        return JSONResponse({"error": f"discovery failed: {e}"}, status_code=502)
+
+    try:
+        pool = await get_pool()
+        ingested = await source_ids(pool)
+    except Exception as e:  # noqa: BLE001 — db failure: surface, don't 500
+        logger.exception("notion/pages: source_ids failed")
+        return JSONResponse({"error": f"discovery failed: {e}"}, status_code=502)
+
+    for p in pages:
+        p["ingested"] = p["id"] in ingested
+    return JSONResponse({"pages": pages})
 
 
 @mcp.custom_route("/recall", methods=["GET"])

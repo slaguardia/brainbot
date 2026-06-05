@@ -10,7 +10,8 @@ const discoverView = document.getElementById("discover-view") as HTMLElement;
 // The landing view is the home hub: stat tiles + an embedded recall search box +
 // a hierarchical source map, all reading the brain through /api/*. (Search and
 // the source map used to be separate `#search` / `#map` routes; they live here
-// now.) Mounted once on load.
+// now.) Mounted on load AND re-mounted on every return to the home hash (see
+// route()), so pages pulled in #discover show up without a full reload.
 mountHome(homeBody);
 
 // Hash router: `#docs` (and `#docs/<page>`) shows the documentation view — a
@@ -34,9 +35,15 @@ function route() {
   if (onDiscover) {
     mountDiscover(discoverView);
   }
+  const onHome = !onDocs && !onDiscover;
+  if (onHome && homeView.hidden) {
+    // Coming BACK to home (it was hidden): re-fetch stats + source map so pages
+    // pulled in #discover show up without a manual reload.
+    mountHome(homeBody);
+  }
   docsView.hidden = !onDocs;
   discoverView.hidden = !onDiscover;
-  homeView.hidden = onDocs || onDiscover;
+  homeView.hidden = !onHome;
   if (onDocs && !/^#(docs|learnings)\//.test(location.hash)) {
     // Land at the top for a plain entry, but let a `#docs/<page>/<section>` deep
     // link keep the scroll position docs.ts set on mount.

@@ -26,6 +26,40 @@ interface NotionPage {
   ingested?: boolean;
 }
 
+// --- discovery cache ----------------------------------------------------------
+// The Notion sweep takes a few seconds, so the page list is cached in
+// sessionStorage: every (re)visit renders instantly from cache, the Refresh
+// button is the explicit re-fetch, and pulls patch the cached entries in place.
+
+const CACHE_KEY = "discover-pages-v1";
+
+let currentPages: NotionPage[] = [];
+let fetchedAt = 0;
+
+function readCache(): NotionPage[] | null {
+  try {
+    const raw = sessionStorage.getItem(CACHE_KEY);
+    if (!raw) return null;
+    const data = JSON.parse(raw) as { at?: number; pages?: NotionPage[] };
+    if (!Array.isArray(data.pages)) return null;
+    fetchedAt = data.at ?? 0;
+    return data.pages;
+  } catch {
+    return null;
+  }
+}
+
+function writeCache(pages: NotionPage[], at: number = Date.now()): void {
+  // `at` defaults to now for a fresh fetch; an in-place patch (a pull flipping
+  // one ingested flag) passes the original fetch time — the list isn't newer.
+  fetchedAt = at;
+  try {
+    sessionStorage.setItem(CACHE_KEY, JSON.stringify({ at, pages }));
+  } catch {
+    // Quota/private-mode failure: cache is an optimization, never a requirement.
+  }
+}
+
 export function mountDiscover(container: HTMLElement): void {
   container.innerHTML = `
     <header class="cap-head">
@@ -53,7 +87,13 @@ export function mountDiscover(container: HTMLElement): void {
   // Delegated pull handler, attached ONCE — renders replace body.innerHTML, so a
   // per-render listener would stack across refreshes and double-fire ingest.
   wireIngest(body);
-  void loadPages(body);
+  const cached = readCache();
+  if (cached) {
+    currentPages = cached;
+    renderPages(body, cached);
+  } else {
+    void loadPages(body);
+  }
 }
 
 async function loadPages(body: HTMLElement): Promise<void> {
@@ -64,7 +104,10 @@ async function loadPages(body: HTMLElement): Promise<void> {
       body.innerHTML = `<p class="home-status">Discovery failed: ${esc(data.error ?? `HTTP ${res.status}`)}</p>`;
       return;
     }
-    renderPages(body, Array.isArray(data.pages) ? data.pages : []);
+    const pages = Array.isArray(data.pages) ? data.pages : [];
+    currentPages = pages;
+    writeCache(pages);
+    renderPages(body, pages);
   } catch (err) {
     body.innerHTML = `<p class="home-status">Couldn't reach the brain (${esc(err)}).</p>`;
   }
@@ -118,8 +161,11 @@ function renderPages(body: HTMLElement, pages: NotionPage[]): void {
   const real = pages.filter((p) => p.kind !== "database");
   const n = real.length;
   const nIn = real.filter((p) => p.ingested).length;
+  const at = fetchedAt
+    ? ` · synced ${new Date(fetchedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`
+    : "";
   body.innerHTML = `
-    <p class="disc-counts">${n} page${n === 1 ? "" : "s"} visible · ${nIn} in the brain</p>
+    <p class="disc-counts">${n} page${n === 1 ? "" : "s"} visible · ${nIn} in the brain${at}</p>
     <ul class="src-list disc-tree">${roots.map(renderNode).join("")}</ul>`;
 }
 
@@ -282,7 +328,13 @@ async function pullPage(btn: HTMLButtonElement, url: string): Promise<void> {
       btn.title = data.error ?? `HTTP ${res.status}`;
       return;
     }
-    // Swap the button for the ingested badge in place — no full reload needed.
+    // Swap the button for the ingested badge in place — no full reload needed —
+    // and patch the cache so the next render doesn't resurrect the pull button.
+    const cached = currentPages.find((p) => p.url === url);
+    if (cached) {
+      cached.ingested = true;
+      writeCache(currentPages, fetchedAt);
+    }
     const badge = document.createElement("span");
     badge.className = "disc-badge is-ingested";
     badge.textContent = "in brain";

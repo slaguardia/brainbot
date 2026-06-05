@@ -77,6 +77,7 @@ function renderHome(container: HTMLElement, sources: MapSource[]): void {
       <div class="home-hero">
         <p class="home-lead">The brain is empty — no sources ingested yet.</p>
       </div>
+      <a class="home-discover" href="#discover">Discover Notion pages →</a>
       ${CAPTURE_NOTE}`;
     return;
   }
@@ -103,6 +104,8 @@ function renderHome(container: HTMLElement, sources: MapSource[]): void {
     </form>
 
     <div class="home-results" hidden></div>
+
+    <a class="home-discover" href="#discover">Discover Notion pages →</a>
 
     <section class="home-map">
       <h2>Sources</h2>

@@ -94,6 +94,16 @@ For "do this now or later?", surface what actually decides it:
 
 Don't volunteer file counts, line counts, layers, or composite "complexity scores" — they're in the diff and don't change the decision. If asked explicitly, fine.
 
+## 7. No Soft Asks
+
+**Follow-ups: do the obvious thing, or ask one plain question. Never hint.**
+
+When finishing work surfaces a caveat or possible follow-up:
+
+- **One obvious action → take it.** Don't ask, don't suggest — do it as part of the task.
+- **A real choice → exactly one question.** Brief and simply worded; the one question states what the follow-up is and what the courses of action are.
+- **Neither → drop it.** No trailing "worth a look…", "whenever you want…", "ready when you are…", "you may want to…" — a suggestion the user has to decode is a request wearing a disclaimer. Act, ask plainly, or say nothing.
+
 ---
 
-**These guidelines are working if:** fewer unnecessary changes in diffs, fewer rewrites due to overcomplication, clarifying questions come before implementation rather than after mistakes, fewer permission-asking turns on fixes that were already clear, and scoping framed as verification burden instead of effort grades.
+**These guidelines are working if:** fewer unnecessary changes in diffs, fewer rewrites due to overcomplication, clarifying questions come before implementation rather than after mistakes, fewer permission-asking turns on fixes that were already clear, scoping framed as verification burden instead of effort grades, and follow-ups arriving as completed actions or one plain question — never trailing suggestions.

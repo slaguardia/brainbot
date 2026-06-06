@@ -153,10 +153,10 @@ const HOW_IT_WORKS_BODY = `
             <span class="chip c-search">Chunk</span>
             <strong>2 · Split into chunks</strong>
             <p>
-              <em>Phase 1: the whole page is one chunk</em> (position&nbsp;0, heading =
-              the page title). The schema already carries <code>heading</code> and
-              <code>position</code>, so heading-based section splitting is a drop-in
-              next step.
+              The page is split at its own markdown headings — <em>one chunk per
+              section</em>, each carrying its <code>heading</code> and document-order
+              <code>position</code>. A page with no headings stays a single chunk
+              (heading = the page title).
             </p>
           </div>
           <div class="flow-arrow" aria-hidden="true"></div>
@@ -193,11 +193,11 @@ const HOW_IT_WORKS_BODY = `
         </ul>
 
         <div class="note">
-          <strong>Whole-page chunking is Phase 1.</strong> A very large page is
-          truncated to an embed-input budget so ingest keeps working; real section
-          splitting (and diff-and-re-embed instead of re-embedding the whole doc) is
-          the planned next step. The source's faithful text is always stored intact —
-          chunks are just the derived search index over it.
+          <strong>Wipe-replace is per whole doc.</strong> A very large <em>section</em>
+          has its embed input truncated to a budget so ingest keeps working;
+          diff-and-re-embed-only-changed-sections is a later optimization. The
+          source's faithful text is always stored intact — chunks are just the
+          derived search index over it.
         </div>
       </section>
 

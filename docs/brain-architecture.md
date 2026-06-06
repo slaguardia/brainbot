@@ -107,8 +107,9 @@ Context { text:      str   # assembled, structured markdown
 - **Ingest:** `fetch_page(url)` returns `{title, text, path}` — page blocks
   flattened to markdown, plus the materialized ancestry from the parent chain.
   `upsert_source` UPSERTs the source row (recomputing `path`, bumping `version`),
-  then **wipe-replaces** its chunks: `DELETE` then re-`INSERT` with fresh Voyage
-  embeddings. Phase 1 stores the whole page as one chunk.
+  then **wipe-replaces** its chunks: `DELETE`, split at the page's markdown
+  headings (one chunk per section; a heading-less page stays one chunk), then
+  re-`INSERT` with fresh Voyage embeddings.
 - **Storage:** Postgres + pgvector, the only persistent store. `sources` holds
   canonical text + `path`; `chunks` holds section text + `embedding vector(512)`
   + a generated `fts tsvector`. `ON DELETE CASCADE` makes wipe-replace a one-liner.
@@ -142,9 +143,6 @@ domain = a new branch in the tree; no schema change.
 
 ## Scope discipline (what we are deliberately NOT doing yet)
 
-- **Whole-page chunking (Phase 1).** Each page is one chunk; section-aware
-  splitting is the planned refinement. The schema (`heading`, `position`) already
-  supports it.
 - **No global-merged facts.** Per-source chunks + read-time tolerance; no
   write-time entity resolution. Revisit only if read-time duplicates become a
   real problem.

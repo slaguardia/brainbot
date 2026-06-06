@@ -7,7 +7,10 @@ high-level facts about the brain (source + domain counts); the legacy
 `POST /api/capture` still answers `410 Gone`. The backend is read-only against
 the brain — it proxies `/api/recall` and `/api/map` (GET) so the dashboard,
 search, and map views can read it, and never writes. The in-PWA "how the brain
-works" docs and the evolution timeline also serve. The PWA holds no brain logic.
+works" docs and the evolution timeline also serve — both **rendered from the
+canonical repo docs** (`docs/brain-architecture.md`, `docs/learnings.md`),
+bundled at build time via `?raw` imports and parsed with `marked`, so there is
+no hand-mirrored copy to keep in sync. The PWA holds no brain logic.
 
 ## Layout (under `pwa/`)
 

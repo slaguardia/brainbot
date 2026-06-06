@@ -9,6 +9,11 @@ export default defineConfig({
     proxy: {
       "/api": "http://127.0.0.1:8787",
     },
+    fs: {
+      // docs.ts imports ../docs/*.md?raw from the repo root (the canonical
+      // docs rendered in the #docs view) — allow the dev server to serve them.
+      allow: [".", ".."],
+    },
   },
   build: {
     outDir: "dist",

@@ -6,10 +6,10 @@ Brainbot is designed as a **generic shared brain anyone could deploy and use**, 
 
 Nothing in the core assumes a specific identity, workflow, or pre-existing stack. The system ships with:
 
-- Generic tools (`search_brain`, `get_entity`, `add_episode`) that the agent composes — not workflows baked into the architecture.
-- Multiple capture paths (PWA primary, iOS Shortcut as convenience, MCP for terminal agents) — no single "primary user."
+- Generic reads (`recall`, `doc`, `map`) that any consumer composes — not workflows baked into the architecture.
+- Multiple consumer surfaces (PWA, Claude Code MCP, plain HTTP for your own apps) — no single "primary consumer."
 - One default migrator (Notion) treated as *a* source, not *the* source. Other sources (Obsidian, Roam/Logseq, Apple Notes, plain-text journals) are demand-driven siblings. We did *not* pre-build a `migrate/sources/` or `migrate/lib/` structure; that's a refactor the second migrator earns, not preemptive over-design.
-- A single persistent store ([storage-policy.md](./storage-policy.md)) so a downstream user inherits the minimum possible ops surface.
+- A single persistent store (Postgres + pgvector — see [brain-architecture.md](./brain-architecture.md)) so a downstream user inherits the minimum possible ops surface.
 - VPS-vendor-neutral docs — "small VPS" wherever specifics aren't load-bearing.
 
 ## What got removed

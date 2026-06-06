@@ -8,8 +8,8 @@ description: Test the brainbot brain service end-to-end — ingest Notion source
 The brain service (`brain/`) is a **Postgres + pgvector document store** (no graph
 DB, no write-time LLM): sources are ingested, split into chunks, embedded with
 Voyage, and recalled by hybrid cosine + full-text search. This skill is how to
-exercise and evaluate it. Design context lives in `brain/ARCHITECTURE.md` and
-`brain/README.md` — read them if a result is surprising.
+exercise and evaluate it. Design context lives in `docs/brain-architecture.md` and
+`docs/brain.md` — read them if a result is surprising.
 
 ## Stack + prerequisites
 

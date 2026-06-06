@@ -1,11 +1,11 @@
 # A plain-English primer on RAG (and where brainbot fits)
 
-> **Backend update.** The RAG/GraphRAG theory here is evergreen, but brainbot no
-> longer uses Graphiti/FalkorDB: it's now **naive (vector) RAG on Postgres +
-> pgvector** — sources split into embedded chunks, hybrid cosine + full-text
-> recall fused with RRF. So where this primer says "what brainbot uses" for the
-> GraphRAG column, read the **vanilla/naive RAG** column instead. Why the graph
-> was dropped: [`../plans/document-substrate-exploration.md`](../plans/document-substrate-exploration.md).
+> **Backend note.** The RAG/GraphRAG theory here is evergreen. Brainbot itself
+> is **naive (vector) RAG on Postgres + pgvector** — sources split into embedded
+> chunks, hybrid cosine + full-text recall fused with RRF. It *used to be*
+> GraphRAG (Graphiti over FalkorDB); the GraphRAG sections below stay because
+> they teach the theory and explain what was dropped and why. The full story:
+> [`learnings.md`](./learnings.md) Chapter 6.
 
 A study guide for anyone (including future-you) trying to understand what RAG is, what GraphRAG adds, what all these tool names mean, and how this project relates to other note-taking tools you've used.
 
@@ -110,7 +110,7 @@ You don't write them by hand. Every time you dump some text into the system, an 
 - Pulls out the relationships between them (ties or updates strings).
 - Notices when new info contradicts old info and marks the old info "no longer true as of [date]" instead of deleting it.
 
-This is what Graphiti does (see [how-it-works.md](./how-it-works.md) for the worked example with literal JSON).
+This is what Graphiti (the engine brainbot's graph era ran on) does.
 
 ### Why this fixes the three failure modes
 
@@ -122,8 +122,8 @@ This is what Graphiti does (see [how-it-works.md](./how-it-works.md) for the wor
 
 ### What you give up
 
-- **Expensive writes.** Every time you dump text in, an LLM has to read it and decide what cards/strings to make or update. That costs money and takes a couple seconds. (Brainbot: ~$0.0016 per dump.)
-- **Brittleness if extraction is wrong.** If the LLM mishears "Stripe" as "Stripey" you get a bad card and a wrong string. Naive RAG doesn't have this problem because it doesn't try to understand the text — it just stores it. Brainbot's hedge is the [human-edit surface](./human-edit-surface.md): you can fix bad cards yourself.
+- **Expensive writes.** Every time you dump text in, an LLM has to read it and decide what cards/strings to make or update. That costs money and takes a couple seconds. (Brainbot's graph era: ~$0.0016 per dump.)
+- **Brittleness if extraction is wrong.** If the LLM mishears "Stripe" as "Stripey" you get a bad card and a wrong string. Naive RAG doesn't have this problem because it doesn't try to understand the text — it just stores it. The usual hedge is a human-edit surface for fixing bad cards by hand. (This brittleness — extraction silently dropping negatives and policies — is a big part of why brainbot left GraphRAG; see [`learnings.md`](./learnings.md).)
 
 ### Naive RAG vs GraphRAG, side by side
 
@@ -165,7 +165,7 @@ If your project is naive RAG, you almost certainly need one of these. If your pr
 A graph database is storage organized for things that are connected to other things. It's optimized for the "find this card, follow the strings" query pattern.
 
 - **Neo4j** — the granddaddy. Industry standard. Mature, lots of tooling, well-known.
-- **FalkorDB** — what brainbot uses. Newer, much more memory-efficient (fits on a tiny server). Speaks the same query language as Neo4j (Cypher).
+- **FalkorDB** — what brainbot's graph era used. Newer, much more memory-efficient (fits on a tiny server). Speaks the same query language as Neo4j (Cypher).
 - **ArangoDB, JanusGraph, Amazon Neptune** — other graph databases, less commonly used in personal-AI projects.
 
 A graph database alone doesn't give you "AI." It's just storage. You still need something that reads text and writes cards/strings into it.
@@ -186,18 +186,17 @@ Graphiti is a layer that sits on top of a graph database (FalkorDB or Neo4j) and
 
 It's not a framework — it doesn't try to help you build "any kind of AI app." It's one tool for one job: building a knowledge graph from messy text.
 
-You could build everything Graphiti does yourself, but it'd take months. Graphiti is the value-add of "someone already figured out how to do this well." See [graph-engine.md](./graph-engine.md) for the full pitch.
+You could build everything Graphiti does yourself, but it'd take months. Graphiti is the value-add of "someone already figured out how to do this well." (Brainbot used it in the graph era, then found its read path never actually used the graph — see [`learnings.md`](./learnings.md).)
 
 ### Putting it together: what brainbot is, in tool terms
 
-- **FalkorDB** is the pantry (graph database with vectors built in).
-- **Graphiti** is the chef who reads what you give them and organizes the pantry.
-- **Anthropic Claude (Haiku)** is the LLM Graphiti uses to read and structure things.
-- **Voyage** is the embedding service Graphiti uses to make the "vibe stickers" for vector search.
+- **Postgres + pgvector** is the pantry (one engine: relational rows, vectors, and full-text).
+- **The brain service** (`brain/`) is the chef — a small hand-written Python pipeline: split sources into section chunks, embed, store; retrieve with hybrid cosine + full-text fused by RRF.
+- **Voyage** is the embedding service that makes the "vibe stickers" for vector search. There is **no write-time LLM** — ingest is split + embed + insert.
 - **Caddy + Docker** are kitchen plumbing — hosting, networking, TLS.
 - **The PWA and Claude Code hook** are the customers who walk up and order.
 
-No LangChain, no Pinecone. Smaller stack on purpose.
+No LangChain, no Pinecone, no Graphiti. Smaller stack on purpose — the whole retrieval pipeline is owned code you can tune.
 
 ---
 
@@ -221,22 +220,22 @@ Notion is **a hybrid database + notebook + spreadsheet**. You can build structur
 - *You* have to fill in the structured fields manually.
 - It's still optimized for humans reading and editing, not for an LLM querying.
 
-### Graphiti + FalkorDB
+### Brainbot
 
 This is **a notebook designed to be read by programs, not humans**. The differences:
 
-| | Obsidian / Notion | Graphiti + FalkorDB |
+| | Obsidian / Notion | Brainbot |
 |---|---|---|
 | Who's the primary reader? | Human (you, scrolling and clicking) | Program (an LLM asking "what do you know about X?") |
-| Who structures the data? | You, by hand (folders, tags, wikilinks, table columns) | An LLM, automatically, on every write |
-| What happens when info changes? | You edit the page; old version may stay in version history | New fact contradicts old fact → old one marked outdated, both kept |
-| Can you find "the founder of OpenClaw" if your note only says "Steve runs OpenClaw"? | Only if you wrote those exact words or made a wikilink | Yes — the system extracted "Steve" as a person and "runs" as a relationship |
-| Can it answer "who do I know that's hiring Rust devs?" | Only via grep + you connecting the dots | Yes — multi-hop graph traversal |
-| Is it pretty to look at? | Yes, that's a primary feature | Not really — the human-edit surface in brainbot is functional, not beautiful |
+| Who structures the data? | You, by hand (folders, tags, wikilinks, table columns) | You write normal pages with headings; the system splits, embeds, and indexes them automatically |
+| What happens when info changes? | You edit the page; old version may stay in version history | You edit the source page; its chunks are wiped and re-derived, so only current text is ever indexed |
+| Can you find "the founder of OpenClaw" if your note only says "Steve runs OpenClaw"? | Only if you wrote those exact words or made a wikilink | Usually — semantic search matches on meaning ("founder" ≈ "runs"), though there's no entity card connecting them |
+| Can it answer "who do I know that's hiring Rust devs?" | Only via grep + you connecting the dots | Partially — recall surfaces the relevant chunks; the consumer LLM connects the dots (no graph traversal, by design) |
+| Is it pretty to look at? | Yes, that's a primary feature | Not the point — you edit your sources in Notion; the PWA gives small read views |
 
-**The simplest way to think about it:** Obsidian is for *you*. Graphiti+FalkorDB is for *programs that act on your behalf*. They solve different problems. You could conceivably use both — Obsidian as your daily note-taking app, brainbot ingesting your notes nightly to make them queryable by your other apps.
+**The simplest way to think about it:** Obsidian is for *you*. Brainbot is for *programs that act on your behalf*. They solve different problems. You could conceivably use both — Obsidian as your daily note-taking app, brainbot ingesting your notes nightly to make them queryable by your other apps.
 
-The file-canonical alternative (markdown files as source of truth, graph as derived) that's mentioned in [human-edit-surface.md](./human-edit-surface.md) was actually trying to merge these two worlds. It got parked because the sync problem turned out to be harder than it looked.
+In fact brainbot landed on exactly that merge: **your human-edited pages (Notion today) are the source of truth**, and the machine index (chunks + vectors) is derived from them and rebuilt on every edit. Editing the brain = editing the page.
 
 ---
 
@@ -248,14 +247,14 @@ Most "I built an AI thing" projects look like one of:
 - **"Agent that takes actions."** LLM + tool-calling + a loop. Trendy. Often demos well, often brittle in production.
 - **"Personal AI assistant."** Some combination of the above two.
 
-Brainbot is in a less-crowded slice: **personal GraphRAG, self-hosted, with the brain as the primary product and consumers as thin clients**. The pieces that make it distinctive:
+Brainbot is in a less-crowded slice: **a personal RAG brain, self-hosted, with the brain as the primary product and consumers as thin clients**. The pieces that make it distinctive:
 
-- **GraphRAG, not naive RAG.** Most projects aren't doing this — vector-only RAG is the path of least resistance.
+- **The pipeline is owned, not rented.** Chunking, embedding, the HNSW index, the hybrid cosine + full-text query, and the RRF fusion are all hand-written code you can tune and evaluate — no framework, no black box.
 - **Self-hosted.** Most projects use hosted vector DBs and hosted LLMs. Brainbot owns the storage.
-- **Bi-temporal facts.** Most RAG systems can't tell you when a fact stopped being true.
+- **Currency by construction.** Sources are canonical; chunks are derived and wiped-and-rebuilt on every edit, so stale facts can't linger in the index.
 - **Brain-as-service.** Most projects build one app. Brainbot is built so many apps can share the same knowledge.
 
-If you're using this for portfolio purposes, the angle is: "I built a personal GraphRAG system because vector-RAG fails on questions that need entity-resolution or temporal reasoning, and here's a defensible writeup of the tradeoffs at every layer."
+If you're using this for portfolio purposes, the angle is: "I built a personal GraphRAG system, measured how it was actually read, found the graph was never traversed, and walked it back to a simpler substrate the evidence supported — here's the writeup at every layer."
 
 That's a more interesting story than "I built a chatbot over PDFs."
 
@@ -275,7 +274,7 @@ These are the things to read if you want to actually understand the field rather
 
 **The tools:**
 - LangChain docs — even if you don't use it, knowing the vocabulary helps. Skim the "RAG" section.
-- Graphiti's README on GitHub — the actual library you're using here.
+- pgvector's README on GitHub — the actual extension powering brainbot's vector search.
 
 **Embeddings:**
 - OpenAI's embeddings guide — explains the "list of numbers represents meaning" intuition with examples.
@@ -292,6 +291,6 @@ Don't try to read everything. Pick one thing, work through it, then pick the nex
 - **Vector DBs (Pinecone)** = storage optimized for "find similar vectors."
 - **Graph DBs (Neo4j, FalkorDB)** = storage optimized for "find connected things."
 - **Frameworks (LangChain)** = pre-written glue code. Useful for fast prototyping, not used in brainbot.
-- **Graphiti** = the layer that turns prose into a knowledge graph automatically.
-- **Obsidian/Notion** = for humans to read and write. Brainbot = for programs to query on your behalf.
-- **Brainbot** = self-hosted personal GraphRAG. Differentiated portfolio angle: most projects don't go past vector-only RAG.
+- **Graphiti** = the layer that turns prose into a knowledge graph automatically. Brainbot used it, measured it, and walked it back.
+- **Obsidian/Notion** = for humans to read and write. Brainbot = for programs to query on your behalf — with your human-edited pages as the source of truth.
+- **Brainbot** = self-hosted personal RAG with the whole retrieval pipeline as owned, tunable code. Differentiated portfolio angle: tried GraphRAG, kept what the evidence supported.

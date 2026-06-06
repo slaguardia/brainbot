@@ -1,10 +1,9 @@
 # Brain Architecture
 
 > Living design doc. Point at this during design discussions. Implementation
-> details (how to run, config, deps) live in [`README.md`](./README.md); this
-> is the *why* and the *shape*. The full migration rationale (why the graph was
-> dropped) lives in
-> [`../plans/document-substrate-exploration.md`](../plans/document-substrate-exploration.md).
+> details (how to run, config, deps) live in [`brain.md`](./brain.md); this
+> is the *why* and the *shape*. The full migration story (why the graph was
+> dropped) lives in [`learnings.md`](./learnings.md) Chapter 6.
 
 ## What the brain is
 
@@ -108,8 +107,9 @@ Context { text:      str   # assembled, structured markdown
 - **Ingest:** `fetch_page(url)` returns `{title, text, path}` — page blocks
   flattened to markdown, plus the materialized ancestry from the parent chain.
   `upsert_source` UPSERTs the source row (recomputing `path`, bumping `version`),
-  then **wipe-replaces** its chunks: `DELETE` then re-`INSERT` with fresh Voyage
-  embeddings. Phase 1 stores the whole page as one chunk.
+  then **wipe-replaces** its chunks: `DELETE`, split at the page's markdown
+  headings (one chunk per section; a heading-less page stays one chunk), then
+  re-`INSERT` with fresh Voyage embeddings.
 - **Storage:** Postgres + pgvector, the only persistent store. `sources` holds
   canonical text + `path`; `chunks` holds section text + `embedding vector(512)`
   + a generated `fts tsvector`. `ON DELETE CASCADE` makes wipe-replace a one-liner.
@@ -143,9 +143,6 @@ domain = a new branch in the tree; no schema change.
 
 ## Scope discipline (what we are deliberately NOT doing yet)
 
-- **Whole-page chunking (Phase 1).** Each page is one chunk; section-aware
-  splitting is the planned refinement. The schema (`heading`, `position`) already
-  supports it.
 - **No global-merged facts.** Per-source chunks + read-time tolerance; no
   write-time entity resolution. Revisit only if read-time duplicates become a
   real problem.
@@ -174,9 +171,21 @@ domain = a new branch in the tree; no schema change.
 The graph setup was a black-box GraphRAG variant. This substrate is textbook RAG
 with the pipeline in your hands: chunking, the embedder + dim, the HNSW index,
 the cosine query, the `tsvector` lexical arm, and the RRF fusion are all things
-you own and can tune/evaluate. Concrete experiments (rerank pass, chunk vs
-proposition, HNSW params, hybrid weighting, a recall@k scorecard, query
-transforms) are backlogged in the exploration plan, not built in Phase 1.
+you own and can tune/evaluate.
+
+**Concrete RAG experiments this unlocks** (rough backlog, not built in Phase 1):
+
+1. **Reranker pass** — add Voyage rerank or a cross-encoder after RRF; measure
+   recall@k lift.
+2. **Chunk vs proposition** — embed raw chunks vs distilled facts; compare
+   retrieval precision and answer faithfulness.
+3. **HNSW tuning** — `m` / `ef_construction` / `ef_search` vs recall/latency.
+4. **Hybrid weighting** — RRF `c`, semantic-vs-lexical balance, MMR for diversity.
+5. **Retrieval-eval scorecard** — a recall@k / precision harness (the LongMemEval
+   idea from the Supermemory-patterns notes); the real RAG skill, and the thing
+   that tells you whether any of 1–4 actually helped.
+6. **Query transforms** — HyDE, multi-query expansion; measured on the same
+   scorecard.
 
 ## Open questions
 

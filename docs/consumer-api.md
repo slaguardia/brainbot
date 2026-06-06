@@ -1,12 +1,9 @@
 # Consumer API reference
 
-> **Rewritten for the pgvector contract.** The brain is a **Postgres + pgvector
-> document store** — no graph, no `capture`, no scored facts with
-> `polarity`/`strength`, no episode bodies. This file is now a short pointer; the
-> live, detailed spec lives in [`../brain/README.md`](../brain/README.md) and
-> [`../brain/ARCHITECTURE.md`](../brain/ARCHITECTURE.md); the consumer contract
-> in full (cache rules, 404 semantics) is in
-> [`../plans/scout-migration.md`](../plans/scout-migration.md).
+> The consumer contract: what each operation returns and the rules for using it
+> (cache semantics, 404 handling). Service-side detail (config, run
+> instructions, internals) lives in [`brain.md`](./brain.md) and
+> [`brain-architecture.md`](./brain-architecture.md).
 
 The brain serves both faces from one service (`brain/api.py`): plain HTTP and MCP
 at `/mcp`.
@@ -96,6 +93,6 @@ wipe-replaces its chunks. There is **no `capture`**.
 
 The detailed per-operation spec (request/response shapes, scope semantics,
 `Context`, config, run instructions) lives in
-[`../brain/README.md`](../brain/README.md) and
-[`../brain/ARCHITECTURE.md`](../brain/ARCHITECTURE.md). For the narrative how-to,
+[`brain.md`](./brain.md) and
+[`brain-architecture.md`](./brain-architecture.md). For the narrative how-to,
 see [`consumer-integration.md`](./consumer-integration.md).

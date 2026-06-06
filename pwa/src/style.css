@@ -934,6 +934,63 @@ a.brand {
   max-width: 100%;
   margin: 14px 0;
 }
+/* Elements produced by the markdown renderer (docs.ts renders the canonical
+   repo docs): lists, tables, quotes, rules, in-article links. */
+.docs-article ul,
+.docs-article ol {
+  color: var(--fg-muted);
+  line-height: 1.65;
+  font-size: 15px;
+  padding-left: 22px;
+}
+.docs-article li {
+  margin: 6px 0;
+}
+.docs-article blockquote {
+  margin: 14px 0;
+  padding: 2px 16px;
+  border-left: 3px solid var(--border);
+  color: #c7cdda;
+}
+.docs-article blockquote p {
+  color: inherit;
+}
+.docs-article hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 28px 0;
+}
+.docs-article table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 14px 0;
+  font-size: 13.5px;
+  line-height: 1.5;
+  display: block;
+  overflow-x: auto;
+}
+.docs-article th,
+.docs-article td {
+  border: 1px solid var(--border);
+  padding: 7px 10px;
+  text-align: left;
+  color: var(--fg-muted);
+  vertical-align: top;
+}
+.docs-article th {
+  color: var(--fg);
+  background: var(--bg-2);
+}
+.docs-article a {
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-color: rgba(255, 255, 255, 0.3);
+  text-underline-offset: 2px;
+}
+.docs-article a:hover {
+  text-decoration-color: currentColor;
+}
+
 .docs-article pre code {
   background: none;
   padding: 0;
@@ -1264,7 +1321,7 @@ a.brand {
 
 /* ===========================================================================
    Evolution timeline. The chapter timeline shown on the docs view's "Evolution"
-   page (the article/hero chrome comes from .docs-* above). Mirrors LEARNINGS.md.
+   page (the article/hero chrome comes from .docs-* above). Mirrors docs/learnings.md.
    =========================================================================== */
 .timeline {
   list-style: none;

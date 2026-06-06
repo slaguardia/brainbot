@@ -1,12 +1,7 @@
 # Consumer integration guide
 
-> **Rewritten for the pgvector contract.** The brain is a **Postgres + pgvector
-> document store** — no graph, no `capture`, no scored facts. This file is now a
-> short pointer; the live, detailed contract lives in
-> [`../brain/README.md`](../brain/README.md) and
-> [`../brain/ARCHITECTURE.md`](../brain/ARCHITECTURE.md).
-
-How your app talks to the brain, in brief.
+> How your app talks to the brain, in brief — the narrative companion to
+> [`consumer-api.md`](./consumer-api.md) (the per-operation reference).
 
 ## The consumer surface: `recall` + `doc` + `map`
 
@@ -30,7 +25,7 @@ deterministically:
 Consumers are **read-only**, and for *search* they never need to know the
 brain's folder structure (a *scope*). The full contract — cache rules, 404
 semantics, what `version` covers — lives in
-[`../plans/scout-migration.md`](../plans/scout-migration.md).
+[`consumer-api.md`](./consumer-api.md).
 
 ## Not a consumer endpoint
 
@@ -56,6 +51,6 @@ One service (`brain/api.py`) serves both: plain HTTP (`/ingest`, `/recall`,
 ---
 
 For the full operation reference, schemas, config, and run instructions, see
-[`../brain/README.md`](../brain/README.md) and
-[`../brain/ARCHITECTURE.md`](../brain/ARCHITECTURE.md). The per-operation spec
+[`brain.md`](./brain.md) and
+[`brain-architecture.md`](./brain-architecture.md). The per-operation spec
 companion to this guide is [`consumer-api.md`](./consumer-api.md).

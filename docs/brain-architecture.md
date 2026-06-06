@@ -1,10 +1,9 @@
 # Brain Architecture
 
 > Living design doc. Point at this during design discussions. Implementation
-> details (how to run, config, deps) live in [`README.md`](./README.md); this
-> is the *why* and the *shape*. The full migration rationale (why the graph was
-> dropped) lives in
-> [`../plans/document-substrate-exploration.md`](../plans/document-substrate-exploration.md).
+> details (how to run, config, deps) live in [`brain.md`](./brain.md); this
+> is the *why* and the *shape*. The full migration story (why the graph was
+> dropped) lives in [`learnings.md`](./learnings.md) Chapter 6.
 
 ## What the brain is
 
@@ -174,9 +173,21 @@ domain = a new branch in the tree; no schema change.
 The graph setup was a black-box GraphRAG variant. This substrate is textbook RAG
 with the pipeline in your hands: chunking, the embedder + dim, the HNSW index,
 the cosine query, the `tsvector` lexical arm, and the RRF fusion are all things
-you own and can tune/evaluate. Concrete experiments (rerank pass, chunk vs
-proposition, HNSW params, hybrid weighting, a recall@k scorecard, query
-transforms) are backlogged in the exploration plan, not built in Phase 1.
+you own and can tune/evaluate.
+
+**Concrete RAG experiments this unlocks** (rough backlog, not built in Phase 1):
+
+1. **Reranker pass** — add Voyage rerank or a cross-encoder after RRF; measure
+   recall@k lift.
+2. **Chunk vs proposition** — embed raw chunks vs distilled facts; compare
+   retrieval precision and answer faithfulness.
+3. **HNSW tuning** — `m` / `ef_construction` / `ef_search` vs recall/latency.
+4. **Hybrid weighting** — RRF `c`, semantic-vs-lexical balance, MMR for diversity.
+5. **Retrieval-eval scorecard** — a recall@k / precision harness (the LongMemEval
+   idea from the Supermemory-patterns notes); the real RAG skill, and the thing
+   that tells you whether any of 1–4 actually helped.
+6. **Query transforms** — HyDE, multi-query expansion; measured on the same
+   scorecard.
 
 ## Open questions
 

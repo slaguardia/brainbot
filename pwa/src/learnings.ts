@@ -1,6 +1,6 @@
 // The "Evolution" content: an append-only story of how the brain's design
 // evolved, chapter by chapter. Static, hand-authored content — it mirrors
-// LEARNINGS.md at the repo root (keep them in sync). This module is just the
+// docs/learnings.md (keep them in sync). This module is just the
 // content (section list + body HTML); the docs view (docs.ts) hosts it as a
 // page in its sidenav and owns the chrome + scrollspy. innerHTML is safe — no
 // user input. The chapter anchors stay `ch<n>` so old `#learnings/ch<n>` deep

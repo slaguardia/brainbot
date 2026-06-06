@@ -1,8 +1,8 @@
 # Brain learnings — an evolution timeline
 
 How the brain's design has actually evolved, chapter by chapter. Unlike
-[`docs/`](./docs/README.md) (which describes the system *as it is now* and
-discards reversed decisions), this file is **append-only history**: what we
+the other docs here (see [`README.md`](./README.md), which describe the system
+*as it is now* and discard reversed decisions), this file is **append-only history**: what we
 believed, what broke, what we learned, what we changed. Each chapter ends with
 the principle it distilled.
 
@@ -96,8 +96,8 @@ entities**.
 
 **Believed:** now that extraction is tuned, the graph holds everything worth
 holding. So `profile()` and `recall()` can read straight from the graph — that
-was the original plan (`brain/ARCHITECTURE.md`, "Item 2 — full-profile dump from
-RELATES_TO facts").
+was the original plan (the brain architecture doc of the time, "Item 2 —
+full-profile dump from RELATES_TO facts").
 
 **Broke:** the tuned extractor reliably pulls **positive** facts ("targets X,"
 "accepts Y") but **drops negatives and policies**:
@@ -147,7 +147,7 @@ from the graph and retire the body-dump. This **returns to the original Item-2
 design** — now viable because the graph is finally faithful enough to honor it.
 (That Path-A plan has since been retired — see **Chapter 6**.)
 
-Kept deliberately **generic** (per [`docs/genericity-rule.md`](./docs/genericity-rule.md)):
+Kept deliberately **generic** (per [`genericity-rule.md`](./genericity-rule.md)):
 `polarity` and `strength` are domain-agnostic dimensions, not career verbs like
 "targets/avoids." And we record *how strongly* the user holds something — never
 what an app should *do* about it.
@@ -264,7 +264,8 @@ outcome) — plus `map(scope)` for discovery; consumers are read-only; the
 librarian/analyst split gets *purer* (brain returns raw faithful content, all
 interpretation is the consumer's). Hierarchy (Notion nesting → a `path` field) solves
 domain delineation, and the brain runs as an always-on service kept current by Notion
-auto-sync. Full design: [`plans/document-substrate-exploration.md`](./plans/document-substrate-exploration.md).
+auto-sync. Full design as built: [`brain-architecture.md`](./brain-architecture.md)
+(the original exploration plan lives in git history).
 
 > **Principle:** a graph is a store you query by *traversal* — if you never traverse,
 > you've paid for a graph and bought a document store. Choose the substrate by the

@@ -11,7 +11,7 @@ therefore mostly determined by how pages are written: heading structure, one
 topic per section, one home per fact. This skill is how to curate the Notion
 workspace itself — via Notion MCP write tools — so the source material
 retrieves well and the workspace stays tidy. It works as a one-off cleanup or
-a recurring curation pass. Design context: `brain/ARCHITECTURE.md`.
+a recurring curation pass. Design context: `docs/brain-architecture.md`.
 
 ## Operating contract (what needs approval)
 

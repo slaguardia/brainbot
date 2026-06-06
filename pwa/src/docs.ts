@@ -9,7 +9,7 @@
 // The "How the brain works" content below describes the pgvector DOCUMENT
 // SUBSTRATE — the brain is a Postgres + pgvector document store (sources →
 // chunks → hybrid retrieval), not the old graphiti/FalkorDB graph. Keep it in
-// sync with brain/ARCHITECTURE.md + brain/README.md (the authoritative sources).
+// sync with docs/brain-architecture.md + docs/brain.md (the authoritative sources).
 
 import { EVOLUTION_BODY, EVOLUTION_SECTIONS } from "./learnings";
 

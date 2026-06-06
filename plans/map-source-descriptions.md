@@ -79,7 +79,7 @@ routing, derived from content the human already writes.
   the `''` case.
 - **Live eval** on the seeded corpus: `Job Hunting` → its purpose line;
   `Target company` → its Stage/gates line; any heading-first page → `''`.
-- **Docs**: `brain/README.md` interface table, `brain/ARCHITECTURE.md` note,
+- **Docs**: `docs/brain.md` interface table, `docs/brain-architecture.md` note,
   and the test-brain skill's `/map` row.
 
 ## Non-goals

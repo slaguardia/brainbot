@@ -1248,7 +1248,7 @@ a.brand {
 
 /* ===========================================================================
    Evolution timeline. The chapter timeline shown on the docs view's "Evolution"
-   page (the article/hero chrome comes from .docs-* above). Mirrors LEARNINGS.md.
+   page (the article/hero chrome comes from .docs-* above). Mirrors docs/learnings.md.
    =========================================================================== */
 .timeline {
   list-style: none;

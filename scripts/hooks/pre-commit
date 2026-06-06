@@ -1,0 +1,6 @@
+#!/bin/sh
+# Pre-commit: if any markdown file is staged, verify every relative doc link
+# in the repo still resolves (scripts/check_doc_links.py exits 1 on breakage).
+# Wired via: git config core.hooksPath scripts/hooks
+git diff --cached --name-only --diff-filter=ACMRD | grep -q '\.md$' || exit 0
+exec python3 scripts/check_doc_links.py

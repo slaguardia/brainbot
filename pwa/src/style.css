@@ -997,6 +997,20 @@ a.brand {
 .docs-article a:hover {
   text-decoration-color: currentColor;
 }
+.docs-article .mermaid-diagram {
+  margin: 14px 0;
+  padding: 12px;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  overflow-x: auto;
+}
+.docs-article .mermaid-diagram svg {
+  display: block;
+  margin: 0 auto;
+  max-width: 100%;
+  height: auto;
+}
 
 .docs-article pre code {
   background: none;

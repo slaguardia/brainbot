@@ -49,18 +49,13 @@ within a page. A page with no headings stays a single chunk.
 
 ## Why this shape (the architecture decision)
 
-The brain used to be a graph (graphiti-core over FalkorDB). Looking at the actual
-read path, the graph was never used as a graph — `recall` did hybrid
-semantic+BM25 search with **zero multi-hop traversal**, and node-distance
-reranking was disabled (the graph was hub-shaped). It was a document/vector
-workload wearing a graph costume. The only machinery graphiti genuinely bought —
-dedup and bi-temporal invalidation — is **dissolved** by the source-of-truth
-model: a source owns its chunks, and re-ingest wipes-and-replaces them, so
-currency is guaranteed by construction (no `invalid_at` logic, no write-time
-entity resolution). See [`learnings.md`](./learnings.md) Chapter 6 for the full
-rationale.
+The substrate matches the read pattern: reads are semantic + lexical search over
+prose, so the store is a document/vector store. A source owns its chunks, and
+re-ingest wipes-and-replaces them, so currency is guaranteed by construction —
+no `invalid_at` logic, no write-time entity resolution. (How the design arrived
+here: [`learnings.md`](./learnings.md) Chapter 6.)
 
-This is also the project's thesis made real: **one smart brain, many thin
+This is the project's thesis made real: **one smart brain, many thin
 consumers.** The PWA backend is a dumb proxy; consumers are read-only.
 
 ## The ingest pipeline
@@ -130,8 +125,7 @@ Writes come only from sources (ingest / re-sync).
 | `BRAIN_EMBED_MODEL` | `voyage-3-lite` | 512-dim → `vector(512)`. The column dim and the model must match — change `EMBED_DIM` if you swap. |
 | `NOTION_TOKEN` | — | required for `/ingest` (the page must be shared with the integration) |
 
-There is no graphiti, no FalkorDB, no Anthropic/OpenAI, and no write-time LLM
-config.
+There is no LLM and no graph-DB config — embedding is the only external call.
 
 ## Run
 

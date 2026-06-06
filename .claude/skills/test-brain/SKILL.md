@@ -26,7 +26,7 @@ curl -sS http://127.0.0.1:8100/health      # -> {"ok":true}
 
 | Call | What | Notes |
 |---|---|---|
-| `POST /ingest {url}` | fetch a Notion page → upsert source → re-derive chunks (wipe-replace) | idempotent: re-posting the same URL replaces its chunks. Phase 1: whole page = one chunk. |
+| `POST /ingest {url}` | fetch a Notion page → upsert source → re-derive chunks (wipe-replace) | idempotent: re-posting the same URL replaces its chunks. One chunk per heading section. |
 | `GET /recall?q=...&scope=...&k=N` | top-k sections, hybrid cosine + full-text fused by RRF | each `Chunk` has `id, heading, text, score, path`. `scope` is a `path` prefix. |
 | `GET /doc?id=...` | one whole document by stable id | `{id, title, path, version, text}` — `text` is the stored doc verbatim (byte-exact); `version` moves iff title/text change. 404 unknown id. |
 | `GET /profile?scope=...&budget=N` | every chunk under a path, assembled into one `Context` | returns `Context{text, sources, truncated}`. Completeness over precision. |
@@ -48,7 +48,7 @@ Re-seed by re-ingesting the source URLs with `POST /ingest`.
 
 - **Re-ingest is wipe-replace, per source.** Re-posting a URL deletes that source's chunks and re-inserts fresh — the source is always current, never appended. Editing the canonical doc then re-ingesting is the update path.
 - **Scores are compressed** with the `voyage-3-lite` embedder (~0.35 on-topic, ~0.20 off-topic — not 0.9). Judge by the **relative gap**, not the absolute number. A bigger embedder widens it (deferred).
-- **Phase-1 chunking is whole-page.** Each page is one chunk (heading = page title). Recall returns whole pages, not sections — section-aware splitting is a planned refinement, not a bug.
+- **Chunking is section-based.** One chunk per markdown heading section (`_split_sections`); preamble before the first heading chunks under the page title, and a page with no headings stays a single whole-page chunk. Sources ingested before this landed may still be whole-page until re-ingested.
 - **`profile(scope)` can flag `truncated`.** If a scope's chunks exceed the budget it degrades to recall-within-scope and sets `truncated=True` rather than silently cutting. Check the flag.
 
 ## Eval flow (quality check with real data)

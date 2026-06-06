@@ -15,7 +15,7 @@ Concretely, it is a **Postgres + pgvector document store**. Sources (docs,
 captures, Notion pages) are canonical; their text is split into section-chunks,
 embedded with Voyage, and stored. Reads are pure retrieval over those chunks.
 There is **no graph DB, no write-time LLM, no extraction/dedup/bi-temporal
-machinery** — those were dropped in the document-substrate cutover.
+machinery**.
 
 Job-fit ("scout") is the first consumer. Others will follow (reading triage,
 calendar prep, etc.). The brain must never learn what a "job" is — that's what
@@ -23,31 +23,16 @@ lets it serve all of them.
 
 ## The three-layer model
 
-```
-┌──────────────────────────────────────────────────────────────┐
-│ APP  (scout, …)                                                │
-│   common intelligence library:   TASK  →  scope/query          │
-│     "to judge this company I need the user's job-hunting        │
-│      profile: verticals, stage, location, dealbreakers"        │
-│   app agent:   context → reasoning → DECISION                   │
-│     synthesizes the assembled context, applies gates →         │
-│     pursue / skip / maybe                                       │
-└───────────────┬───────────────────────────▲──────────────────┘
-                │ scope / query              │ Context (assembled)
-                ▼                             │
-┌──────────────────────────────────────────────────────────────┐
-│ BRAIN  (this service)                                          │
-│   recall(query) · doc(id) · map() · profile(scope) [owner]    │
-│     librarian: retrieves + assembles faithful content,         │
-│     never synthesizes, never decides                           │
-└───────────────┬───────────────────────────▲──────────────────┘
-                │ ingest (sources only)       │ SQL + vector + FTS
-                ▼                             │
-┌──────────────────────────────────────────────────────────────┐
-│ Postgres + pgvector                                            │
-│   sources (canonical docs) + chunks (sections, embedded)       │
-│   HNSW (semantic) · GIN tsvector (lexical) · path-prefix scope │
-└──────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+  APP["<b>APP</b> — scout, …<br/>intelligence library: TASK → scope/query<br/>app agent: context → reasoning → DECISION (pursue / skip / maybe)"]
+  BRAIN["<b>BRAIN</b> — this service<br/>recall(query) · doc(id) · map() · profile(scope) [owner]<br/>librarian: retrieves + assembles faithful content — never synthesizes, never decides"]
+  PG[("<b>Postgres + pgvector</b><br/>sources (canonical docs) + chunks (sections, embedded)<br/>HNSW (semantic) · GIN tsvector (lexical) · path-prefix scope")]
+
+  APP -- "scope / query" --> BRAIN
+  BRAIN -- "Context (assembled)" --> APP
+  BRAIN -- "ingest (sources only) · SQL + vector + FTS" --> PG
+  PG -- "rows" --> BRAIN
 ```
 
 **Division of responsibility:**
@@ -69,10 +54,8 @@ the stable document ids (titles/paths are display-only), doc for fetching a
 pinned document whole, byte-exact, with a content `version` stamp to cache on.
 `profile` stays internal (brain machinery) + owner-only — it *assembles* a
 domain, and an assembled view is exactly what consumers don't get (they get
-faithful content and do their own reasoning). This deliberately reverses the
-earlier "only recall is the consumer surface" line: deterministic whole-doc
-reads needed first-class ids, and `map` is where ids live. What stays walled
-off is *synthesis* (`profile`) — not *discovery*.
+faithful content and do their own reasoning). What's walled off is *synthesis*
+(`profile`) — not *discovery*.
 
 | Operation | Status | Shape | Notes |
 |---|---|---|---|
@@ -120,8 +103,8 @@ Context { text:      str   # assembled, structured markdown
 
 Sources are the source of truth; chunks are a derived, disposable index FK'd to
 their source. Editing or re-syncing a source does `DELETE FROM chunks WHERE
-source_id = $x` then re-derives — so **only current chunks ever exist**. This
-dissolves two things the old graph needed:
+source_id = $x` then re-derives — so **only current chunks ever exist**. Two
+consequences:
 
 - **No bi-temporal invalidation.** There's no `invalid_at` filter because stale
   chunks are deleted, not superseded. The staleness problem is dissolved, not
@@ -153,9 +136,9 @@ domain = a new branch in the tree; no schema change.
 
 ## Settled principles
 
-1. **Document substrate, not a graph.** The graph never traversed; its only real
-   value (dedup + bi-temporal) is dissolved by the source-of-truth model. A
-   `path` field — not a graph — provides the domain hierarchy.
+1. **Document substrate.** Sources + derived chunks; a `path` field provides
+   the domain hierarchy. (Chosen over a knowledge graph — that story is
+   [`learnings.md`](./learnings.md) Chapter 6.)
 2. **Postgres + pgvector is the only store.** One engine for relational
    (`sources`/`chunks` + `path`), vectors (HNSW), and full-text (`tsvector`).
 3. **No write-time LLM.** Ingest is split + embed + insert. Embedding is the only
@@ -168,10 +151,9 @@ domain = a new branch in the tree; no schema change.
 
 ## RAG: the hood is open
 
-The graph setup was a black-box GraphRAG variant. This substrate is textbook RAG
-with the pipeline in your hands: chunking, the embedder + dim, the HNSW index,
-the cosine query, the `tsvector` lexical arm, and the RRF fusion are all things
-you own and can tune/evaluate.
+This substrate is textbook RAG with the pipeline in your hands: chunking, the
+embedder + dim, the HNSW index, the cosine query, the `tsvector` lexical arm,
+and the RRF fusion are all things you own and can tune/evaluate.
 
 **Concrete RAG experiments this unlocks** (rough backlog, not built in Phase 1):
 

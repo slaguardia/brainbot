@@ -25,7 +25,6 @@ The architecture and decision rationale live in [`docs/architecture.md`](./docs/
 | Milestone | Status |
 |---|---|
 | VPS + Docker substrate (Caddy, UFW, Tailscale) | ✅ done |
-| Graph-era brain (graphiti/FalkorDB) | superseded — replaced by the document substrate |
 | Document substrate: sources + chunks on pgvector, `recall`/`doc`/`profile`/`map` | ✅ live |
 | Section-level chunking + complete-mode recall | ✅ live |
 | PWA: dashboard, search, map, Notion discovery + selective ingest, in-app docs | ✅ live (free-text capture disabled pending a source-editing surface) |

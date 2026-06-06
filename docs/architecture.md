@@ -45,7 +45,7 @@ The reason to build instead of adopt is **what holds the truth**: Hermes-style m
 
 | Decision | Why |
 |---|---|
-| **Postgres + pgvector as the substrate** | One engine for relational (`sources`/`chunks` + a materialized `path`), vectors (HNSW), and full-text (`tsvector`). A document/vector RAG store — which is what the brain's reads actually are. Replaces the earlier graphiti-on-FalkorDB design (which never traversed the graph; see [`learnings.md`](./learnings.md) Chapter 6). |
+| **Postgres + pgvector as the substrate** | One engine for relational (`sources`/`chunks` + a materialized `path`), vectors (HNSW), and full-text (`tsvector`). A document/vector RAG store — which is what the brain's reads actually are (chosen over a graph; [`learnings.md`](./learnings.md) Chapter 6). |
 | **Sources canonical, chunks derived** | A source (doc/capture/Notion page) owns its chunks; ingest/edit does wipe-replace (`DELETE` chunks → re-embed → re-`INSERT`). Currency is guaranteed by construction — no bi-temporal invalidation, no write-time entity resolution. |
 | **No write-time LLM** | Ingest is split + embed + insert. Embedding (Voyage) is the only external call and the embedder is pluggable. No extraction, no decomposition, no schema-tagging. |
 | **A smart `brain` service, thin consumers** | The brain (FastMCP + asyncpg in-process) owns the substrate: ingest, hybrid recall, and profile assembly. Consumers (the PWA, Claude Code, your apps) stay dumb and read-only. |
@@ -150,14 +150,9 @@ diff-and-re-embed is a later optimization, not before it's needed.
 | **Deployment** | Single docker-compose on a small VPS | All services on one box. Iteration: `git pull && docker compose up -d --build`. |
 | **TLS / domain** | Caddy + Let's Encrypt | UFW restricts to 80/443; fail2ban handles abuse |
 
-## How it got here (history in brief)
+## History, open questions, plans
 
-- **Phase 0** — VPS substrate: Ubuntu LTS, UFW, Caddy, Tailscale, docker-compose.
-- **Phase 1 (graph era)** — brain online on graphiti-core over FalkorDB; Claude Code reading it via MCP. Shipped, then superseded.
-- **Phase 2** — the standalone `brain` service + the capture PWA, Google-auth'd at the edge.
-- **Document-substrate cutover (2026-05/06)** — measured the read path, found the graph was never traversed, replaced it with sources + chunks on Postgres + pgvector; recall-precision work (section chunking, complete-mode) and the consumer `doc`/`map` contract followed.
-
-The full chapter-by-chapter story — what was believed, what broke, what changed — is [`learnings.md`](./learnings.md). Open design questions live in [`brain-architecture.md`](./brain-architecture.md); pending feature plans in [`../plans/`](../plans/).
+Design history — what was believed, what broke, what changed, chapter by chapter — lives in [`learnings.md`](./learnings.md). Open design questions live in [`brain-architecture.md`](./brain-architecture.md); pending feature plans in [`../plans/`](../plans/).
 
 ## Honest tradeoffs (signed off)
 
@@ -171,4 +166,3 @@ The full chapter-by-chapter story — what was believed, what broke, what change
 - [pgvector](https://github.com/pgvector/pgvector)
 - [Voyage AI embeddings](https://docs.voyageai.com/)
 - [Hermes Agent (the turn-shaped alternative)](https://github.com/nousresearch/hermes-agent)
-- [Graphiti](https://github.com/getzep/graphiti) — the graph era's engine (historical)

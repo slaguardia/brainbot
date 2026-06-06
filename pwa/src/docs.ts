@@ -77,6 +77,32 @@ function parseGroup(tokens: Token[]): string {
   return marked.parser(list);
 }
 
+// ```mermaid fences render as real diagrams. The mermaid library is heavy, so
+// it's dynamically imported (a separate chunk) only when a rendered page
+// actually contains one; a block that fails to parse stays visible as source.
+let mermaidSeq = 0;
+async function renderMermaidIn(article: HTMLElement): Promise<void> {
+  const blocks = Array.from(
+    article.querySelectorAll<HTMLElement>("pre code.language-mermaid"),
+  );
+  if (!blocks.length) return;
+  const { default: mermaid } = await import("mermaid");
+  mermaid.initialize({ startOnLoad: false, theme: "dark" });
+  for (const code of blocks) {
+    const pre = code.closest("pre");
+    if (!pre) continue;
+    try {
+      const { svg } = await mermaid.render(`mmd-${++mermaidSeq}`, code.textContent ?? "");
+      const div = document.createElement("div");
+      div.className = "mermaid-diagram";
+      div.innerHTML = svg;
+      pre.replaceWith(div);
+    } catch {
+      // leave the source block in place
+    }
+  }
+}
+
 // Split a markdown doc into the page shape: the `#` title + everything before
 // the first `##` becomes the hero; each `##` heading starts a docs-section
 // (the section wrapper carries the scrollspy id).
@@ -181,7 +207,10 @@ function showPage(container: HTMLElement, pageId: string): void {
 
   if (switching) {
     const article = container.querySelector<HTMLElement>(".kb-content .docs-article");
-    if (article) article.innerHTML = page.body;
+    if (article) {
+      article.innerHTML = page.body;
+      void renderMermaidIn(article);
+    }
     const toc = container.querySelector<HTMLElement>(".kb-toc");
     if (toc) {
       toc.innerHTML =

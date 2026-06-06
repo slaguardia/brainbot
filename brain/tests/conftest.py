@@ -179,9 +179,9 @@ def mcp_call(clean_db):
 
 @pytest.fixture
 def seed(clean_db, fake_embed):
-    """seed(title=..., text=..., path=..., source_id=..., parent_id=...) -> id.
-    Runs upsert_source with a short-lived pool of its own (own event loop —
-    never shared with the client's)."""
+    """seed(title=..., text=..., path=..., source_id=..., parent_id=...,
+    last_edited=...) -> id. Runs upsert_source with a short-lived pool of its
+    own (own event loop — never shared with the client's)."""
 
     def _seed(
         *,
@@ -190,6 +190,7 @@ def seed(clean_db, fake_embed):
         path: str,
         source_id: str | None = None,
         parent_id: str | None = None,
+        last_edited: str | None = None,
     ) -> str:
         async def _run() -> str:
             import asyncpg
@@ -205,6 +206,7 @@ def seed(clean_db, fake_embed):
                     path=path,
                     source_id=source_id,
                     parent_id=parent_id,
+                    last_edited=last_edited,
                 )
                 return src_id
             finally:

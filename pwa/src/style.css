@@ -585,6 +585,26 @@ a.brand {
   background: transparent;
   cursor: default;
 }
+/* The one bulk re-pull action, inline in the counts line — a pull button
+   sized to sit in that small mono row. */
+.disc-resync {
+  color: var(--link);
+  background: var(--link-bg);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-sm);
+  padding: 1px 8px;
+  font-size: 12px;
+  font-family: var(--font-mono);
+  cursor: pointer;
+}
+.disc-resync:hover {
+  border-color: var(--link);
+}
+.disc-resync:disabled {
+  color: var(--fg-faint);
+  background: transparent;
+  cursor: default;
+}
 /* Pull-with-children modal: a small centered panel over a dimmed backdrop. */
 .disc-modal-overlay {
   position: fixed;

@@ -561,13 +561,22 @@ def _token_estimate(text: str) -> int:
     return len(text) // 4
 
 
-async def source_ids(pool: asyncpg.Pool) -> set[str]:
-    """The ids of every ingested source — lets /notion/pages flag which of the
-    integration-visible pages are already in the brain (Notion page uuid == our
-    source id)."""
+async def sources_last_edited(pool: asyncpg.Pool) -> dict[str, str | None]:
+    """Every ingested source's id mapped to the origin edit time captured at
+    ingest (ISO 8601, or None for sources ingested before that was recorded) —
+    lets /notion/pages flag which of the integration-visible pages are already
+    in the brain and whether the brain's copy is current (Notion page uuid ==
+    our source id)."""
     async with pool.acquire() as conn:
-        rows = await conn.fetch("SELECT id FROM sources")
-    return {str(r["id"]) for r in rows}
+        rows = await conn.fetch("SELECT id, source_last_edited FROM sources")
+    return {
+        str(r["id"]): (
+            r["source_last_edited"].isoformat()
+            if r["source_last_edited"] is not None
+            else None
+        )
+        for r in rows
+    }
 
 
 # ---- doc (deterministic fetch): one whole document by stable id ---------------

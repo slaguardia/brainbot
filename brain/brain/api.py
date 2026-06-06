@@ -29,7 +29,7 @@ from starlette.responses import JSONResponse
 from .config import Config
 from .db import apply_schema, close_pool, get_pool
 from .notion import NotionError, fetch_page, list_pages
-from .store import doc, map_, profile, recall, source_ids, upsert_source
+from .store import doc, map_, profile, recall, sources_last_edited, upsert_source
 
 logger = logging.getLogger(__name__)
 
@@ -112,7 +112,10 @@ async def ingest(request: Request) -> JSONResponse:
 async def notion_pages(_request: Request) -> JSONResponse:
     """GET /notion/pages — every Notion page shared with the integration (the
     discovery universe), each flagged `ingested` by checking its uuid against the
-    sources table. Raw facts only — tree-building/presentation is the consumer's.
+    sources table. Ingested pages also carry `ingested_last_edited` — the origin
+    edit time the brain captured at ingest — so a consumer can compare it to
+    Notion's current `last_edited_time` and spot stale copies. Raw facts only —
+    tree-building/staleness-judging/presentation is the consumer's.
     """
     try:
         pages = await asyncio.to_thread(list_pages)
@@ -125,13 +128,17 @@ async def notion_pages(_request: Request) -> JSONResponse:
 
     try:
         pool = await get_pool()
-        ingested = await source_ids(pool)
+        ingested = await sources_last_edited(pool)
     except Exception as e:  # noqa: BLE001 — db failure: surface, don't 500
-        logger.exception("notion/pages: source_ids failed")
+        logger.exception("notion/pages: sources_last_edited failed")
         return JSONResponse({"error": f"discovery failed: {e}"}, status_code=502)
 
     for p in pages:
         p["ingested"] = p["id"] in ingested
+        if p["ingested"]:
+            # None for sources ingested before the edit time was recorded — the
+            # consumer should treat those as possibly stale.
+            p["ingested_last_edited"] = ingested[p["id"]]
     return JSONResponse({"pages": pages})
 
 

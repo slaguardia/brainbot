@@ -1,9 +1,10 @@
 // The discovery view (`#discover`) — what the Notion integration can see vs.
 // what's in the brain. GET /api/notion/pages returns every shared page (children
-// included) as flat {id, title, parent_id, last_edited_time, url, ingested}
-// facts; this view builds the parent/child tree and offers a per-page "pull"
-// action that POSTs the page's URL to /api/ingest (the brain's existing write
-// path). Selective pull only — no resync/staleness management lives here.
+// included) as flat {id, title, parent_id, last_edited_time, url, ingested,
+// ingested_last_edited} facts; this view builds the parent/child tree and offers
+// a per-page "pull" action that POSTs the page's URL to /api/ingest (the brain's
+// existing write path), plus ONE bulk "re-pull" button for ingested pages whose
+// Notion copy moved past what the brain captured. No per-page resync UI.
 //
 // All Notion-returned strings (titles) are escaped before they touch innerHTML.
 
@@ -24,6 +25,16 @@ interface NotionPage {
   last_edited_time?: string | null;
   url?: string;
   ingested?: boolean;
+  ingested_last_edited?: string | null; // origin edit time the brain captured at ingest
+}
+
+// A pulled page is stale when Notion's copy moved past the one the brain
+// captured at ingest — or when the brain recorded no edit time at all (sources
+// ingested before that was stored), where "possibly stale" must mean re-pull.
+function isStale(p: NotionPage): boolean {
+  if (!p.ingested || !p.url || !p.last_edited_time) return false;
+  if (!p.ingested_last_edited) return true;
+  return new Date(p.last_edited_time) > new Date(p.ingested_last_edited);
 }
 
 // --- discovery cache ----------------------------------------------------------
@@ -31,7 +42,9 @@ interface NotionPage {
 // sessionStorage: every (re)visit renders instantly from cache, the Refresh
 // button is the explicit re-fetch, and pulls patch the cached entries in place.
 
-const CACHE_KEY = "discover-pages-v1";
+// v2: entries grew `ingested_last_edited` — a v1 cache would mark every
+// ingested page stale until the next real fetch.
+const CACHE_KEY = "discover-pages-v2";
 
 let currentPages: NotionPage[] = [];
 let fetchedAt = 0;
@@ -164,8 +177,15 @@ function renderPages(body: HTMLElement, pages: NotionPage[]): void {
   const at = fetchedAt
     ? ` · synced ${new Date(fetchedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`
     : "";
+  // One bulk action — re-pull every ingested page whose Notion copy moved.
+  // No per-page resync UI; the handler recomputes the stale set from
+  // currentPages on click.
+  const nStale = real.filter(isStale).length;
+  const resync = nStale
+    ? ` · <button class="disc-resync" type="button">re-pull ${nStale} changed</button>`
+    : "";
   body.innerHTML = `
-    <p class="disc-counts">${n} page${n === 1 ? "" : "s"} visible · ${nIn} in the brain${at}</p>
+    <p class="disc-counts">${n} page${n === 1 ? "" : "s"} visible · ${nIn} in the brain${at}${resync}</p>
     <ul class="src-list disc-tree">${roots.map(renderNode).join("")}</ul>`;
 }
 
@@ -212,6 +232,13 @@ function renderNode(node: PageNode): string {
 function wireIngest(body: HTMLElement): void {
   body.addEventListener("click", (e) => {
     const btn = e.target as HTMLElement;
+    if (btn.classList.contains("disc-resync")) {
+      // Bulk re-pull: ingest is wipe-replace keyed on the page id, so re-posting
+      // each stale page's URL syncs it in place — same write path as a pull.
+      const urls = currentPages.filter(isStale).map((p) => p.url!);
+      if (urls.length) void pullBatch(body, btn as HTMLButtonElement, urls);
+      return;
+    }
     if (!btn.classList.contains("disc-pull")) return;
     // A pull button can sit inside a <summary>; without this the click ALSO
     // toggles the branch open/closed.
@@ -330,9 +357,12 @@ async function pullPage(btn: HTMLButtonElement, url: string): Promise<void> {
     }
     // Swap the button for the ingested badge in place — no full reload needed —
     // and patch the cache so the next render doesn't resurrect the pull button.
+    // The brain just captured the page at its listed edit time; record that too,
+    // or the next render would count the fresh pull as stale.
     const cached = currentPages.find((p) => p.url === url);
     if (cached) {
       cached.ingested = true;
+      cached.ingested_last_edited = cached.last_edited_time ?? null;
       writeCache(currentPages, fetchedAt);
     }
     const badge = document.createElement("span");

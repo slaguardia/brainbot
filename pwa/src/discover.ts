@@ -17,7 +17,7 @@ function esc(s: unknown): string {
     .replace(/'/g, "&#39;");
 }
 
-interface NotionPage {
+export interface NotionPage {
   id?: string;
   kind?: string; // 'page' | 'database' — database rows are pages parented by a database
   title?: string;
@@ -31,7 +31,8 @@ interface NotionPage {
 // A pulled page is stale when Notion's copy moved past the one the brain
 // captured at ingest — or when the brain recorded no edit time at all (sources
 // ingested before that was stored), where "possibly stale" must mean re-pull.
-function isStale(p: NotionPage): boolean {
+// Exported: the home dashboard's sync status applies the same rule.
+export function isStale(p: NotionPage): boolean {
   if (!p.ingested || !p.url || !p.last_edited_time) return false;
   if (!p.ingested_last_edited) return true;
   return new Date(p.last_edited_time) > new Date(p.ingested_last_edited);
@@ -71,6 +72,26 @@ function writeCache(pages: NotionPage[], at: number = Date.now()): void {
   } catch {
     // Quota/private-mode failure: cache is an optimization, never a requirement.
   }
+}
+
+// The page list for callers outside this view (the home dashboard's sync
+// status): cached copy when one exists, live sweep otherwise — and a live
+// sweep always refreshes the shared cache, so the two views agree.
+export async function fetchNotionPages(force = false): Promise<NotionPage[]> {
+  if (!force) {
+    const cached = readCache();
+    if (cached) {
+      currentPages = cached;
+      return cached;
+    }
+  }
+  const res = await fetch(`/api/notion/pages`);
+  const data = (await res.json()) as { pages?: NotionPage[]; error?: string };
+  if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
+  const pages = Array.isArray(data.pages) ? data.pages : [];
+  currentPages = pages;
+  writeCache(pages);
+  return pages;
 }
 
 export function mountDiscover(container: HTMLElement): void {

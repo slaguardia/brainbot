@@ -381,12 +381,28 @@ main {
 .home-map {
   margin: 22px 0 0;
 }
+.home-map-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
 .home-map h2 {
   font-size: 13px;
   text-transform: uppercase;
   letter-spacing: 0.05em;
   color: var(--fg-faint);
   margin: 0 0 8px;
+}
+/* Notion sync status beside the Sources header: faint while checking/current,
+   and hosting the one re-pull button when pages drifted. */
+.home-sync {
+  color: var(--fg-faint);
+  font-size: 12px;
+  font-family: var(--font-mono);
+}
+.home-sync.is-current::before {
+  content: "✓ ";
+  color: var(--yes);
 }
 .src-list {
   list-style: none;

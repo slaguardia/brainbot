@@ -4,10 +4,17 @@
 //   • a search box: hybrid recall over every source (GET /api/recall)
 //   • a source map: the full path tree of ingested sources (GET /api/map)
 //
-// Both reads go through the owner read-proxy in server/index.ts; the PWA never
-// writes. Search and the map used to be separate hash routes — they're embedded
-// here now. All brain-returned strings (titles, paths, recall text) are escaped
-// before they touch innerHTML — source data is never markup.
+// Both reads go through the owner read-proxy in server/index.ts. Search and the
+// map used to be separate hash routes — they're embedded here now. All
+// brain-returned strings (titles, paths, recall text) are escaped before they
+// touch innerHTML — source data is never markup.
+//
+// The Sources header also carries a Notion sync status: after the map renders,
+// a background check (discover.ts's shared page list + staleness rule) reports
+// "current with Notion" or offers one manual re-pull of the changed pages —
+// detection is automatic, re-pulling is always the human's click.
+
+import { fetchNotionPages, isStale, type NotionPage } from "./discover";
 
 function esc(s: unknown): string {
   return String(s ?? "")
@@ -108,13 +115,72 @@ function renderHome(container: HTMLElement, sources: MapSource[]): void {
     <a class="home-discover" href="#discover">Discover Notion pages →</a>
 
     <section class="home-map">
-      <h2>Sources</h2>
+      <div class="home-map-head">
+        <h2>Sources</h2>
+        <span class="home-sync">checking Notion…</span>
+      </div>
       <div class="src-tree">${renderTree(sources)}</div>
     </section>
 
     ${CAPTURE_NOTE}`;
 
   wireSearch(container);
+  void checkSync(container);
+}
+
+// --- Notion sync status ------------------------------------------------------
+
+async function checkSync(container: HTMLElement): Promise<void> {
+  const el = container.querySelector<HTMLElement>(".home-sync");
+  if (!el) return;
+  let stale: NotionPage[];
+  try {
+    stale = (await fetchNotionPages()).filter(isStale);
+  } catch {
+    // The status is an enhancement — a Notion failure never breaks home.
+    el.remove();
+    return;
+  }
+  if (stale.length === 0) {
+    el.textContent = "current with Notion";
+    el.classList.add("is-current");
+    return;
+  }
+  el.innerHTML = `${stale.length} changed in Notion <button class="disc-resync" type="button">re-pull</button>`;
+  el.querySelector("button")!.addEventListener("click", function (this: HTMLButtonElement) {
+    void repull(container, this, stale);
+  });
+}
+
+// Sequential re-pull of the stale pages (same wipe-replace /api/ingest path the
+// discover view uses), then a full home reload: the map picks up any new
+// titles/paths and the re-run sync check — against the cache the live re-fetch
+// just refreshed — reports what's left (a failed page simply stays counted).
+async function repull(
+  container: HTMLElement,
+  btn: HTMLButtonElement,
+  stale: NotionPage[],
+): Promise<void> {
+  btn.disabled = true;
+  for (let i = 0; i < stale.length; i++) {
+    btn.textContent = `re-pulling ${i + 1}/${stale.length}…`;
+    try {
+      await fetch(`/api/ingest`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: stale[i].url }),
+      });
+    } catch {
+      // Page stays stale; the re-rendered status counts it again.
+    }
+  }
+  try {
+    await fetchNotionPages(true);
+  } catch {
+    // Notion died mid-flow: the cache still holds the pre-pull list, so the
+    // re-rendered status may overcount until the next successful sweep.
+  }
+  void loadHome(container);
 }
 
 // --- Source map: path tree -------------------------------------------------

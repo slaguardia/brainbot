@@ -360,8 +360,9 @@ main {
   margin-top: 8px;
 }
 
-/* Discover link: sits right above the source map — the doorway to pulling
-   more Notion pages into the brain. */
+/* Discover link — the doorway to pulling more Notion pages into the brain.
+   Standalone (empty-brain hero) it's a chunky button; in the Sources header
+   row it slims down and hugs the right edge. */
 .home-discover {
   display: inline-block;
   margin: 22px 0 0;
@@ -375,6 +376,12 @@ main {
 }
 .home-discover:hover {
   border-color: var(--link);
+}
+.home-map-head .home-discover {
+  margin: 0 0 0 auto;
+  padding: 3px 10px;
+  font-size: 12.5px;
+  border-radius: var(--r-sm);
 }
 
 /* --- Source map: path tree -------------------------------------------------*/

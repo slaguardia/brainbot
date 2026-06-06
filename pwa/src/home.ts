@@ -112,12 +112,11 @@ function renderHome(container: HTMLElement, sources: MapSource[]): void {
 
     <div class="home-results" hidden></div>
 
-    <a class="home-discover" href="#discover">Discover Notion pages →</a>
-
     <section class="home-map">
       <div class="home-map-head">
         <h2>Sources</h2>
         <span class="home-sync">checking Notion…</span>
+        <a class="home-discover" href="#discover">Discover Notion pages →</a>
       </div>
       <div class="src-tree">${renderTree(sources)}</div>
     </section>

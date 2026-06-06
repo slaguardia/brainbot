@@ -97,8 +97,11 @@ Audit each page in scope against these, in priority order:
    title ("Salary details live in [[Compensation]]"). Title mentions survive
    ingest as searchable text; inline URLs don't.
 5. **Purpose preamble.** 1–3 plain lines under the title saying what the page
-   is — this becomes the title-headed chunk and is what recalls when someone
-   asks about the page's subject as a whole.
+   is — this becomes the title-headed chunk (the only chunk whose embed input
+   carries the title's words) and is what recalls when someone asks about the
+   page's subject as a whole. Write it as keyword-dense content — the nouns a
+   query would actually use — never meta-instructions ("use this page
+   when…"), which embed fine but match nothing anyone asks.
 6. **Simplify prose, faithfully.** Tighten wording, cut filler, keep every
    fact.
 7. **Title hygiene.** Page titles become path segments — short nouns a

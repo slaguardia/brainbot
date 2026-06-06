@@ -27,8 +27,10 @@ directly and report what changed afterward:
 - re-ingesting edited pages into the brain
 
 **Surface first, act only on approval** — anything that removes content.
-Collect candidates into a *deletion docket*: what, where, why, and where the
-content survives. Present the docket, act only on the approved entries:
+Collect candidates into a *deletion docket* and present it as a table with a
+column for each of: what, the page's **full path/ancestry** (so the user can
+place where it's coming from), why, and where the content survives. Act only
+on the approved entries:
 
 - trimming a duplicated passage from a non-canonical page
 - removing a section or block outright
@@ -101,7 +103,9 @@ Audit each page in scope against these, in priority order:
    fact.
 7. **Title hygiene.** Page titles become path segments — short nouns a
    `scope=` prefix would target. Two pages with the same title confuse paths
-   and `[[pointers]]`: rename for uniqueness.
+   and `[[pointers]]`: rename for uniqueness. Exception: titles derived from
+   operational database properties (e.g. a tracker's Company column) — the
+   user filters by these; recommend the rename instead of applying it.
 8. **Databases**: rows are themselves pages; the brain ingests DB child pages
    individually (page-only). Curate row-page *content*; don't restructure
    database schemas — out of scope.
@@ -179,8 +183,11 @@ skill for stack startup):
 3. **Tidy** — apply every no-ask edit (restructure, reword, retitle, move,
    file, preambles, pointers), one page at a time, re-ingesting each page as
    it's edited. If an ingest fails, stop and report before editing more.
-4. **Docket** — present every removal candidate with rationale and where the
-   content survives; apply only what's approved; re-ingest affected pages.
+4. **Docket** — present every removal candidate (with its full path, rationale,
+   and where the content survives); apply only what's approved; re-ingest
+   affected pages. To archive when the MCP server has no trash tool, use the
+   REST API with the integration token:
+   `PATCH /v1/pages/{id}` body `{"archived": true}` — recoverable Notion trash.
 5. **Verify** — recall battery: for each major section touched, one
    natural-language query that should hit it; confirm the right section +
    page wins, trimmed dupes no longer surface, and an off-topic control stays

@@ -17,11 +17,11 @@ import { fileURLToPath } from "node:url";
 
 const PORT = Number(process.env.PORT ?? 8787);
 
-// Brain service base. Reads are proxied here so the owner PWA can surface the
-// brain's recall/map without the browser talking to the brain directly. The one
-// proxied write is POST /api/ingest — the discovery view's "pull this page into
-// the brain" action, forwarding to the brain's existing /ingest. Free-text
-// capture stays disabled.
+// Brain service base. Reads are proxied here (GET /api/brain/recall|doc|map) so
+// the owner PWA can surface the brain's recall/doc/map without the browser
+// talking to the brain directly. The one proxied write is POST /api/ingest — the
+// discovery view's "pull this page into the brain" action, forwarding to the
+// brain's existing /ingest. Free-text capture stays disabled.
 const BRAIN = process.env.BRAIN_SERVICE_URL ?? "http://brain:8100";
 
 const HERE = fileURLToPath(new URL(".", import.meta.url));
@@ -177,12 +177,26 @@ const server = createServer((req, res) => {
     json(res, 200, { ok: true });
     return;
   }
-  // Owner read-views: recall search + source map, proxied GET-only to the brain.
-  if (req.method === "GET" && url.pathname === "/api/recall") {
+  // Identity: echo the email the edge's oauth2-proxy injected as
+  // X-Auth-Request-Email. With no edge in front (local dev) the header is absent
+  // and we return {} — the toolkit's currentUser() then resolves to null (no
+  // login UI). Never trust a client-supplied value; this header is set edge-side.
+  if (req.method === "GET" && url.pathname === "/api/me") {
+    const email = req.headers["x-auth-request-email"];
+    json(res, 200, typeof email === "string" && email ? { email } : {});
+    return;
+  }
+  // Owner read-views: the toolkit brain client (recall / doc / map) calls these
+  // /api/brain/* routes; we proxy GET-only to the brain, bearer + URL server-side.
+  if (req.method === "GET" && url.pathname === "/api/brain/recall") {
     void proxyRead(res, url, "/recall", ["q", "k", "scope", "complete"]);
     return;
   }
-  if (req.method === "GET" && url.pathname === "/api/map") {
+  if (req.method === "GET" && url.pathname === "/api/brain/doc") {
+    void proxyRead(res, url, "/doc", ["id"]);
+    return;
+  }
+  if (req.method === "GET" && url.pathname === "/api/brain/map") {
     void proxyRead(res, url, "/map", ["scope"]);
     return;
   }

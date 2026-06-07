@@ -1,214 +1,16 @@
-/* Cool-dark palette ported from the scout consumer (cool navy surfaces,
-   purple brand accent, blue interactive, emerald/amber/coral semantics).
-   The whole UI (chrome, buttons, docs, dashboard) speaks scout. */
-:root {
-  /* Surfaces */
-  --bg: #0b0d12;
-  --bg-2: #0f1218;
-  --bg-elevated: #14171f; /* "panel" — cards, inputs, raised surfaces */
-  --panel-2: #181c26;
-  --panel-3: #1d2230;
-
-  /* Text */
-  --fg: #e8eaf0;
-  --fg-muted: #9099a8;
-  --fg-faint: #6c7484;
-
-  /* Lines */
-  --border: #232838;
-  --border-strong: #2d3243;
-
-  /* Brand accent (purple) + interactive (blue) */
-  --accent: #8b6dff;
-  --accent-press: #7a5cf0;
-  --link: #7aa9ff;
-  --link-bg: rgba(122, 169, 255, 0.12);
-
-  /* Semantic signal */
-  --yes: #34d399;
-  --yes-bg: rgba(52, 211, 153, 0.12);
-  --maybe: #f5b942;
-  --maybe-bg: rgba(245, 185, 66, 0.12);
-  --no: #ef6464;
-  --no-bg: rgba(239, 100, 100, 0.12);
-  --error: #ef6464;
-  --error-bg: rgba(239, 100, 100, 0.12);
-
-  /* Radius */
-  --r-sm: 4px;
-  --r-md: 6px;
-  --r-lg: 10px;
-  --r-xl: 14px;
-  --radius: 10px;
-  --radius-lg: 14px;
-
-  /* Motion — scout's snappy easing + three tiers */
-  --ease: cubic-bezier(0.32, 0.72, 0, 1);
-  --dur-fast: 120ms;
-  --dur-base: 180ms;
-  --dur-slow: 260ms;
-
-  /* Shadows */
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.25);
-  --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.35);
-  --shadow-lg: -16px 0 48px rgba(0, 0, 0, 0.55);
-  --shadow-soft: var(--shadow-md);
-
-  /* Font stacks */
-  --font-ui: -apple-system, BlinkMacSystemFont, "SF Pro Text", Inter, "Segoe UI",
-    Roboto, system-ui, sans-serif;
-  --font-mono: "JetBrains Mono", "Fira Code", "SF Mono", ui-monospace, Menlo,
-    Consolas, monospace;
-
-  color-scheme: dark;
-}
-
-* {
-  box-sizing: border-box;
-}
-
-/* Scout-style thin themed scrollbars. */
-* {
-  scrollbar-width: thin;
-  scrollbar-color: var(--border-strong) transparent;
-}
-::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
-}
-::-webkit-scrollbar-thumb {
-  background: var(--border-strong);
-  border-radius: 999px;
-}
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-::selection {
-  background: rgba(139, 109, 255, 0.32);
-}
-
-html,
-body {
-  margin: 0;
-  padding: 0;
-  height: 100%;
-  background: var(--bg);
-  color: var(--fg);
-  font-family: var(--font-ui);
-  font-size: 15px;
-  font-feature-settings: "ss01", "cv11";
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  -webkit-tap-highlight-color: transparent;
-  text-rendering: optimizeLegibility;
-}
-
-main {
-  display: flex;
-  flex-direction: column;
-  min-height: 100dvh;
-  gap: 14px;
-  padding: max(18px, env(safe-area-inset-top))
-    max(20px, env(safe-area-inset-right))
-    max(20px, env(safe-area-inset-bottom))
-    max(20px, env(safe-area-inset-left));
-  max-width: 720px;
-  margin: 0 auto;
-  width: 100%;
-}
-
-/* Slim header: brand wordmark left, view-nav links right. Carries scout's
-   brand identity while keeping the dashboard above the fold. */
-.cap-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  flex: 0 0 auto;
-}
-
-/* The view-nav: search / map / docs, laid out as a row of pill links. */
-.cap-nav {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-/* The glitch wordmark — scout's signature. RGB-split on hover, the only
-   flashy motion in the whole UI. */
-.brand {
-  font-family: var(--font-mono);
-  font-size: 17px;
-  font-weight: 800;
-  letter-spacing: 0.22em;
-  text-transform: lowercase;
-  color: var(--fg);
-  text-decoration: none;
-  user-select: none;
-  cursor: default;
-  /* Chromatic RGB-split glitch — present at rest; hover amplifies it. */
-  text-shadow: -1.5px 0 rgba(255, 45, 120, 0.72),
-    1.5px 0 rgba(40, 224, 255, 0.72), 0 0 16px rgba(139, 109, 255, 0.3);
-}
-.brand:hover {
-  animation: brand-glitch 360ms steps(2, end) 2;
-}
-@keyframes brand-glitch {
-  0% {
-    transform: translate(0, 0);
-    text-shadow: -1.5px 0 rgba(255, 45, 120, 0.72), 1.5px 0 rgba(40, 224, 255, 0.72);
-  }
-  25% {
-    transform: translate(-2px, 0);
-    text-shadow: 2.5px 0 rgba(255, 45, 120, 0.9), -2.5px 0 rgba(40, 224, 255, 0.9);
-  }
-  50% {
-    transform: translate(2px, -1px);
-    text-shadow: -2.5px 0 rgba(255, 45, 120, 0.9), 2.5px 0 rgba(40, 224, 255, 0.9);
-  }
-  75% {
-    transform: translate(-1px, 1px);
-    text-shadow: 1.5px 0 rgba(255, 45, 120, 0.72), -1.5px 0 rgba(40, 224, 255, 0.72);
-  }
-  100% {
-    transform: translate(0, 0);
-    text-shadow: -1.5px 0 rgba(255, 45, 120, 0.72), 1.5px 0 rgba(40, 224, 255, 0.72);
-  }
-}
-
-.cap-nav a {
-  font-family: var(--font-mono);
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: lowercase;
-  color: var(--fg-muted);
-  text-decoration: none;
-  padding: 6px 11px;
-  border-radius: var(--r-md);
-  background: var(--bg-elevated);
-  border: 1px solid var(--border);
-  transition: color var(--dur-fast) var(--ease),
-    border-color var(--dur-fast) var(--ease),
-    background-color var(--dur-fast) var(--ease);
-}
-.cap-nav a:hover {
-  color: var(--fg);
-  border-color: var(--border-strong);
-  background: var(--panel-2);
-}
-.cap-nav a:focus-visible {
-  outline: none;
-  border-color: var(--link);
-  box-shadow: 0 0 0 3px var(--link-bg);
-}
+/* ===========================================================================
+   App-view CSS for the brainbot PWA. The :root palette, base resets, and the
+   shared app chrome (.cap-head / .cap-nav / .brand + main layout) now live in
+   @brainbot/web-toolkit/base.css (imported in main.ts) — this file holds ONLY
+   the app-view styles the toolkit does not provide: the home hub, the #docs
+   knowledge base, and the #discover view.
+   =========================================================================== */
 
 /* ===========================================================================
    Home hub (default view, no hash). The one place you read the brain: stat
    tiles (source / domain counts), an embedded recall search box, and a
-   hierarchical source map — all read from /api/map and /api/recall. Replaces
-   the old capture textarea and the separate #search / #map routes.
+   hierarchical source map — all read from /api/brain/map and /api/brain/recall.
+   Replaces the old capture textarea and the separate #search / #map routes.
    =========================================================================== */
 .home {
   flex: 1;
@@ -461,18 +263,6 @@ main {
 }
 
 /* ===========================================================================
-   Documentation view. Same scout palette; UI chrome is sans/mono. Reached via
-   the `#docs` hash route. The diagram legend hues map onto scout's semantic
-   colors: blue = embeddings, amber = search, emerald = store.
-   =========================================================================== */
-
-#home-view[hidden],
-#docs-view[hidden],
-#discover-view[hidden] {
-  display: none;
-}
-
-/* ===========================================================================
    Discovery view (#discover). What the Notion integration can see vs. what's
    in the brain, as a parent/child page tree with a per-page "pull" action.
    Reuses the home shell (.home section, .src-list tree rails).
@@ -489,10 +279,6 @@ main {
   letter-spacing: 0.05em;
   color: var(--fg-faint);
   margin: 0;
-}
-/* The brand wordmark doubles as the home link wherever it appears. */
-a.brand {
-  cursor: pointer;
 }
 .disc-refresh {
   color: var(--link);
@@ -675,7 +461,13 @@ a.brand {
   color: var(--fg);
 }
 
-#docs-view {
+/* ===========================================================================
+   Documentation view (#docs). Same scout palette; UI chrome is sans/mono. The
+   diagram legend hues map onto scout's semantic colors: blue = embeddings,
+   amber = search, emerald = store. Scoped to .kb (the docs view's root) since
+   the view now renders full-bleed into the toolkit shell's chrome:false slot.
+   =========================================================================== */
+.kb {
   --topbar-h: calc(52px + env(safe-area-inset-top));
   --chip-vec: var(--link); /* blue — embeddings / vector */
   --chip-search: var(--maybe); /* amber — search / retrieval */
@@ -1485,4 +1277,127 @@ a.brand {
     grid-template-columns: 1fr;
     gap: 2px;
   }
+}
+
+/* ===========================================================================
+   Apps-home launcher (#apps). A card per registry entry (apps.json): app
+   identity (icon/monogram + name), a health pill (connected / offline from a
+   live ping), and an Open link out to the app's own origin. Cards reuse the
+   toolkit .tk-card surface; these styles add the launcher-specific layout.
+   =========================================================================== */
+.apps-head {
+  display: flex;
+  align-items: baseline;
+  margin: 6px 0 4px;
+}
+.apps-head h2 {
+  margin: 0;
+  font-size: 17px;
+}
+.apps-sub {
+  color: var(--fg-muted);
+  font-size: 13.5px;
+  line-height: 1.55;
+  margin: 0 0 16px;
+}
+.apps-sub code {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 12.5px;
+  color: var(--fg);
+}
+.apps-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+}
+.app-card {
+  display: flex;
+}
+.app-card .tk-card-body {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 14px;
+  width: 100%;
+}
+.app-card-top {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.app-icon {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--r-md);
+  background: var(--panel-3);
+  border: 1px solid var(--border);
+  color: var(--fg);
+  font-size: 18px;
+  font-weight: 700;
+  overflow: hidden;
+}
+.app-icon img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.app-names {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.app-name {
+  color: var(--fg);
+  font-weight: 600;
+  font-size: 15px;
+}
+.app-short {
+  color: var(--fg-faint);
+  font-size: 12.5px;
+}
+.app-card-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.app-health {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--fg-faint);
+}
+.app-health::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--fg-faint);
+}
+.app-health.is-connected {
+  color: var(--yes);
+}
+.app-health.is-connected::before {
+  background: var(--yes);
+}
+.app-health.is-offline {
+  color: var(--no);
+}
+.app-health.is-offline::before {
+  background: var(--no);
+}
+.app-open {
+  color: var(--link);
+  font-size: 13px;
+  font-weight: 500;
+  text-decoration: none;
+  padding: 4px 8px;
+  border-radius: var(--r-md);
+}
+.app-open:hover {
+  background: var(--link-bg);
 }

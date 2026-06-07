@@ -4,3 +4,7 @@ dist-server/
 *.log
 .env
 .env.*
+
+# Generated at build time from the toolkit (npm run gen-pwa).
+public/manifest.webmanifest
+public/sw.js

@@ -1,77 +1,49 @@
+// App entry: skin + shell + offline plumbing come from @brainbot/web-toolkit;
+// this file wires the brainbot views into the toolkit's hash router.
+//
+// base.css gives the palette + base resets + shared chrome (.cap-head/.cap-nav/
+// .brand); components.css backs the toolkit component factories; style.css holds
+// the app-view CSS the toolkit doesn't provide (home/docs/discover). mountApp
+// renders the shared header/nav once and hash-routes into a content region —
+// re-invoking the matched view's factory on every navigation, which preserves
+// the donor's "re-fetch on return" behaviour (home re-reads /api/brain/map when
+// you come back from #discover). registerSW() registers /sw.js in production and
+// self-heals on localhost.
+//
+// Routes:
+//   ''                 → home hub (stats + embedded recall search + source map)
+//   docs / learnings   → in-app knowledge base (its own full-bleed KB layout, so
+//                        chrome:false — no shared header/gutters). `#learnings*`
+//                        aliases onto the docs view's Evolution page.
+//   discover           → Notion discovery (pull pages into the brain)
+//   apps               → apps-home launcher (cards for every platform app)
+
+import "@brainbot/web-toolkit/base.css";
+import "@brainbot/web-toolkit/components.css";
+import "./style.css";
+import { mountApp } from "@brainbot/web-toolkit/shell";
+import { registerSW } from "@brainbot/web-toolkit/pwa";
+
+import { mountApps } from "./apps";
 import { mountDiscover } from "./discover";
 import { mountDocs } from "./docs";
 import { mountHome } from "./home";
 
-const homeView = document.getElementById("home-view") as HTMLElement;
-const homeBody = document.getElementById("home-body") as HTMLElement;
-const docsView = document.getElementById("docs-view") as HTMLDivElement;
-const discoverView = document.getElementById("discover-view") as HTMLElement;
+mountApp(
+  {
+    "": () => ({ mount: (el) => mountHome(el) }),
+    docs: { view: () => ({ mount: (el) => mountDocs(el) }), chrome: false },
+    learnings: { view: () => ({ mount: (el) => mountDocs(el) }), chrome: false },
+    discover: () => ({ mount: (el) => mountDiscover(el) }),
+    apps: () => ({ mount: (el) => mountApps(el) }),
+  },
+  {
+    title: "brain",
+    nav: [
+      { label: "apps", href: "#apps", ariaLabel: "Apps on the brain platform" },
+      { label: "docs", href: "#docs", ariaLabel: "How the brain works" },
+    ],
+  },
+);
 
-// The landing view is the home hub: stat tiles + an embedded recall search box +
-// a hierarchical source map, all reading the brain through /api/*. (Search and
-// the source map used to be separate `#search` / `#map` routes; they live here
-// now.) Mounted on load AND re-mounted on every return to the home hash (see
-// route()), so pages pulled in #discover show up without a full reload.
-mountHome(homeBody);
-
-// Hash router: `#docs` (and `#docs/<page>`) shows the documentation view — a
-// knowledge base whose own sidenav switches between pages (How the brain works,
-// Evolution). `#learnings` (and `#learnings/ch<n>`) alias onto the docs view's
-// Evolution page so old links resolve. Anything else is the home hub. The docs
-// view is mounted lazily on first visit so it never costs the home path
-// anything; docs.ts handles page switching on later hash changes.
-// `#discover` shows the Notion discovery view (what the integration can see vs.
-// what's ingested, with per-page pull). Remounted on each entry so the page list
-// is fresh — discovery is a "what's out there right now" question.
-let docsMounted = false;
-function route() {
-  const hash = location.hash.replace(/^#/, "");
-  const onDocs = hash.startsWith("docs") || hash.startsWith("learnings");
-  const onDiscover = hash.startsWith("discover");
-  if (onDocs && !docsMounted) {
-    mountDocs(docsView);
-    docsMounted = true;
-  }
-  if (onDiscover) {
-    mountDiscover(discoverView);
-  }
-  const onHome = !onDocs && !onDiscover;
-  if (onHome && homeView.hidden) {
-    // Coming BACK to home (it was hidden): re-fetch stats + source map so pages
-    // pulled in #discover show up without a manual reload.
-    mountHome(homeBody);
-  }
-  docsView.hidden = !onDocs;
-  discoverView.hidden = !onDiscover;
-  homeView.hidden = !onHome;
-  if (onDocs && !/^#(docs|learnings)\//.test(location.hash)) {
-    // Land at the top for a plain entry, but let a `#docs/<page>/<section>` deep
-    // link keep the scroll position docs.ts set on mount.
-    window.scrollTo(0, 0);
-  }
-}
-window.addEventListener("hashchange", route);
-route();
-
-// Service worker: register it only for the installed PWA (production). On
-// localhost the app-shell cache just masks fresh dev builds, so instead tear
-// down any SW + caches a previous visit left behind (self-healing dev).
-const onLocalhost = ["localhost", "127.0.0.1", "[::1]", ""].includes(location.hostname);
-if ("serviceWorker" in navigator) {
-  if (onLocalhost) {
-    void navigator.serviceWorker.getRegistrations().then((regs) => {
-      for (const r of regs) void r.unregister();
-    });
-    if (window.caches) {
-      void caches.keys().then((keys) => {
-        for (const k of keys) void caches.delete(k);
-      });
-    }
-  } else {
-    window.addEventListener("load", () => {
-      void navigator.serviceWorker.register("/sw.js").catch(() => {
-        // SW failure is non-fatal — the docs/evolution views still work offline.
-      });
-    });
-  }
-}
+registerSW();

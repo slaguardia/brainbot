@@ -1,22 +1,12 @@
-import { defineConfig } from "vite";
+import { defineConfig, mergeConfig } from "vite";
+import { toolkitVite } from "@brainbot/web-toolkit/vite-preset";
 
-// Vite dev server proxies /api/* to the Node backend on :8787.
-// In prod the same Node process serves the built static assets, so the
-// proxy isn't needed.
-export default defineConfig({
-  server: {
-    port: 5173,
-    proxy: {
-      "/api": "http://127.0.0.1:8787",
-    },
-    fs: {
-      // docs.ts imports ../docs/*.md?raw from the repo root (the canonical
-      // docs rendered in the #docs view) — allow the dev server to serve them.
-      allow: [".", ".."],
-    },
-  },
-  build: {
-    outDir: "dist",
-    emptyOutDir: true,
-  },
-});
+// The toolkit preset standardizes the dev /api proxy, fs.allow ".." (so docs.ts's
+// ../../docs/*.md?raw imports resolve), and the dist build. The backend listens on
+// :8787, so point the dev proxy there.
+export default mergeConfig(
+  toolkitVite({ apiProxyTarget: "http://127.0.0.1:8787" }),
+  defineConfig({
+    // app-specific overrides only
+  }),
+);

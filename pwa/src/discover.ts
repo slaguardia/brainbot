@@ -95,13 +95,9 @@ export async function fetchNotionPages(force = false): Promise<NotionPage[]> {
 }
 
 export function mountDiscover(container: HTMLElement): void {
+  // The shared header/nav chrome is rendered by the toolkit shell (mountApp);
+  // this view renders only its body into the content region.
   container.innerHTML = `
-    <header class="cap-head">
-      <a class="brand" href="#" aria-label="brain — back to home">brain</a>
-      <nav class="cap-nav" aria-label="Brain views">
-        <a href="#docs">docs</a>
-      </nav>
-    </header>
     <section class="home discover">
       <div class="disc-head">
         <h2>Notion pages</h2>

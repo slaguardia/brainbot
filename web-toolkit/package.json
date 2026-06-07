@@ -1,0 +1,31 @@
+{
+  "name": "@brainbot/web-toolkit",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Shared frontend toolkit for brain-backed apps: design tokens, app shell, PWA plumbing, brain client, session helper. Vanilla TS + Vite, no UI framework.",
+  "exports": {
+    "./tokens": "./src/tokens/index.ts",
+    "./base.css": "./src/base.css",
+    "./components.css": "./src/components.css",
+    "./shell": "./src/shell/index.ts",
+    "./components": "./src/components/index.ts",
+    "./pwa": "./src/pwa/index.ts",
+    "./pwa/sw.js": "./src/pwa/sw.js",
+    "./brain": "./src/brain/index.ts",
+    "./session": "./src/session/index.ts",
+    "./vite-preset": "./src/vite-preset/index.ts"
+  },
+  "files": [
+    "src",
+    "dist"
+  ],
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "tsc -p tsconfig.build.json"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.0",
+    "vite": "^5.4.0"
+  }
+}

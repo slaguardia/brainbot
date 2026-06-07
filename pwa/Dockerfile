@@ -1,19 +1,29 @@
 # Build the client + transpile the server, then run from a slim image.
+#
+# Build context is the REPO ROOT (see compose/docker-compose.yml: context: ..)
+# because the PWA now depends on ../web-toolkit (a file: dependency) and docs.ts
+# imports ../../docs/*.md?raw — both live outside pwa/. Copy the toolkit, the
+# rendered docs, and the app, install (resolving the file dep), then build.
 FROM node:22-alpine AS build
 WORKDIR /app
-COPY package.json ./
+# The toolkit first (the file: dep must exist before `npm install` in pwa/).
+COPY web-toolkit ./web-toolkit
+# Only the docs docs.ts renders (?raw imports); keeps the context lean.
+COPY docs/brain-architecture.md docs/learnings.md docs/positioning.md ./docs/
+# The app.
+COPY pwa ./pwa
+WORKDIR /app/pwa
 RUN npm install --no-audit --no-fund
-COPY tsconfig.json tsconfig.server.json vite.config.ts index.html ./
-COPY public ./public
-COPY src ./src
 RUN npm run build
 
 FROM node:22-alpine
 WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=8787
-COPY --from=build /app/package.json ./
-COPY --from=build /app/dist ./dist
-COPY --from=build /app/dist-server ./dist-server
+# Runtime needs only the built client + transpiled server + package.json. The
+# toolkit is bundled into dist/ at build time; the backend never imports it.
+COPY --from=build /app/pwa/package.json ./
+COPY --from=build /app/pwa/dist ./dist
+COPY --from=build /app/pwa/dist-server ./dist-server
 EXPOSE 8787
 CMD ["node", "dist-server/server/index.js"]

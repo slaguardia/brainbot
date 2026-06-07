@@ -1,18 +1,21 @@
 // The home hub (default view, no hash) — the one place you read the brain:
 //
 //   • stat tiles: how many sources, across how many top-level domains
-//   • a search box: hybrid recall over every source (GET /api/recall)
-//   • a source map: the full path tree of ingested sources (GET /api/map)
+//   • a search box: hybrid recall over every source (toolkit recall())
+//   • a source map: the full path tree of ingested sources (toolkit map())
 //
-// Both reads go through the owner read-proxy in server/index.ts. Search and the
-// map used to be separate hash routes — they're embedded here now. All
-// brain-returned strings (titles, paths, recall text) are escaped before they
-// touch innerHTML — source data is never markup.
+// Both reads use @brainbot/web-toolkit/brain, which calls the owner read-proxy
+// (/api/brain/recall|map) in server/index.ts. Search and the map used to be
+// separate hash routes — they're embedded here now. All brain-returned strings
+// (titles, paths, recall text) are escaped before they touch innerHTML — source
+// data is never markup.
 //
 // The Sources header also carries a Notion sync status: after the map renders,
 // a background check (discover.ts's shared page list + staleness rule) reports
 // "current with Notion" or offers one manual re-pull of the changed pages —
 // detection is automatic, re-pulling is always the human's click.
+
+import { recall, map, type Chunk, type Source } from "@brainbot/web-toolkit/brain";
 
 import { fetchNotionPages, isStale, type NotionPage } from "./discover";
 
@@ -25,17 +28,8 @@ function esc(s: unknown): string {
     .replace(/'/g, "&#39;");
 }
 
-interface MapSource {
-  path?: string;
-  title?: string;
-}
-
-interface RecallChunk {
-  heading?: string;
-  text?: string;
-  score?: number;
-  path?: string;
-}
+type MapSource = Pick<Source, "path" | "title">;
+type RecallChunk = Pick<Chunk, "heading" | "text" | "score" | "path">;
 
 const CAPTURE_NOTE = `
   <p class="cap-note">
@@ -51,13 +45,8 @@ export function mountHome(container: HTMLElement): void {
 
 async function loadHome(container: HTMLElement): Promise<void> {
   try {
-    const res = await fetch(`/api/map`);
-    if (!res.ok) {
-      renderUnavailable(container, `HTTP ${res.status}`);
-      return;
-    }
-    const data = (await res.json()) as { sources?: MapSource[] };
-    renderHome(container, Array.isArray(data.sources) ? data.sources : []);
+    const sources = await map();
+    renderHome(container, Array.isArray(sources) ? sources : []);
   } catch (err) {
     renderUnavailable(container, String(err));
   }
@@ -284,13 +273,7 @@ function wireSearch(container: HTMLElement): void {
 
 async function runRecall(q: string, results: HTMLElement): Promise<void> {
   try {
-    const res = await fetch(`/api/recall?q=${encodeURIComponent(q)}&k=8`);
-    if (!res.ok) {
-      results.innerHTML = `${clearBar(q)}<p class="home-status">Recall failed (${esc(res.status)}).</p>`;
-      return;
-    }
-    const data = (await res.json()) as { chunks?: RecallChunk[] };
-    const chunks = Array.isArray(data.chunks) ? data.chunks : [];
+    const chunks: RecallChunk[] = await recall(q, 8);
     if (chunks.length === 0) {
       results.innerHTML = `${clearBar(q)}<p class="home-status">No results for “${esc(q)}”.</p>`;
       return;

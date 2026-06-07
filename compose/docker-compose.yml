@@ -47,15 +47,20 @@ services:
   pwa:
     # One-screen PWA. Free-text capture is currently DISABLED (the brain's write
     # path is source ingest, not /capture). The backend serves static assets and
-    # proxies GET-only owner reads (/api/recall, /api/map → BRAIN_SERVICE_URL,
-    # default http://brain:8100) — so a whitelisted user has brain read access
+    # proxies GET-only owner reads (/api/brain/recall, /api/brain/doc,
+    # /api/brain/map → BRAIN_SERVICE_URL, default http://brain:8100) — so a
+    # whitelisted user has brain read access
     # with no bearer. The in-PWA docs/evolution views still serve.
     #
     # Auth lives at the edge: Caddy forward_auth → oauth2-proxy (Google OIDC +
     # email whitelist). The PWA itself is unauthenticated inside brainnet and
     # never receives a request that oauth2-proxy hasn't already cleared.
     build:
-      context: ../pwa
+      # Context is the repo root: the PWA depends on ../web-toolkit (a file: dep)
+      # and docs.ts imports ../../docs/*.md?raw — both outside pwa/. The Dockerfile
+      # COPYs web-toolkit/, the rendered docs, and pwa/ from this wider context.
+      context: ..
+      dockerfile: pwa/Dockerfile
     image: brainbot/pwa:0.1
     container_name: pwa
     restart: unless-stopped

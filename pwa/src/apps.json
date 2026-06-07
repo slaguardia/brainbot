@@ -1,0 +1,19 @@
+{
+  "_comment": "Launcher app registry — HAND-CURATED CONFIG, NOT ingested into the brain (system config is not knowledge-about-you; it never enters the brain's sources/chunks — see docs/app-platform.md 'Launcher app-registry schema'). One entry per app: {name, short_name, icon, url, health}. The launcher (#apps view) renders a card per entry, health-pings each entry's `health` URL (connected/offline), and links out to `url`. Edit by hand to add an app.",
+  "apps": [
+    {
+      "name": "brainbot",
+      "short_name": "brain",
+      "icon": "/icons/brainbot-192.png",
+      "url": "/",
+      "health": "/api/health"
+    },
+    {
+      "name": "scout",
+      "short_name": "scout",
+      "icon": "/icons/scout-192.png",
+      "url": "https://scout.example.com",
+      "health": "https://scout.example.com/healthz"
+    }
+  ]
+}

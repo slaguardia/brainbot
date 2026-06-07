@@ -1,0 +1,275 @@
+/* ===========================================================================
+   @brainbot/web-toolkit — components.css
+
+   The reusable UI primitives, HARVESTED from scout's internal/web/index.html
+   (buttons, cards, tables, modals, the SSE/progress drawer). The look is
+   preserved as-is — NO third-party component library. Scout's local token
+   names (--line, --line-2, --fg-dim, --fg-mute, --panel) are mapped onto the
+   toolkit's canonical palette names (--border, --border-strong, --fg-faint,
+   --fg-muted, --bg-elevated) so there is one source of truth.
+
+   Every class is prefixed `tk-` so it never collides with an app's own view
+   CSS. The component factories in ./components/index.ts emit elements with
+   these classes.
+   =========================================================================== */
+
+/* ---- button (scout .btn / .btn-primary) ---------------------------------- */
+.tk-btn {
+  background: var(--bg-elevated);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  padding: 8px 16px;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  transition: border-color var(--dur-fast) var(--ease),
+    background-color var(--dur-fast) var(--ease),
+    color var(--dur-fast) var(--ease);
+}
+.tk-btn:hover {
+  border-color: var(--border-strong);
+  background: var(--panel-2);
+}
+.tk-btn:focus-visible {
+  outline: none;
+  border-color: var(--link);
+  box-shadow: 0 0 0 3px var(--link-bg);
+}
+.tk-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.tk-btn-primary {
+  background: var(--link-bg);
+  border-color: var(--link);
+  color: var(--link);
+}
+.tk-btn-primary:hover {
+  background: rgba(122, 169, 255, 0.2);
+}
+/* purple brand variant — matches the donor's recall "search" button */
+.tk-btn-accent {
+  background: rgba(139, 109, 255, 0.12);
+  border-color: var(--accent);
+  color: #c2b8ff;
+}
+.tk-btn-accent:hover {
+  background: rgba(139, 109, 255, 0.22);
+}
+
+/* ---- card (scout's bordered raised surface — .table-wrap / .rv-hit) ------- */
+.tk-card {
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  background: var(--bg-elevated);
+  padding: 14px 16px;
+}
+.tk-card-title {
+  font-weight: 600;
+  color: var(--fg);
+  margin: 0 0 6px;
+  font-size: 14px;
+}
+.tk-card-body {
+  color: var(--fg-muted);
+  font-size: 13.5px;
+  line-height: 1.55;
+}
+
+/* ---- table (scout table + .table-wrap) ----------------------------------- */
+.tk-table-wrap {
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  background: var(--bg-2);
+  overflow: hidden;
+}
+.tk-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.tk-table thead th {
+  text-align: left;
+  padding: 11px 14px;
+  font-weight: 500;
+  font-size: 11.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--fg-faint);
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+  background: var(--bg-2);
+}
+.tk-table tbody td {
+  padding: 11px 14px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+  font-size: 13.5px;
+}
+.tk-table tbody tr:last-child td {
+  border-bottom: none;
+}
+.tk-table tbody tr:hover {
+  background: var(--bg-elevated);
+}
+
+/* ---- modal (scout .modal-scrim / .modal / head / body / foot) ------------ */
+.tk-modal-scrim {
+  position: fixed;
+  inset: 0;
+  background: rgba(5, 7, 10, 0.6);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+  z-index: 70;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--dur-base) var(--ease);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.tk-modal-scrim.tk-open {
+  opacity: 1;
+  pointer-events: auto;
+}
+.tk-modal {
+  width: 760px;
+  max-width: 92vw;
+  max-height: 86vh;
+  background: var(--bg-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-md);
+  display: flex;
+  flex-direction: column;
+  transform: scale(0.98);
+  transition: transform var(--dur-base) var(--ease);
+}
+.tk-modal-scrim.tk-open .tk-modal {
+  transform: scale(1);
+}
+.tk-modal-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--border);
+}
+.tk-modal-head h2 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  flex: 1;
+}
+.tk-modal-body {
+  padding: 14px 18px;
+  overflow-y: auto;
+  flex: 1;
+  color: var(--fg);
+  font-size: 13.5px;
+  line-height: 1.55;
+}
+.tk-modal-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 18px;
+  border-top: 1px solid var(--border);
+}
+.tk-modal-close {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--fg-muted);
+  border-radius: var(--r-sm);
+  padding: 3px 8px;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.tk-modal-close:hover {
+  color: var(--fg);
+  border-color: var(--border-strong);
+}
+
+/* ---- progress / SSE drawer (scout .drawer + .drawer-log) ----------------- */
+.tk-progress {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  width: 460px;
+  max-width: calc(100vw - 40px);
+  background: var(--panel-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-md);
+  z-index: 60;
+  transform: translateY(16px);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--dur-base) var(--ease),
+    transform var(--dur-base) var(--ease);
+  display: flex;
+  flex-direction: column;
+  max-height: 60vh;
+}
+.tk-progress.tk-open {
+  transform: translateY(0);
+  opacity: 1;
+  pointer-events: auto;
+}
+.tk-progress-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+}
+.tk-progress-title {
+  font-weight: 600;
+  font-size: 13px;
+  flex: 1;
+  text-transform: capitalize;
+}
+.tk-progress-head button {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--fg-muted);
+  border-radius: var(--r-sm);
+  padding: 3px 8px;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.tk-progress-head button:hover {
+  color: var(--fg);
+  border-color: var(--border-strong);
+}
+.tk-progress-log {
+  overflow-y: auto;
+  padding: 8px 14px 12px;
+  font: 12px/1.5 "SF Mono", Menlo, monospace;
+  color: var(--fg-muted);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.tk-progress-log .tk-ln {
+  padding: 2px 0;
+}
+/* err / warn lines get a tinted gutter so they stand out from the run noise */
+.tk-progress-log .tk-ln-err,
+.tk-progress-log .tk-ln-warn {
+  margin: 2px 0;
+  padding: 3px 8px;
+  border-radius: var(--r-sm);
+  border-left: 2px solid transparent;
+}
+.tk-progress-log .tk-ln-err {
+  color: var(--no);
+  background: rgba(239, 100, 100, 0.08);
+  border-left-color: var(--no);
+}
+.tk-progress-log .tk-ln-warn {
+  color: var(--maybe);
+  background: rgba(245, 185, 66, 0.08);
+  border-left-color: var(--maybe);
+}

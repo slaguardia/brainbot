@@ -183,19 +183,22 @@ function sectionFromHash(): string {
   return PAGES.some((p) => p.id === parts[0]) ? parts[1] ?? "" : parts[0] ?? "";
 }
 
-let mounted = false;
 let activePage = "";
 let detachSpy: (() => void) | null = null;
 
+// Mounted by the toolkit shell on every navigation into a docs/learnings route
+// (the shell empties the container first, then calls this). Page switching is
+// hash-driven: a tab link (`#docs/<page>`) is a real hashchange, so the shell
+// re-mounts us and we render the page the hash now selects. Section links use
+// history.replaceState (no hashchange), so the shell does NOT re-mount and the
+// scrollspy/smooth-scroll the active page wired up stays live.
 export function mountDocs(container: HTMLElement): void {
-  if (!mounted) {
-    container.innerHTML = shellHTML();
-    mounted = true;
-    // Switch pages when the hash changes while we're in docs/learnings.
-    window.addEventListener("hashchange", () => {
-      if (/^#(docs|learnings)/.test(location.hash)) showPage(container, pageFromHash());
-    });
-  }
+  container.innerHTML = shellHTML();
+  // The shell rebuilt the DOM, so the previous page's scrollspy observer (and the
+  // activePage marker) are stale — reset so showPage rebuilds the article/toc.
+  detachSpy?.();
+  detachSpy = null;
+  activePage = "";
   showPage(container, pageFromHash());
 }
 

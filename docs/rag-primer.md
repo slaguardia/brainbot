@@ -121,9 +121,9 @@ No LangChain, no Pinecone. Smaller stack on purpose — the whole retrieval pipe
 
 ---
 
-## 5. How is this different from Obsidian, Notion, NotebookLM, or Supermemory?
+## 5. How is this different from Obsidian or Notion?
 
-Reasonable question. They all hold knowledge about you, right?
+Reasonable question. They all hold notes, right?
 
 ### Obsidian
 
@@ -155,51 +155,11 @@ This is **a notebook designed to be read by programs, not humans**. The differen
 
 In fact brainbot is built on exactly that split: **your human-edited pages (Notion today) are the source of truth**, and the machine index (chunks + vectors) is derived from them and rebuilt on every edit. Editing the brain = editing the page.
 
-### NotebookLM
-
-Google's source-grounded AI notebook: you upload documents into a "notebook," then chat with an AI that answers **only from those sources, with citations** — plus generated study guides and the podcast-style Audio Overviews.
-
-**The shared bet is real:** like brainbot, NotebookLM holds that *your curated documents are the truth* and the AI must stay grounded in them rather than free-associating. If you just want to ask questions about your own material in a polished UI, NotebookLM does that better than brainbot ever will.
-
-**The differences are structural, not feature gaps:**
-
-- **Destination vs. service.** NotebookLM is an app you visit. Brainbot is an API your own apps call. NotebookLM has **no public API to query a notebook from code** — even its enterprise API only manages notebooks (create, share, upload sources); it cannot *ask* one a question. A NotebookLM notebook can never be the memory behind your job-scorer.
-- **Oracle vs. librarian.** NotebookLM synthesizes an answer (with citations). Brainbot returns the relevant passages verbatim and lets the consumer's LLM do the reasoning — by design, so one brain can serve apps with very different judgment needs.
-- **Their cloud vs. your box.** NotebookLM is hosted by Google, full stop. Brainbot's storage, pipeline, and API run on your VPS.
-
-### Supermemory
-
-The closest commercial comparable: a **memory API for AI applications** — developer-first, with SDKs, an MCP server, hybrid retrieval, and even Postgres + pgvector underneath. Its core is MIT-licensed, with a hosted service as the product. Structurally it and brainbot are the same *kind* of thing: a memory layer your apps query over an API.
-
-**The fork in the road is who writes the memory:**
-
-- **Supermemory's bet — automatic memory.** An LLM watches your conversations and sources, extracts facts, maintains a memory graph and auto-built user profiles, and decides what to update or forget. Memory accumulates without effort — and without curation: what the system believes is whatever extraction produced, and directly editing those derived memories isn't a first-class surface.
-- **Brainbot's bet — curated memory.** There is **no write-time LLM**. The human-edited page *is* the memory; the index is derived from it and rebuilt on every edit. Nothing is remembered that you didn't write, and nothing stale survives an edit. The cost is honest: you do the curating.
-
-Beyond that: Supermemory returns extracted facts and assembled profiles (interpretation included); brainbot returns faithful chunks and keeps interpretation in the consumer. Supermemory is a multi-tenant hosted product with usage pricing; brainbot is single-user, self-hosted, and free past the embedding pennies.
+How brainbot relates to the rest of the landscape — NotebookLM, Supermemory and the Mem0-style agent-memory APIs, the Obsidian-as-AI-brain movement, assistants' built-in memory — is its own doc: [`positioning.md`](./positioning.md).
 
 ---
 
-## 6. Where brainbot fits in the broader landscape
-
-Most "I built an AI thing" projects look like one of:
-
-- **"Chatbot over our docs."** RAG, vector store, off-the-shelf framework. Useful, common, doesn't differentiate.
-- **"Agent that takes actions."** LLM + tool-calling + a loop. Trendy. Often demos well, often brittle in production.
-- **"Personal AI assistant."** Some combination of the above two.
-
-Brainbot is in a less-crowded slice: **a personal RAG brain, self-hosted, with the brain as the primary product and consumers as thin clients**. The pieces that make it distinctive:
-
-- **The pipeline is owned, not rented.** Chunking, embedding, the HNSW index, the hybrid cosine + full-text query, and the RRF fusion are all hand-written code you can tune and evaluate — no framework, no black box.
-- **Self-hosted.** Most projects use hosted vector DBs and hosted LLMs. Brainbot owns the storage.
-- **Currency by construction.** Sources are canonical; chunks are derived and wiped-and-rebuilt on every edit, so stale facts can't linger in the index.
-- **Brain-as-service.** Most projects build one app. Brainbot is built so many apps can share the same knowledge.
-
-(How the design arrived here — including the substrate it replaced — is the story in [`learnings.md`](./learnings.md).)
-
----
-
-## 7. If you want to go deeper
+## 6. If you want to go deeper
 
 **RAG fundamentals:**
 - Anthropic's "Contextual Retrieval" blog post (improves plain RAG by adding document-level context to each chunk before embedding).

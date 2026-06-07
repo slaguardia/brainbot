@@ -17,6 +17,7 @@ import { marked, type Token, type TokensList } from "marked";
 
 import brainArchitectureMd from "../../docs/brain-architecture.md?raw";
 import learningsMd from "../../docs/learnings.md?raw";
+import positioningMd from "../../docs/positioning.md?raw";
 
 interface DocSection {
   id: string;
@@ -37,6 +38,7 @@ interface DocPage {
 const MD_PAGE_ROUTES: Record<string, string> = {
   "brain-architecture.md": "#docs/how-it-works",
   "learnings.md": "#docs/evolution",
+  "positioning.md": "#docs/positioning",
 };
 
 function rewriteRelativeMdLinks(md: string): string {
@@ -141,6 +143,7 @@ function buildPage(id: string, label: string, md: string): DocPage {
 
 const PAGES: DocPage[] = [
   buildPage("how-it-works", "How the brain works", brainArchitectureMd),
+  buildPage("positioning", "How it compares", positioningMd),
   buildPage("evolution", "Evolution", learningsMd),
 ];
 

@@ -1,29 +1,42 @@
 # brainbot
 
-A self-hosted personal knowledge service. **Plug-and-play intelligence for any app you build.**
+A self-hosted **control plane for personal apps**. **One shared brain, one sign-in, one design system — so every app you build stays small.**
 
-The brain is a **Postgres + pgvector document store**: your human-edited pages (Notion today) are ingested as canonical **sources**, split into embedded section **chunks**, and served back over HTTP + MCP via three consumer reads — `recall(query)` (hybrid search), `doc(id)` (deterministic whole-document fetch), and `map()` (discovery). There is no graph DB and no write-time LLM — embedding is the only external call at ingest, and editing the brain means editing the source page.
+Brainbot is a four-layer platform. The bottom layer is the brain; the layers above turn "I want to build another little app for myself" into a repeatable contract instead of a fresh stack each time:
 
-Concrete example: keep your work history + the kind of roles you'd consider in Notion, ingest those pages, and build a separate app that fetches job listings. That app calls the brain to score each listing against what it actually knows about you — without you maintaining a separate profile per app.
+```
+L4  apps        scout · job-fit scorer · reading-triage · …   (each: own backend + own PWA, own repo)
+L3  web-toolkit shared frontend package — design tokens, app shell, service-worker + manifest, brain client, session
+L2  edge        Caddy + oauth2-proxy: HTTPS + Google SSO, one vhost per app
+L1  brain       Postgres + pgvector over HTTP/MCP — the shared knowledge substrate
+```
 
-Two first-party consumers ship with the project, both as worked examples:
+L1 and L2 were already built; L3 (the web-toolkit) and the apps launcher are the new pieces that make app N+1 cheap. The full design is in [`docs/app-platform.md`](./docs/app-platform.md).
 
-- **Claude Code MCP** — terminal harness in any project repo. A `UserPromptSubmit` hook injects relevant brain context into every prompt.
-- **PWA** — a phone surface, Google-auth'd at the edge: dashboard, recall search, source map, Notion discovery + selective ingest, and in-app docs.
+**The brain (L1)** is a **Postgres + pgvector document store**: your human-edited pages (Notion today) are ingested as canonical **sources**, split into embedded section **chunks**, and served back over HTTP + MCP via three consumer reads — `recall(query)` (hybrid search), `doc(id)` (deterministic whole-document fetch), and `map()` (discovery). There is no graph DB and no write-time LLM — embedding is the only external call at ingest, and editing the brain means editing the source page.
 
-But these are just two of many possible consumers. The point of the project is the shared brain. Your job-fit scorer, your travel planner, your reading-list app — each one stays small and stateless because the brain holds the cross-app knowledge.
+**An app (L4)** is a small contract: *a backend that owns its own working-set data and reads the brain read-only over HTTP, **+** a PWA built from the web-toolkit, **+** one vhost behind the shared edge.* Backends are **polyglot on purpose** — the brain is Python, scout is Go, the next thing might be 200 lines of Node. What makes them feel like one product is the shared edge, the shared toolkit, and the shared brain — not a shared runtime.
+
+Concrete example: keep your work history + the kind of roles you'd consider in Notion, ingest those pages, and build a separate app that fetches job listings. That app calls the brain to score each listing against what it actually knows about you — without you maintaining a separate profile per app. It signs in with the same Google login and looks like every other app, for free.
+
+Two first-party apps ship with the project, both as worked examples:
+
+- **Claude Code MCP** — terminal harness in any project repo. A `UserPromptSubmit` hook injects relevant brain context into every prompt. (A pure consumer — no PWA.)
+- **PWA** — a phone surface, Google-auth'd at the edge: dashboard, recall search, source map, Notion discovery + selective ingest, in-app docs, and an **#apps launcher** that lists your apps with a per-card health ping. It is itself the first app built on the web-toolkit.
 
 ## What it's for
 
-The intent is **personal context as infrastructure**:
+The intent is **personal context as infrastructure, and a repeatable shape for the apps that use it**:
 
-- **One brain, many consumers.** Every app you build — job scorer, calendar prep, reading triage — needs to know things about you. Instead of each app keeping its own profile, config, or notes copy, they all query one service that holds the knowledge.
+- **One brain, many apps.** Every app you build — job scorer, calendar prep, reading triage — needs to know things about you. Instead of each app keeping its own profile, config, or notes copy, they all query one service that holds the knowledge.
+- **Two kinds of data, never mixed.** Knowledge *about you* (preferences, history, who you've met) lives in the brain — shared, system of record. An app's *working set* (scout's verdicts, a reader queue's read/unread) lives in the app's own store. The brain is read-only for consumers; an app never writes its tables into the brain's dataset.
 - **You curate the truth; the machine derives the index.** The brain never invents or accumulates memory on its own. You write and edit normal pages (Notion today); ingest splits and embeds them. Editing the brain *is* editing the page — no automatic extraction, no memory that drifts from what you wrote.
-- **The brain retrieves; your app reasons.** Queries return faithful passages from your pages (a librarian), never synthesized answers (an oracle). Interpretation, gates, and decisions belong to the consumer app.
-- **Self-hosted and owned end to end.** Storage, retrieval pipeline, and API run on your box. The only external call is embeddings, and the embedder is pluggable.
-- **Single-user by design.** A brain for one person, shared across that person's apps — not a team knowledge base.
+- **The brain retrieves; your app reasons.** Queries return faithful passages from your pages (a librarian), never synthesized answers (an oracle). Interpretation, gates, and decisions belong to the app.
+- **Build app N+1 without inventing a stack.** The edge gives every app HTTPS + SSO; the web-toolkit gives every app the same design, shell, service worker, and brain client. PWA-ness is free; auth lives at the edge, not in the app.
+- **Self-hosted and owned end to end.** Storage, retrieval pipeline, edge, and apps run on your box. The only external call is embeddings, and the embedder is pluggable.
+- **Single-user by design.** A platform for one person, shared across that person's apps — not a team knowledge base.
 
-The architecture lives in [`docs/architecture.md`](./docs/architecture.md); the full doc set is indexed at [`docs/README.md`](./docs/README.md); how the design got here is the append-only [`docs/learnings.md`](./docs/learnings.md).
+The platform design lives in [`docs/app-platform.md`](./docs/app-platform.md) and [`docs/web-toolkit.md`](./docs/web-toolkit.md); the brain itself in [`docs/architecture.md`](./docs/architecture.md); the full doc set is indexed at [`docs/README.md`](./docs/README.md); how the design got here is the append-only [`docs/learnings.md`](./docs/learnings.md). To scaffold a new app, the `build-platform-app` skill walks the contract end to end.
 
 ## How it compares
 
@@ -43,23 +56,27 @@ The full landscape — what each neighbor is, where the bets genuinely overlap, 
 
 | Milestone | Status |
 |---|---|
-| VPS + Docker substrate (Caddy, UFW, Tailscale) | ✅ done |
-| Document substrate: sources + chunks on pgvector, `recall`/`doc`/`profile`/`map` | ✅ live |
-| Section-level chunking + complete-mode recall | ✅ live |
-| PWA: dashboard, search, map, Notion discovery + selective ingest, in-app docs | ✅ live (free-text capture disabled pending a source-editing surface) |
-| VPS deployment of the substrate stack | 🟡 pending |
+| L2 edge: VPS + Docker substrate (Caddy, UFW, Tailscale) | ✅ done |
+| L1 brain: sources + chunks on pgvector, `recall`/`doc`/`profile`/`map` | ✅ live |
+| L1 brain: section-level chunking + complete-mode recall | ✅ live |
+| L3 web-toolkit: shared tokens, shell, components, SW + manifest, brain client | ✅ live |
+| PWA rebuilt on the web-toolkit + #apps launcher (registry + health ping) | ✅ live (free-text capture disabled pending a source-editing surface) |
+| VPS deployment of the full stack | 🟡 pending |
 
 Pending feature plans live in [`plans/`](./plans/).
 
 ## Repo layout
 
+This repo holds L1 (brain), L2 (edge config), L3 (web-toolkit), and the brainbot PWA. Other apps (e.g. scout) live in their own repos and depend on the web-toolkit as a package — see [`docs/app-platform.md`](./docs/app-platform.md) for the multi-repo layout.
+
 ```
 brainbot/
 ├── docs/                        — all project docs (index: docs/README.md)
 ├── plans/                       — open feature plans
-├── brain/                       — the brain service (FastMCP + asyncpg; ingest + reads + MCP face)
-├── pwa/                         — the phone surface (vanilla TS + Vite; read-only proxy backend)
-├── compose/                     — docker-compose, Caddyfile, oauth2-proxy whitelist
+├── brain/                       — L1: the brain service (FastMCP + asyncpg; ingest + reads + MCP face)
+├── web-toolkit/                 — L3: shared frontend package (tokens, shell, components, pwa, brain client, session)
+├── pwa/                         — the first-party PWA (vanilla TS + Vite on the toolkit; #apps launcher; read-only proxy backend)
+├── compose/                     — L2: docker-compose, Caddyfile, oauth2-proxy whitelist
 ├── scripts/
 │   └── smoke_substrate.py       — live end-to-end smoke (ingest → recall/profile/map)
 └── templates/
@@ -167,9 +184,11 @@ Re-ingesting the same page wipes-and-replaces its chunks, so the page stays the 
 
 See [`templates/claude-code-client/INSTALL.md`](templates/claude-code-client/INSTALL.md) for how to drop the MCP server entry and the `UserPromptSubmit` memory injection hook into any of your project repos. This is the canonical example of "a consumer app talking to the brain over HTTP/MCP."
 
-### 6. Building your own consumer
+### 6. Building your own app
 
-The brain exposes a small contract — `recall`, `doc`, `map` — over **plain HTTP/JSON** (`GET /recall`, `GET /doc`, `GET /map`). Any app — Python, TypeScript, a shell script — can hit it. **If your consumer runs on the same VPS** (e.g. Scout), call `http://brain:8100` directly over `brainnet` — no auth needed; **from off-box**, use `https://brain.api.{domain}` + the bearer token. (See [How access works](#how-access-works-security-model).) The same reads are also exposed as **MCP tools** at `/mcp` for Claude Code and other LLM-tool-discovery harnesses. See [`docs/consumer-integration.md`](./docs/consumer-integration.md); full contract in [`docs/consumer-api.md`](./docs/consumer-api.md).
+The brain exposes a small contract — `recall`, `doc`, `map` — over **plain HTTP/JSON** (`GET /recall`, `GET /doc`, `GET /map`). Any backend — Python, Go, TypeScript, a shell script — can hit it. **If your app runs on the same VPS** (e.g. Scout), call `http://brain:8100` directly over `brainnet` — no auth needed; **from off-box**, use `https://brain.api.{domain}` + the bearer token. (See [How access works](#how-access-works-security-model).) The same reads are also exposed as **MCP tools** at `/mcp` for Claude Code and other LLM-tool-discovery harnesses. See [`docs/consumer-integration.md`](./docs/consumer-integration.md); full contract in [`docs/consumer-api.md`](./docs/consumer-api.md).
+
+A *pure consumer* (like the Claude Code hook) just reads the brain. A full **platform app** also gets a face: build its PWA from the [web-toolkit](./docs/web-toolkit.md), have its backend proxy `/api/brain/*` to the brain (keeping the bearer server-side) and expose `/api/me` from the edge's identity header, put it behind one Caddy vhost, and register it in the PWA's `#apps` launcher. The whole contract — including the **two-kinds-of-data rule** (app working set vs. brain knowledge) and where each store lives — is in [`docs/app-platform.md`](./docs/app-platform.md). The `build-platform-app` skill scaffolds all of it (interview → contract → checklist → scaffold).
 
 The brain doesn't enforce any schema on you — your job-fit scorer and your reading-list app both ask questions in plain language and reason over the same faithful chunks. That's the whole point.
 

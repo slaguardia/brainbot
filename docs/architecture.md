@@ -1,6 +1,8 @@
 # Brainbot — Architecture
 
-A self-hosted personal knowledge service. The brain is the only thing that holds structured truth about you; everything else — terminal harnesses, mobile apps, narrow scoring agents — is a thin consumer that calls in. One brain, N consumers.
+A self-hosted **control plane for personal apps**. The brain is the only thing that holds structured truth about you; everything else — terminal harnesses, mobile apps, narrow scoring agents — is a thin consumer that calls in. One brain, N consumers.
+
+This doc covers the **brain (L1)** and the **edge (L2)** — what the brain is and how consumers read it. Once you have *more than one* app, the question becomes how to build app N+1 without inventing a stack each time; that's the four-layer platform (brain → edge → web-toolkit → apps), and it has its own companion doc: [`app-platform.md`](./app-platform.md).
 
 **Dual purpose:** this is a daily-driver tool *and* a portfolio piece. Every architectural decision should be defensible to a senior-eng interviewer. The writeup is half the deliverable. Per-component working docs (current state, tradeoffs, alternatives considered) live in this folder — start at [`README.md`](./README.md). How the design *got* here, including the graph era and why it was dropped, is the append-only [`learnings.md`](./learnings.md).
 
@@ -26,7 +28,7 @@ Apps you build later, each calling the brain over HTTP/MCP. Examples worth build
 - Calendar prep that pulls everything you've ever captured about attendees
 - Passive CRM that builds itself from "had coffee with X" captures
 
-The brain doesn't care which consumer is asking. There's no schema migration, no per-app namespace, no profile config — just `recall(query, scope)`, `doc(id)`, and `map(scope)` over the same source tree (writes arrive via `ingest`).
+The brain doesn't care which consumer is asking. There's no schema migration, no per-app namespace, no profile config — just `recall(query, scope)`, `doc(id)`, and `map(scope)` over the same source tree (writes arrive via `ingest`). A consumer that also wants a face (its own PWA + sign-in) becomes a full **platform app** — same contract, plus the web-toolkit and an edge vhost; see [`app-platform.md`](./app-platform.md).
 
 ## Non-goals
 

@@ -13,12 +13,31 @@ Two first-party consumers ship with the project, both as worked examples:
 
 But these are just two of many possible consumers. The point of the project is the shared brain. Your job-fit scorer, your travel planner, your reading-list app — each one stays small and stateless because the brain holds the cross-app knowledge.
 
-## Why this exists
+## What it's for
 
-1. **Human-edited truth, machine-derived index.** The sources you curate are canonical; the chunks the machine retrieves are derived and rebuilt on every edit, so the index can't go stale and there's no extraction layer to silently drop your facts. (The project started as a knowledge graph and walked it back when the evidence said otherwise — the story is in [`docs/learnings.md`](./docs/learnings.md).)
-2. **One brain, many consumers.** The same knowledge backs every app you build. Each consumer stays narrow and dumb; the brain stays the only thing that has to be smart.
+The intent is **personal context as infrastructure**:
 
-The architecture and decision rationale live in [`docs/architecture.md`](./docs/architecture.md); the full doc set is indexed at [`docs/README.md`](./docs/README.md).
+- **One brain, many consumers.** Every app you build — job scorer, calendar prep, reading triage — needs to know things about you. Instead of each app keeping its own profile, config, or notes copy, they all query one service that holds the knowledge.
+- **You curate the truth; the machine derives the index.** The brain never invents or accumulates memory on its own. You write and edit normal pages (Notion today); ingest splits and embeds them. Editing the brain *is* editing the page — no automatic extraction, no memory that drifts from what you wrote.
+- **The brain retrieves; your app reasons.** Queries return faithful passages from your pages (a librarian), never synthesized answers (an oracle). Interpretation, gates, and decisions belong to the consumer app.
+- **Self-hosted and owned end to end.** Storage, retrieval pipeline, and API run on your box. The only external call is embeddings, and the embedder is pluggable.
+- **Single-user by design.** A brain for one person, shared across that person's apps — not a team knowledge base.
+
+The architecture lives in [`docs/architecture.md`](./docs/architecture.md); the full doc set is indexed at [`docs/README.md`](./docs/README.md); how the design got here is the append-only [`docs/learnings.md`](./docs/learnings.md).
+
+## How it compares
+
+The two products closest in spirit are Google's NotebookLM and Supermemory — same family, different bets:
+
+| | Obsidian / Notion | NotebookLM | Supermemory | brainbot |
+|---|---|---|---|---|
+| Built as | human notebook | destination AI app | hosted memory API for AI apps | self-hosted service for your own apps |
+| Who creates the memory | you, by hand | you upload sources | an LLM extracts facts automatically | you edit pages; the index is derived |
+| Your code can query it | no | no — no public query API | yes, via their cloud API | yes — HTTP/MCP on your box |
+| What a query returns | n/a | a synthesized answer with citations | extracted facts / auto-built profiles | faithful passages; your app reasons |
+| Where your data lives | local / their cloud | Google's cloud | their cloud (MIT-licensed core; DIY self-host) | your VPS |
+
+The longer treatment — what each product is and where the bets genuinely overlap — is in [`docs/rag-primer.md`](./docs/rag-primer.md#5-how-is-this-different-from-obsidian-notion-notebooklm-or-supermemory).
 
 ## Status
 

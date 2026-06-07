@@ -83,6 +83,11 @@ function renderHome(container: HTMLElement, sources: MapSource[]): void {
   const nDom = domains.size;
 
   container.innerHTML = `
+    <form class="home-search" id="home-search-form" role="search">
+      <input id="home-q" type="search" placeholder="Search the brain…" autocomplete="off" />
+      <button type="submit">Recall</button>
+    </form>
+
     <div class="home-stats">
       <div class="stat">
         <span class="stat-num">${nSrc}</span>
@@ -93,11 +98,6 @@ function renderHome(container: HTMLElement, sources: MapSource[]): void {
         <span class="stat-label">Domain${nDom === 1 ? "" : "s"}</span>
       </div>
     </div>
-
-    <form class="home-search" id="home-search-form" role="search">
-      <input id="home-q" type="search" placeholder="Search the brain…" autocomplete="off" />
-      <button type="submit">Recall</button>
-    </form>
 
     <div class="home-results" hidden></div>
 

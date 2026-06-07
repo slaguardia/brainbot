@@ -95,29 +95,59 @@ zero-integration access — every agent already knows how to read files.
 
 **This is brainbot's closest philosophical relative.** Same bet: human-edited,
 human-readable documents as the canonical store; AI operates *on* them, never
-*instead of* them. Where they genuinely diverge:
+*instead of* them. The interesting comparison is the **recall mechanism** — and
+"the Obsidian approach" is really two very different ones:
 
-- **Retrieval is unspecified vs. a contract.** A vault offers whatever the
-  visiting agent improvises — grep, glob, whole-file reads into context.
-  Practitioners consistently report this degrading past a few hundred notes,
-  then rebuilding exactly what brainbot ships: an embedding + full-text index
-  over chunks. Brainbot makes retrieval a maintained contract (section
-  chunking, hybrid search, ranking) independent of which client connects.
-- **One machine vs. a service.** Vault access — even via the MCP/REST bridges —
-  is bound to the laptop where Obsidian runs. Brainbot is an addressable
-  server: the same brain answers your phone PWA, your terminal hooks, and any
-  app you deploy, concurrently.
-- **Per-tool indexes vs. one derived index.** Vault AI plugins each keep a
-  private embedding index inside one tool (and famously pollute sync). Brainbot
-  owns one index, derived from the sources, rebuilt on edit.
-- **Editor choice.** The vault crowd edits markdown files; brainbot's sources
-  live in Notion today. Same principle — the migrator contract is generic, and
-  a markdown/Obsidian migrator is a plausible sibling, which would make a vault
-  one *source* feeding the served brain rather than the brain itself.
+- **Agent greps the vault** — the actually-hyped pattern ("file over app" +
+  Claude Code / filesystem MCP). The agent runs `grep`/`glob` and reads whole
+  files. As recall this is weak: **lexical only** (asking "where would I
+  relocate?" won't find a note that says "open to SF or NYC" — no shared
+  words), the **agent guesses what to read** (past a few hundred notes it can't
+  read everything, and it burns context loading whole files to find one
+  paragraph), and there's **no ranking** — you get matches, not relevance.
+- **A vault + a real RAG plugin** (Smart Connections, Copilot, basic-memory) —
+  embeds chunks and retrieves by similarity, which is *mechanically the same
+  family* as brainbot's semantic arm. Honest call: against a well-built RAG
+  plugin, brainbot's core recall is **comparable, not categorically better** —
+  it's textbook hybrid RAG, not secret sauce.
 
-Projects like basic-memory and Khoj's server mode are already converging from
-the vault side toward this design — files as truth, derived index, multi-client
-service. Brainbot simply starts there.
+| Recall property | Vault grep (the hyped one) | Vault RAG plugin | brainbot |
+|---|---|---|---|
+| Semantic (meaning) match | ✗ | ✓ | ✓ |
+| Lexical (exact token) match | ✓ | sometimes | ✓ |
+| Both, fused (RRF) | ✗ | rarely | ✓ |
+| Section-level chunks, not whole files | ✗ | varies | ✓ |
+| Ranked / scored results | ✗ | ✓ | ✓ |
+| Index can't drift from source | n/a | ✗ (re-index on a schedule) | ✓ (rebuilt every edit) |
+
+Where brainbot wins on *mechanism* (not setup friction): **hybrid fusion** —
+semantic *and* lexical, fused with RRF, so a rare name/acronym/number and a
+paraphrase both land, where most vault plugins do one or the other — and
+**section chunking**, which returns the relevant passage instead of the whole
+file dumped into context.
+
+**But the categorical difference isn't quality — it's where recall lives, and
+no amount of vault configuration fixes it.** In the vault world the recall
+mechanism belongs to the **client**: the agent brings grep, this plugin brings
+its embeddings, that plugin brings different ones — and whatever quality one
+achieves is *trapped in that one tool's session*. Your other apps don't get it.
+In brainbot, recall belongs to the **brain**: one maintained retrieval contract
+— same hybrid search, same chunking, same ranking — that *every* consumer gets
+identically over HTTP/MCP. The vault is bytes; the brain is bytes **plus a
+guaranteed recall semantics** that travels to every app. That's the line that
+survives any polish on the Obsidian side.
+
+Two lesser differences round it out: vault access is **laptop-bound** (even the
+MCP/REST bridges need Obsidian running on `127.0.0.1`), where brainbot is an
+addressable server answering phone, terminal, and deployed apps concurrently;
+and **editor choice** — the vault crowd edits markdown, brainbot's sources live
+in Notion today, but the migrator contract is generic, so a markdown/Obsidian
+migrator would simply make a vault one *source* feeding the served brain.
+
+The tell: projects like basic-memory and Khoj's server mode are already
+converging from the vault side toward exactly this — files as truth, derived
+index, multi-client service — because the plugin-per-tool model doesn't get you
+a shared recall contract. Brainbot simply starts there.
 
 ### Passive capture — lifelogging recorders
 

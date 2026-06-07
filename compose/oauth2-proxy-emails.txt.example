@@ -1,7 +1,12 @@
-# PWA access whitelist for oauth2-proxy.
+# Edge access whitelist for oauth2-proxy.
+#
+# ONE whitelist covers EVERY app at the edge (brain.${BRAIN_DOMAIN} PWA,
+# scout.${BRAIN_DOMAIN}, and any future *.${BRAIN_DOMAIN} app). oauth2-proxy
+# gates all vhosts against this single file, so listing an address here grants
+# it access to all of them.
 #
 # Copy this file to `oauth2-proxy-emails.txt` (same directory) and list the
-# Google account emails allowed to sign in to the PWA — one per line.
+# Google account emails allowed to sign in — one per line.
 # Blank lines and lines starting with '#' are ignored by oauth2-proxy.
 #
 # To change who has access: edit oauth2-proxy-emails.txt and restart the

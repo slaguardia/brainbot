@@ -72,14 +72,43 @@ services:
       brain:
         condition: service_healthy
 
+  scout:
+    # scout — personal job-fit scorer. A single Go binary with the PWA embedded
+    # (go:embed) serving the UI + /api on :8765. Owns its working set in local
+    # SQLite on the scout-data volume — NOT in the brain/Postgres (per
+    # docs/app-platform.md "App data: two kinds"). Reads the brain read-only at
+    # http://brain:8100 on brainnet. No public port: only Caddy reaches it.
+    # Auth lives at the edge (oauth2-proxy) — scout holds no login code; it reads
+    # the injected X-Auth-Request-Email and exposes it as /api/me.
+    build:
+      # Context is the sibling scout repo (repos are siblings on the box, per
+      # docs/app-platform.md "Repo layout"). The committed internal/web/dist/ is
+      # embedded at go build — no node stage.
+      context: ../../scout
+      dockerfile: Dockerfile
+    image: scout/scout:0.1
+    container_name: scout
+    restart: unless-stopped
+    networks:
+      - brainnet
+    environment:
+      # scout needs the Anthropic key for verdict/capture/outreach (set in .env).
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+    volumes:
+      - scout-data:/data
+    depends_on:
+      brain:
+        condition: service_healthy
+
   oauth2-proxy:
-    # Edge auth for the PWA. Caddy's forward_auth asks this for /oauth2/auth;
-    # only a valid, whitelisted Google session gets a 202 and is proxied through
-    # to pwa:8787. The whitelist is the mounted emails file — with
-    # --authenticated-emails-file set and --email-domain left UNSET, only those
-    # addresses are authorized (do NOT add --email-domain=*; that would allow any
-    # Google account and defeat the whitelist). No host port: only Caddy reaches
-    # it on brainnet.
+    # Edge auth for EVERY app at the edge (brain PWA + scout + future apps).
+    # Caddy's forward_auth asks this for /oauth2/auth; only a valid, whitelisted
+    # Google session gets a 202 and is proxied through to the app. The whitelist
+    # is the mounted emails file — with --authenticated-emails-file set and
+    # --email-domain left UNSET, only those addresses are authorized (do NOT add
+    # --email-domain=*; that would allow any Google account and defeat the
+    # whitelist). ONE emails file covers all vhosts, so whitelisting at the edge
+    # whitelists every app. No host port: only Caddy reaches it on brainnet.
     image: quay.io/oauth2-proxy/oauth2-proxy:latest
     container_name: oauth2-proxy
     restart: unless-stopped
@@ -94,11 +123,21 @@ services:
       - --cookie-secure=true
       - --set-xauthrequest=true
       - --skip-provider-button=true
-      - --whitelist-domain=brain.${BRAIN_DOMAIN}
+      # Multi-app SSO (these two lines): the leading dot makes both the domain
+      # and ALL its subdomains valid post-auth redirect targets, so an `rd` back
+      # to scout.${BRAIN_DOMAIN} (or any future app) is allowed; and the shared
+      # cookie-domain means one Google sign-in issues a session cookie valid
+      # across *.${BRAIN_DOMAIN} — sign in once, you're in brain AND scout.
+      - --whitelist-domain=.${BRAIN_DOMAIN}
+      - --cookie-domain=.${BRAIN_DOMAIN}
     environment:
       OAUTH2_PROXY_CLIENT_ID: ${GOOGLE_OAUTH_CLIENT_ID}
       OAUTH2_PROXY_CLIENT_SECRET: ${GOOGLE_OAUTH_CLIENT_SECRET}
       OAUTH2_PROXY_COOKIE_SECRET: ${OAUTH2_PROXY_COOKIE_SECRET}
+      # ONE Google-registered callback for the whole edge. The shared
+      # cookie-domain (.${BRAIN_DOMAIN}) means a session minted via this brain
+      # host callback is valid on scout.${BRAIN_DOMAIN} too, so adding scout (or
+      # any *.${BRAIN_DOMAIN} app) needs NO new Google OAuth callback URL.
       OAUTH2_PROXY_REDIRECT_URL: https://brain.${BRAIN_DOMAIN}/oauth2/callback
     volumes:
       - ./oauth2-proxy-emails.txt:/etc/oauth2-proxy/emails.txt:ro
@@ -109,3 +148,7 @@ networks:
 
 volumes:
   postgres-data:
+  # scout's local SQLite working set (companies/verdicts/runs). Disposable —
+  # rebuilds from a CSV — and deliberately NOT in the brain's Postgres (per
+  # docs/app-platform.md "App data: two kinds": blast-radius isolation).
+  scout-data:

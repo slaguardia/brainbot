@@ -43,3 +43,23 @@ brain.{$BRAIN_DOMAIN} {
 
     reverse_proxy pwa:8787
 }
+
+# scout — scout.{$BRAIN_DOMAIN}, Google-auth'd at the edge via oauth2-proxy.
+# Same pattern as the brain PWA host: the app is unauthenticated inside brainnet
+# and only ever sees requests oauth2-proxy has already cleared. No login code in
+# scout. Revocation: remove the email from compose/oauth2-proxy-emails.txt.
+scout.{$BRAIN_DOMAIN} {
+    reverse_proxy /oauth2/* oauth2-proxy:4180
+
+    forward_auth oauth2-proxy:4180 {
+        uri /oauth2/auth
+        copy_headers X-Auth-Request-Email X-Auth-Request-User
+
+        @bad status 401
+        handle_response @bad {
+            redir * /oauth2/sign_in?rd={scheme}://{host}{uri}
+        }
+    }
+
+    reverse_proxy scout:8765
+}

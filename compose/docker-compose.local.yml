@@ -35,3 +35,9 @@ services:
   # with `cd pwa && npm run dev` instead.
   pwa:
     profiles: ["vps-only"]
+
+  # Same treatment for scout: its image is the VPS path. Locally you run
+  # scout host-native (`cd ~/Repositories/scout && go build && ./scout serve`),
+  # so `profiles: [vps-only]` keeps `docker compose up` from building it here.
+  scout:
+    profiles: ["vps-only"]

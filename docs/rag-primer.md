@@ -121,9 +121,9 @@ No LangChain, no Pinecone. Smaller stack on purpose — the whole retrieval pipe
 
 ---
 
-## 5. How is this different from Obsidian or Notion?
+## 5. How is this different from Obsidian, Notion, NotebookLM, or Supermemory?
 
-Reasonable question. They all hold notes, right?
+Reasonable question. They all hold knowledge about you, right?
 
 ### Obsidian
 
@@ -154,6 +154,29 @@ This is **a notebook designed to be read by programs, not humans**. The differen
 **The simplest way to think about it:** Obsidian is for *you*. Brainbot is for *programs that act on your behalf*. They solve different problems. You could conceivably use both — Obsidian as your daily note-taking app, brainbot ingesting your notes nightly to make them queryable by your other apps.
 
 In fact brainbot is built on exactly that split: **your human-edited pages (Notion today) are the source of truth**, and the machine index (chunks + vectors) is derived from them and rebuilt on every edit. Editing the brain = editing the page.
+
+### NotebookLM
+
+Google's source-grounded AI notebook: you upload documents into a "notebook," then chat with an AI that answers **only from those sources, with citations** — plus generated study guides and the podcast-style Audio Overviews.
+
+**The shared bet is real:** like brainbot, NotebookLM holds that *your curated documents are the truth* and the AI must stay grounded in them rather than free-associating. If you just want to ask questions about your own material in a polished UI, NotebookLM does that better than brainbot ever will.
+
+**The differences are structural, not feature gaps:**
+
+- **Destination vs. service.** NotebookLM is an app you visit. Brainbot is an API your own apps call. NotebookLM has **no public API to query a notebook from code** — even its enterprise API only manages notebooks (create, share, upload sources); it cannot *ask* one a question. A NotebookLM notebook can never be the memory behind your job-scorer.
+- **Oracle vs. librarian.** NotebookLM synthesizes an answer (with citations). Brainbot returns the relevant passages verbatim and lets the consumer's LLM do the reasoning — by design, so one brain can serve apps with very different judgment needs.
+- **Their cloud vs. your box.** NotebookLM is hosted by Google, full stop. Brainbot's storage, pipeline, and API run on your VPS.
+
+### Supermemory
+
+The closest commercial comparable: a **memory API for AI applications** — developer-first, with SDKs, an MCP server, hybrid retrieval, and even Postgres + pgvector underneath. Its core is MIT-licensed, with a hosted service as the product. Structurally it and brainbot are the same *kind* of thing: a memory layer your apps query over an API.
+
+**The fork in the road is who writes the memory:**
+
+- **Supermemory's bet — automatic memory.** An LLM watches your conversations and sources, extracts facts, maintains a memory graph and auto-built user profiles, and decides what to update or forget. Memory accumulates without effort — and without curation: what the system believes is whatever extraction produced, and directly editing those derived memories isn't a first-class surface.
+- **Brainbot's bet — curated memory.** There is **no write-time LLM**. The human-edited page *is* the memory; the index is derived from it and rebuilt on every edit. Nothing is remembered that you didn't write, and nothing stale survives an edit. The cost is honest: you do the curating.
+
+Beyond that: Supermemory returns extracted facts and assembled profiles (interpretation included); brainbot returns faithful chunks and keeps interpretation in the consumer. Supermemory is a multi-tenant hosted product with usage pricing; brainbot is single-user, self-hosted, and free past the embedding pennies.
 
 ---
 
@@ -200,4 +223,5 @@ Don't try to read everything. Pick one thing, work through it, then pick the nex
 - **Vector DBs (pgvector)** = storage optimized for "find similar vectors." Brainbot's is built into Postgres.
 - **Frameworks (LangChain)** = pre-written glue code. Useful for fast prototyping, not used in brainbot.
 - **Obsidian/Notion** = for humans to read and write. Brainbot = for programs to query on your behalf — with your human-edited pages as the source of truth.
-- **Brainbot** = self-hosted personal RAG with the whole retrieval pipeline as owned, tunable code.
+- **NotebookLM** = same grounded-in-your-sources bet, but a destination app with no API your code can query. **Supermemory** = same memory-API shape, but the memory is LLM-extracted automatically instead of human-curated.
+- **Brainbot** = self-hosted personal RAG with the whole retrieval pipeline as owned, tunable code — and a human-curated memory your apps query over HTTP/MCP.

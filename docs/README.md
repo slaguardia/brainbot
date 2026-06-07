@@ -10,7 +10,8 @@ reversed decisions instead of accumulating them.
 ## Start here
 
 - [architecture.md](./architecture.md) — the system: goal, consumers, key decisions, stack, security model, and how it got here.
-- [rag-primer.md](./rag-primer.md) — plain-English primer with analogies: what RAG is, how brainbot's hybrid retrieval works, what the tool names (LangChain / Pinecone / pgvector) mean, and how brainbot compares to Obsidian/Notion, NotebookLM, and Supermemory. Start here instead if the field is new to you.
+- [positioning.md](./positioning.md) — where brainbot sits in the memory landscape: vs NotebookLM, Supermemory and the Mem0-class agent-memory APIs, the Obsidian-as-AI-brain movement, and assistants' built-in memory — and what makes this cell unique.
+- [rag-primer.md](./rag-primer.md) — plain-English primer with analogies: what RAG is, how brainbot's hybrid retrieval works, what the tool names (LangChain / Pinecone / pgvector) mean, and how brainbot compares to Obsidian/Notion. Start here instead if the field is new to you.
 
 ## The brain
 

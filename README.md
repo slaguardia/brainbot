@@ -27,17 +27,17 @@ The architecture lives in [`docs/architecture.md`](./docs/architecture.md); the 
 
 ## How it compares
 
-The two products closest in spirit are Google's NotebookLM and Supermemory — same family, different bets:
+The personal-AI-memory landscape sorts on two questions: **who writes the memory** (you, or an LLM watching you) and **whether your own code can query it**. Brainbot's cell — human-curated memory, served as an API, returning your own words — is nearly empty:
 
-| | Obsidian / Notion | NotebookLM | Supermemory | brainbot |
+| | Obsidian + AI agents | NotebookLM | Supermemory / Mem0 / Zep (agent-memory APIs) | brainbot |
 |---|---|---|---|---|
-| Built as | human notebook | destination AI app | hosted memory API for AI apps | self-hosted service for your own apps |
+| Built as | local vault + agent tooling | destination AI app | hosted memory APIs for AI apps | self-hosted service for your own apps |
 | Who creates the memory | you, by hand | you upload sources | an LLM extracts facts automatically | you edit pages; the index is derived |
-| Your code can query it | no | no — no public query API | yes, via their cloud API | yes — HTTP/MCP on your box |
-| What a query returns | n/a | a synthesized answer with citations | extracted facts / auto-built profiles | faithful passages; your app reasons |
-| Where your data lives | local / their cloud | Google's cloud | their cloud (MIT-licensed core; DIY self-host) | your VPS |
+| Your code can query it | only on that machine, ad hoc (grep/MCP bridges) | no — no public query API | yes, via their cloud APIs | yes — HTTP/MCP on your box |
+| What a query returns | whole files / grep hits | a synthesized answer with citations | extracted facts / graphs / profiles | faithful passages; your app reasons |
+| Where your data lives | local files | Google's cloud | their cloud (open cores vary) | your VPS |
 
-The longer treatment — what each product is and where the bets genuinely overlap — is in [`docs/rag-primer.md`](./docs/rag-primer.md#5-how-is-this-different-from-obsidian-notion-notebooklm-or-supermemory).
+The full landscape — what each neighbor is, where the bets genuinely overlap, and what brainbot's cell costs — is [`docs/positioning.md`](./docs/positioning.md).
 
 ## Status
 

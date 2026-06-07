@@ -36,3 +36,6 @@ Thumbs.db
 
 # Claude Code worktrees (bg-job isolation; never commit)
 .claude/worktrees/
+
+# Claude Code task tracking (session-local; never commit)
+.tasks/

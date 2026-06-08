@@ -20,7 +20,6 @@ import contextlib
 import logging
 import uuid
 from collections.abc import AsyncIterator
-from datetime import datetime
 
 from mcp.server.fastmcp import FastMCP
 from starlette.applications import Starlette
@@ -31,7 +30,7 @@ from .config import Config
 from .db import apply_schema, close_pool, get_pool
 from .notion import NotionError, fetch_page, list_pages, verify_token
 from .settings import NOTION_TOKEN_KEY, delete_setting, get_setting, set_setting
-from .store import doc, map_, profile, recall, sources_last_edited, upsert_source
+from .store import _parse_iso, doc, map_, profile, recall, sources_last_edited, upsert_source
 
 logger = logging.getLogger(__name__)
 
@@ -426,12 +425,6 @@ async def map_tool(scope: str | None = None) -> dict:
 
 
 # ---- Periodic Notion sync ----------------------------------------------------
-
-def _parse_iso(s: str) -> datetime:
-    """ISO-8601 (incl. Notion's trailing 'Z') -> aware datetime, for comparing a
-    Notion page's `last_edited_time` against the brain's captured edit time."""
-    return datetime.fromisoformat(s.replace("Z", "+00:00"))
-
 
 def _is_stale(page: dict, ingested: dict[str, str | None]) -> bool:
     """Whether an already-ingested Notion page's brain copy is behind its origin —

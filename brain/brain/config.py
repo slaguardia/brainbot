@@ -39,7 +39,7 @@ class Config:
     # stays current even when no dashboard is open. Stale-only: it never adds
     # pages a human didn't pull. 0 disables the loop; default 1h.
     poll_interval_seconds: int = field(
-        default_factory=lambda: int(os.environ.get("BRAIN_POLL_INTERVAL_SECONDS", "3600"))
+        default_factory=lambda: int(os.environ.get("BRAIN_POLL_INTERVAL_SECONDS") or "3600")
     )
 
     def validate(self) -> None:

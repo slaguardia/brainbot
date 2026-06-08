@@ -83,7 +83,9 @@ Standard stories for a new app:
 - **Backend:** routes that serve JSON only (no HTML); a small read-only
   `/api/brain/*` proxy to the brain; `/api/me` exposing the edge's
   `X-Auth-Request-Email`.
-- **Frontend:** `web/` depending on the web-toolkit (git-tag dep), `vite.config`
+- **Frontend:** `web/` depending on `@brainbot/web-toolkit` (it lives at
+  `brainbot/web-toolkit/`; pin via a `file:` path like scout, or a git-tag dep),
+  `vite.config`
   extending the toolkit preset, `manifest.webmanifest` via the toolkit's
   generator, the app's own icons.
 - **Deploy:** a compose service on the internal network + a Caddy vhost

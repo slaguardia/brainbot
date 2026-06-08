@@ -4,9 +4,9 @@
 > **first-step gate** of the platform plan: you can't cleanly extract apps onto a
 > common frontend without deciding the toolkit's public surface first. Companion
 > to [`app-platform.md`](./app-platform.md) (the why) — this is the *what*.
-> Seeded here in `brainbot/docs/` until the toolkit gets its own repo
-> (`web-toolkit/`, per the decided "separate repos + shared package" layout).
-> Written 2026-06-07.
+> The toolkit lives at **`brainbot/web-toolkit/`** (a package inside the platform
+> hub, not a standalone repo); apps consume it as a dependency. Written
+> 2026-06-07.
 
 ## What it is
 

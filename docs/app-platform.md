@@ -162,23 +162,29 @@ Consequence: the toolkit must be consumable as a **versioned package**, and
 cross-cutting design changes are a package bump per app, not one edit. That's the
 accepted tradeoff of multi-repo (see below).
 
-## Repo layout: separate repos + shared package (decided)
+## Repo layout: separate app repos + the toolkit in brainbot (as built)
 
 ```
-brainbot/        L1 brain + L2 edge config + the brainbot PWA (toolkit consumer)
+brainbot/
+  web-toolkit/   L3 the shared package every PWA depends on (lives here)
+  pwa/           the brainbot PWA (toolkit consumer)
+  + L1 brain + L2 edge config
 scout/           L4 app: Go backend + PWA (toolkit consumer)
 <app-3>/         L4 app: any backend + PWA (toolkit consumer)
-web-toolkit/     L3 the shared package every PWA depends on   ← new repo
 ```
 
-- Each app stays its own repo with clean boundaries and an independent release
-  cycle.
-- The **web toolkit** is its own repo, published as a versioned package
-  (npm/private registry, or a git tag dependency to start — no registry needed
-  for one user).
+- Each **app** stays its own repo with clean boundaries and an independent
+  release cycle.
+- The **web toolkit lives inside brainbot** (`brainbot/web-toolkit/`), the
+  platform hub, rather than as a standalone repo. Apps consume it as a package —
+  scout pins it via `"@brainbot/web-toolkit": "file:../../brainbot/web-toolkit"`
+  (a git-tag/registry dep is the upgrade path if it ever needs independent
+  versioning). This doesn't change how apps are built: they still just depend on
+  the package.
 - Cost, named honestly: a cross-cutting frontend change (new design token, shell
-  fix) means bumping the toolkit version in each app repo. Acceptable at this
-  scale; revisit if it becomes friction.
+  fix) means each app picks up the new toolkit version. Acceptable at this scale;
+  promote the toolkit to its own repo only if independent release cycles become
+  worth it — it's a clean extract.
 
 ## L3 — what's in the web toolkit
 

@@ -11,8 +11,8 @@ Nothing assumes a specific project layout or name.
 > **Heads up:** The brain stack is a Postgres + pgvector document store with
 > the `brain` service in front (no graph DB) and assumes Voyage with a payment
 > method on file for embeddings. If you haven't stood up the stack yet, skim the
-> [README "Known limits"](../../README.md#known-limits--setup-gotchas)
-> section first — there are a couple of setup footguns documented there.
+> [quickstart's "Setup gotchas"](../../docs/quickstart.md#setup-gotchas)
+> first — there are a couple of setup footguns documented there.
 
 - Brain stack is up: Postgres + pgvector + brain + Caddy on your VPS.
 - `BRAIN_DOMAIN` and `BRAIN_BEARER_TOKEN` are exported in your shell

@@ -53,7 +53,7 @@ There are two shapes of consumer. A **pure consumer** (a script, a shell hook, a
 | a one-line `/api/me` that echoes the edge identity header | `currentUser()` — who's signed in — with no per-app auth code (L3) |
 | — | the shared, read-only knowledge about *you* (L1) |
 
-So "another little app for myself" collapses to **backend logic + a few views.** Skin, routing, sign-in, installability, and brain access come with the package — PWA-ness in particular is an *outcome* of the edge + toolkit, not something you build. The mechanical contract (the proxy routes, the `/api/me` endpoint, the Caddy vhost, the launcher entry) is in [step 6 below](#6-building-your-own-app) and [`docs/app-platform.md`](./docs/app-platform.md); the `build-platform-app` skill scaffolds all of it.
+So "another little app for myself" collapses to **backend logic + a few views.** Skin, routing, sign-in, installability, and brain access come with the package — PWA-ness in particular is an *outcome* of the edge + toolkit, not something you build. The mechanical contract (the proxy routes, the `/api/me` endpoint, the Caddy vhost, the launcher entry) is in [`docs/app-platform.md`](./docs/app-platform.md) and [`docs/consumer-integration.md`](./docs/consumer-integration.md); the `build-platform-app` skill scaffolds all of it.
 
 ## Use cases, worked through
 
@@ -122,135 +122,35 @@ brainbot/
     └── claude-code-client/      — drop-in MCP config + UserPromptSubmit hook for any project repo
 ```
 
-## How access works (security model)
+## Quickstart (local)
 
-```mermaid
-flowchart TB
-    NET["Internet — firewall (UFW) opens only 80/443"]
-
-    subgraph VPS["one VPS"]
-      CADDY["Caddy (HTTPS)<br/>the ONLY public door"]
-      subgraph BNET["brainnet (private Docker network — never public)"]
-        PWA["pwa<br/>web UI + read-only /api proxy"]
-        BRAIN["brain :8100<br/>ingest · recall · doc · profile · map"]
-        SCOUT["scout<br/>(your consumer)"]
-        HOOK["Claude Code hook"]
-        PG[("postgres + pgvector")]
-      end
-    end
-
-    NET -->|"PWA host"| CADDY
-    NET -->|"API host"| CADDY
-    CADDY -->|"Google login (oauth2-proxy)"| PWA
-    CADDY -->|"bearer token"| BRAIN
-    PWA -->|"brain:8100"| BRAIN
-    SCOUT -->|"brain:8100 · no auth"| BRAIN
-    HOOK -->|"brain:8100"| BRAIN
-    BRAIN --> PG
-```
-
-**In plain words:**
-
-- **From the internet there is exactly one door: Caddy (port 443).** The firewall (UFW) blocks everything else. Caddy is locked two ways:
-  - `brain.{domain}` (the PWA) → **Google login** (oauth2-proxy + email whitelist).
-  - `brain.api.{domain}` (the brain API) → **bearer token**.
-- **Inside the VPS, the services share a private Docker network, `brainnet`** — created by docker-compose and never exposed publicly. Anything on it (Scout, the PWA, the Claude Code hook) calls **`http://brain:8100` directly, with no auth**, because the brain's port is never published to the internet.
-
-**Rule of thumb:**
-
-- **Off the VPS** (your laptop, another server): `https://brain.api.{domain}` + the bearer token.
-- **On the VPS, on `brainnet`** (e.g. Scout): `http://brain:8100` — no token needed.
-- Only put services you trust on `brainnet`. Being on it = being allowed to call the brain (there's no per-app auth inside).
-
-## Running it (fresh install)
-
-The stack is two compose services: `postgres` (pgvector) and `brain` (FastMCP + asyncpg). On the VPS a third, `pwa`, serves the phone surface, and Caddy adds two vhosts — `brain.api.{domain}` (bearer-authed API) and `brain.{domain}` (Google sign-in via oauth2-proxy).
-
-> For the full VPS deploy — provisioning the server, standing up the Caddy/SSO edge, and adding auxiliary apps — follow [`docs/deployment.md`](./docs/deployment.md). The steps below are the quick local/fresh-install path.
-
-### 1. Configure env
+Two compose services — `postgres` (pgvector) and `brain` — on your laptop:
 
 ```sh
-cd compose
-cp .env.example .env
-# edit .env: set VOYAGE_API_KEY (embeddings), NOTION_TOKEN (page fetch on
-# ingest), and POSTGRES_PASSWORD. For the VPS also set BRAIN_DOMAIN,
-# BRAIN_BEARER_TOKEN, and the Google OAuth client vars +
-# OAUTH2_PROXY_COOKIE_SECRET (PWA auth).
-#
-# Voyage: you'll need a payment method on https://dashboard.voyageai.com/
-# even though usage fits inside the free allowance — without a card, the
-# 3 RPM free-tier rate limit chokes ingest. See Known limits below.
-```
-
-### 2. Bring the stack up
-
-**Local laptop (no Caddy, no TLS; brain + postgres exposed on 127.0.0.1; no pwa container — run the dashboard host-native):**
-```sh
+cd compose && cp .env.example .env       # set VOYAGE_API_KEY, NOTION_TOKEN, POSTGRES_PASSWORD
 docker compose -f docker-compose.yml -f docker-compose.local.yml up -d
-docker compose ps                       # both healthy?
+curl -X POST http://127.0.0.1:8100/ingest -H 'Content-Type: application/json' \
+  -d '{"url": "https://www.notion.so/Some-Page-<id>"}'      # then GET /recall?q=…
 ```
 
-The `brain` service is at `http://127.0.0.1:8100`; Postgres is inspectable at `127.0.0.1:5432`. For the PWA locally, `cd pwa && npm run dev` (see [`docs/pwa.md`](./docs/pwa.md)). Do **not** layer the local overlay on the VPS.
+The brain is at `http://127.0.0.1:8100`. The full local walkthrough — smoke
+test, running the PWA, and the Voyage/`.env` gotchas — is in
+[`docs/quickstart.md`](./docs/quickstart.md); the production VPS deploy (the
+Caddy/SSO edge, day-2 ops) is [`docs/deployment.md`](./docs/deployment.md).
 
-**VPS (with the Caddy vhosts from `compose/Caddyfile` already serving `brain.api.{your-domain}` + `brain.{your-domain}`):**
-```sh
-docker compose up -d
-docker compose ps
-```
+## Documentation
 
-### 3. Smoke test
+The README is the landing page; the manual lives in [`docs/`](./docs) (indexed at
+[`docs/README.md`](./docs/README.md)) and renders natively on GitHub. Three of the
+narrative docs also render inside the brain PWA itself, behind sign-in. Start by
+what you're trying to do:
 
-The live end-to-end smoke ingests a Notion page, then exercises `recall` / `profile` / `map` and asserts the page's chunk comes back:
+- **Understand it** — [`architecture.md`](./docs/architecture.md) (the brain + edge, the security model) · [`brain-architecture.md`](./docs/brain-architecture.md) (the living design doc) · [`rag-primer.md`](./docs/rag-primer.md) (plain-English RAG) · [`positioning.md`](./docs/positioning.md) (the landscape).
+- **Build an app on it** — [`app-platform.md`](./docs/app-platform.md) (the app contract + the two-kinds-of-data rule) · [`web-toolkit.md`](./docs/web-toolkit.md) (the shared frontend) · [`consumer-api.md`](./docs/consumer-api.md) + [`consumer-integration.md`](./docs/consumer-integration.md) (the brain-read contract). The `build-platform-app` skill scaffolds the whole thing.
+- **Run it** — [`quickstart.md`](./docs/quickstart.md) (local) · [`deployment.md`](./docs/deployment.md) (VPS + day-2 ops) · [`embedder.md`](./docs/embedder.md) (swap the embedder).
 
-```sh
-BRAIN_URL=http://127.0.0.1:8100 python scripts/smoke_substrate.py
-```
-
-It needs `NOTION_TOKEN` (the page must be shared with that integration) and the brain running with `VOYAGE_API_KEY` + `PG_DSN`. See the script header for the full env list and how to override the page.
-
-### 4. Drop content in
-
-The input is a Notion page. The brain fetches it, splits it into section chunks (one per heading; an unheadinged page stays one chunk), embeds them, and serves them back via `recall`:
-
-```sh
-curl -X POST http://127.0.0.1:8100/ingest \
-  -H 'Content-Type: application/json' \
-  -d '{"url": "https://www.notion.so/Some-Page-<id>"}'
-```
-
-Re-ingesting the same page wipes-and-replaces its chunks, so the page stays the source of truth. The PWA's discover view does the same thing from a phone, with selective ingest.
-
-### 5. Wire Claude Code (optional)
-
-See [`templates/claude-code-client/INSTALL.md`](templates/claude-code-client/INSTALL.md) for how to drop the MCP server entry and the `UserPromptSubmit` memory injection hook into any of your project repos. This is the canonical example of "a consumer app talking to the brain over HTTP/MCP."
-
-### 6. Building your own app
-
-The brain exposes a small contract — `recall`, `doc`, `map` — over **plain HTTP/JSON** (`GET /recall`, `GET /doc`, `GET /map`). Any backend — Python, Go, TypeScript, a shell script — can hit it. **If your app runs on the same VPS** (e.g. Scout), call `http://brain:8100` directly over `brainnet` — no auth needed; **from off-box**, use `https://brain.api.{domain}` + the bearer token. (See [How access works](#how-access-works-security-model).) The same reads are also exposed as **MCP tools** at `/mcp` for Claude Code and other LLM-tool-discovery harnesses. See [`docs/consumer-integration.md`](./docs/consumer-integration.md); full contract in [`docs/consumer-api.md`](./docs/consumer-api.md).
-
-A *pure consumer* (like the Claude Code hook) just reads the brain. A full **platform app** also gets a face: build its PWA from the [web-toolkit](./docs/web-toolkit.md), have its backend proxy `/api/brain/*` to the brain (keeping the bearer server-side) and expose `/api/me` from the edge's identity header, put it behind one Caddy vhost, and register it in the PWA's `#apps` launcher. The whole contract — including the **two-kinds-of-data rule** (app working set vs. brain knowledge) and where each store lives — is in [`docs/app-platform.md`](./docs/app-platform.md). The `build-platform-app` skill scaffolds all of it (interview → contract → checklist → scaffold).
-
-The brain doesn't enforce any schema on you — your job-fit scorer and your reading-list app both ask questions in plain language and reason over the same faithful chunks. That's the whole point.
-
-## Known limits + setup gotchas
-
-### `.env` location + shell env shadow (both structurally addressed)
-
-Two related Compose footguns we hit:
-- Compose only auto-loads `.env` from the **same directory as the compose file** (`compose/.env`, not the repo root `.env.local`).
-- Compose's `${VAR}` interpolation reads the shell environment *before* `.env`, and treats an empty shell value as authoritative — so a shell's empty `ANTHROPIC_API_KEY=""` export (Claude Code subshells do this) can shadow a real key in `.env`.
-
-Both are sidestepped by using `env_file: .env` (which loads `.env` directly into the container env, bypassing shell interpolation entirely) — which is what our compose does. **One caveat:** `docker compose restart` does *not* reload `env_file`. Only `down && up` does. If you edit `.env`, full-recreate.
-
-### Voyage requires a payment method on file
-
-Voyage's free tier gives you 200M tokens/month free — but without a payment method on file, you're rate-limited to **3 RPM / 10K TPM**, which chokes ingest (each ingest embeds every section of the page in a batched call, and a multi-page sync blows past 3 RPM). **Add a card on the [Voyage dashboard](https://dashboard.voyageai.com/)** — the free tokens stay free; the card just lifts the throttle. Real cost at personal-brain scale is cents.
-
-If you prefer not to use Voyage, swap the embedder: `BRAIN_EMBED_MODEL` + the matching `EMBED_DIM` (see [`docs/embedder.md`](./docs/embedder.md)).
-
-### Other things that bit us once
-
-- The MCP streamable-HTTP endpoint is `/mcp` (no trailing slash). Clients must initialize a session via an `initialize` JSON-RPC call before any tool call — the returned `mcp-session-id` header has to be echoed on every subsequent request.
-- `scripts/smoke_substrate.py` needs `requests` (not pinned in a `requirements.txt`).
-- The first `docker compose up` triggers a multi-minute image build (`uv sync` downloads the Python dep tree). Subsequent ups reuse the cached layer.
+**Security posture:** from the internet there's exactly one door — Caddy (443) —
+with the PWA behind Google SSO and the brain API behind a bearer token; every
+other service sits on a private Docker network with no public port. Full model in
+[`architecture.md`](./docs/architecture.md); which URL + auth *your* app uses
+(off-box bearer vs. on-network direct) in [`consumer-integration.md`](./docs/consumer-integration.md).

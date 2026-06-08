@@ -104,6 +104,8 @@ When finishing work surfaces a caveat or possible follow-up:
 - **A real choice → exactly one question.** Brief and simply worded; the one question states what the follow-up is and what the courses of action are.
 - **Neither → drop it.** No trailing "worth a look…", "whenever you want…", "ready when you are…", "you may want to…" — a suggestion the user has to decode is a request wearing a disclaimer. Act, ask plainly, or say nothing.
 
+**Caveats: if it changes no decision the user can make, cut it.** A statement that is technically true but carries no action — "the dependency still ships even when disabled," "this survives a revert but doesn't matter here," "note that X is theoretically possible" — is noise the reader has to process and discard. Before adding a caveat, ask: does this change what the user would choose or do? If no, delete it. Don't pad it with "honest caveat:" or "worth naming" to excuse keeping it. A caveat earns its place only when it would flip a decision, expose a real risk, or correct a wrong assumption.
+
 ---
 
-**These guidelines are working if:** fewer unnecessary changes in diffs, fewer rewrites due to overcomplication, clarifying questions come before implementation rather than after mistakes, fewer permission-asking turns on fixes that were already clear, scoping framed as verification burden instead of effort grades, and follow-ups arriving as completed actions or one plain question — never trailing suggestions.
+**These guidelines are working if:** fewer unnecessary changes in diffs, fewer rewrites due to overcomplication, clarifying questions come before implementation rather than after mistakes, fewer permission-asking turns on fixes that were already clear, scoping framed as verification burden instead of effort grades, follow-ups arriving as completed actions or one plain question — never trailing suggestions, and caveats only when they change a decision — never technically-true footnotes.

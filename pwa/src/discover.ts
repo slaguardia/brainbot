@@ -101,10 +101,7 @@ export function mountDiscover(container: HTMLElement): void {
     <section class="home discover">
       <div class="disc-head">
         <h2>Notion pages</h2>
-        <div class="disc-actions">
-          <button class="disc-guide-btn" type="button">What to sync</button>
-          <a class="disc-refresh" href="#discover">Refresh</a>
-        </div>
+        <a class="disc-refresh" href="#discover">Refresh</a>
       </div>
       <p class="disc-sub">
         Every page shared with the integration. Pull the ones you want into the brain.
@@ -112,9 +109,6 @@ export function mountDiscover(container: HTMLElement): void {
       <div class="disc-body"><p class="home-status">Asking Notion…</p></div>
     </section>`;
   const body = container.querySelector<HTMLElement>(".disc-body")!;
-  container.querySelector<HTMLButtonElement>(".disc-guide-btn")!.addEventListener("click", () => {
-    showSyncGuideModal();
-  });
   container.querySelector<HTMLAnchorElement>(".disc-refresh")!.addEventListener("click", (e) => {
     e.preventDefault();
     body.innerHTML = `<p class="home-status">Asking Notion…</p>`;
@@ -328,51 +322,6 @@ function showPullModal(
     if (act === "all") {
       const urls = [node.page.url, ...kids.map((k) => k.url)].filter(Boolean) as string[];
       void pullBatch(body, btn, urls);
-    }
-  });
-  document.body.appendChild(overlay);
-}
-
-// --- "what to sync" guide modal ---------------------------------------------
-
-// A short, scannable guide shown from the head button: what's worth pulling,
-// what to skip, and a pointer to the full docs page + the curate-notion skill.
-function showSyncGuideModal(): void {
-  const overlay = document.createElement("div");
-  overlay.className = "disc-modal-overlay";
-  overlay.innerHTML = `
-    <div class="disc-modal disc-guide" role="dialog" aria-modal="true" aria-label="What to sync">
-      <h3 class="disc-guide-title">What to sync to the brain</h3>
-      <p class="disc-guide-lead">
-        The brain is a reference library, not a backup. It splits each page into
-        one chunk per heading and recalls by meaning — so pull durable,
-        well-structured knowledge and skip the rest.
-      </p>
-      <p class="disc-guide-head is-good">Good to sync</p>
-      <ul class="disc-guide-list">
-        <li>Durable facts, decisions, profiles, notes you'd want recalled later.</li>
-        <li>Pages with clear headings — one topic per section recalls best.</li>
-        <li>Stable content; the brain stores a snapshot until you re-pull.</li>
-      </ul>
-      <p class="disc-guide-head is-skip">Skip</p>
-      <ul class="disc-guide-list">
-        <li>Scratch, meeting dumps, to-do lists — no structure, weak recall.</li>
-        <li>Secrets or credentials — the brain returns raw facts to consumers.</li>
-        <li>Big unstructured pages and content duplicated across pages.</li>
-      </ul>
-      <p class="disc-guide-foot">
-        Tip: the <strong>curate-notion</strong> skill restructures pages into
-        brain-ready sections before you pull. Full guide:
-        <a href="#docs/what-to-sync">What to sync</a>.
-      </p>
-      <div class="disc-modal-actions">
-        <button type="button" class="disc-modal-cancel" data-act="close">Close</button>
-      </div>
-    </div>`;
-  overlay.addEventListener("click", (e) => {
-    const t = e.target as HTMLElement;
-    if (t === overlay || t.getAttribute("data-act") === "close" || t.tagName === "A") {
-      overlay.remove();
     }
   });
   document.body.appendChild(overlay);

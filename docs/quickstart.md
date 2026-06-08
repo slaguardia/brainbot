@@ -18,7 +18,7 @@ cp .env.example .env
 
 Set in `compose/.env`:
 
-- `VOYAGE_API_KEY` — embeddings (see the [Voyage note](#setup-gotchas) below).
+- `VOYAGE_API_KEY` — embeddings (needs a card on file; see [`deployment.md` §0](./deployment.md#0-prerequisites-off-the-box)).
 - `NOTION_TOKEN` — page fetch on ingest (the page must be shared with that integration).
 - `POSTGRES_PASSWORD`.
 
@@ -77,20 +77,16 @@ brain over HTTP/MCP."
 
 ## Setup gotchas
 
-- **Voyage needs a card on file.** The free tier is 200M tokens/month, but
-  without a payment method you're throttled to **3 RPM / 10K TPM**, which chokes
-  ingest (each ingest embeds every section of the page in one batched call; a
-  multi-page sync blows past 3 RPM). Add a card on the
-  [Voyage dashboard](https://dashboard.voyageai.com/) — the free tokens stay
-  free; the card just lifts the throttle. Real cost at personal-brain scale is
-  cents. Prefer not to use Voyage? Swap the embedder via `BRAIN_EMBED_MODEL` +
-  the matching `EMBED_DIM` (see [`embedder.md`](./embedder.md)).
-- **`.env` loads only from the compose dir, and `restart` won't reload it.**
-  Compose auto-loads `.env` from `compose/.env` (not the repo root). Our compose
-  uses `env_file:` — which also stops a shell's empty `ANTHROPIC_API_KEY=""`
-  export (Claude Code subshells do this) from shadowing a real key — but
-  `docker compose restart` does *not* reload `env_file`. After editing `.env`,
-  do a full `down && up`, not `restart`.
+Two footguns bite local and VPS alike and are documented in the deployment
+runbook: **Voyage needs a payment method on file** (without it you're throttled
+to 3 RPM, which chokes ingest — [`deployment.md` §0](./deployment.md#0-prerequisites-off-the-box);
+swap the embedder via `BRAIN_EMBED_MODEL` + `EMBED_DIM` if you'd rather not use
+it, see [`embedder.md`](./embedder.md)), and **`.env` loads only from
+`compose/.env` and won't reload on `docker compose restart`** — edit it, then
+`down && up` ([`deployment.md` §3](./deployment.md#3-get-the-code--configure-env)).
+
+Local-specific:
+
 - **The MCP endpoint is `/mcp`** (no trailing slash). Clients must `initialize` a
   JSON-RPC session before any tool call and echo the returned `mcp-session-id`
   header on every subsequent request.

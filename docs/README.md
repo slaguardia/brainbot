@@ -32,6 +32,10 @@ here discards reversed decisions instead of accumulating them.
 - [consumer-integration.md](./consumer-integration.md) — how an app talks to the brain, in brief. Narrative companion to the reference.
 - [pwa.md](./pwa.md) — the first-party PWA: layout, dev workflow, deploy, the #apps launcher.
 
+## Operations
+
+- [deployment.md](./deployment.md) — end-to-end VPS runbook: provision the box, bring up the brain core, stand up the Caddy/SSO edge, add auxiliary apps, and day-2 ops (backups, updates, revocation).
+
 ## Principles & history
 
 - [genericity-rule.md](./genericity-rule.md) — shared brain for anyone, not built around one author's workflow.

@@ -127,6 +127,8 @@ flowchart TB
 
 The stack is two compose services: `postgres` (pgvector) and `brain` (FastMCP + asyncpg). On the VPS a third, `pwa`, serves the phone surface, and Caddy adds two vhosts — `brain.api.{domain}` (bearer-authed API) and `brain.{domain}` (Google sign-in via oauth2-proxy).
 
+> For the full VPS deploy — provisioning the server, standing up the Caddy/SSO edge, and adding auxiliary apps — follow [`docs/deployment.md`](./docs/deployment.md). The steps below are the quick local/fresh-install path.
+
 ### 1. Configure env
 
 ```sh

@@ -67,6 +67,16 @@ CREATE TABLE IF NOT EXISTS chunks (
                  (to_tsvector('english', coalesce(heading,'') || ' ' || text)) STORED
 );
 
+-- Runtime settings the UI manages (not deploy-time env): a tiny key/value store.
+-- Today it holds the Notion integration token when set from the Integrations page,
+-- so a deployment can connect Notion without editing NOTION_TOKEN in .env. Values
+-- are secrets — keep them out of logs and never return them over the API.
+CREATE TABLE IF NOT EXISTS settings (
+    key        text PRIMARY KEY,
+    value      text NOT NULL,
+    updated_at timestamptz NOT NULL DEFAULT now()
+);
+
 CREATE INDEX IF NOT EXISTS chunks_embedding_hnsw
     ON chunks USING hnsw (embedding vector_cosine_ops);
 CREATE INDEX IF NOT EXISTS chunks_fts_gin

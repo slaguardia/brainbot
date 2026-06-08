@@ -37,7 +37,8 @@ def test_ingested_pages_carry_the_captured_edit_time(client, seed, monkeypatch):
     seed(title="Old", text="y", path="Old", source_id=PRE_STAMP)
 
     pages = [_page(INGESTED, "Current"), _page(PRE_STAMP, "Old"), _page(NOT_PULLED, "New")]
-    monkeypatch.setattr(api, "list_pages", lambda: [dict(p) for p in pages])
+    # list_pages now takes the resolved Notion token (env/DB) as its one arg.
+    monkeypatch.setattr(api, "list_pages", lambda token=None: [dict(p) for p in pages])
 
     resp = client.get("/notion/pages")
     assert resp.status_code == 200

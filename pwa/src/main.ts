@@ -16,6 +16,7 @@
 //                        chrome:false — no shared header/gutters). `#learnings*`
 //                        aliases onto the docs view's Evolution page.
 //   discover           → Notion discovery (pull pages into the brain)
+//   integrations       → connect outside sources (Notion token) from the UI
 //   apps               → apps-home launcher (cards for every platform app)
 
 import "@brainbot/web-toolkit/base.css";
@@ -28,6 +29,7 @@ import { mountApps } from "./apps";
 import { mountDiscover } from "./discover";
 import { mountDocs } from "./docs";
 import { mountHome } from "./home";
+import { mountIntegrations } from "./integrations";
 
 mountApp(
   {
@@ -35,12 +37,14 @@ mountApp(
     docs: { view: () => ({ mount: (el) => mountDocs(el) }), chrome: false },
     learnings: { view: () => ({ mount: (el) => mountDocs(el) }), chrome: false },
     discover: () => ({ mount: (el) => mountDiscover(el) }),
+    integrations: () => ({ mount: (el) => mountIntegrations(el) }),
     apps: () => ({ mount: (el) => mountApps(el) }),
   },
   {
     title: "brain",
     nav: [
       { label: "apps", href: "#apps", ariaLabel: "Apps on the brain platform" },
+      { label: "integrations", href: "#integrations", ariaLabel: "Connect outside sources" },
       { label: "docs", href: "#docs", ariaLabel: "How the brain works" },
     ],
   },

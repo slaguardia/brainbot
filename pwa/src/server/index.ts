@@ -124,6 +124,50 @@ async function proxyIngest(req: IncomingMessage, res: ServerResponse): Promise<v
   }
 }
 
+// Body-forwarding proxy for the Integrations surface: PUT (connect — body is the
+// token) and DELETE (disconnect — no body) to the brain's /integrations/notion.
+// The token only ever travels browser→this server→brain; it's never stored or
+// echoed client-side.
+async function proxyJson(
+  req: IncomingMessage,
+  res: ServerResponse,
+  method: "PUT" | "DELETE",
+  brainPath: string,
+  timeoutMs = 15_000,
+): Promise<void> {
+  let body: string | undefined;
+  if (method === "PUT") {
+    const read = await new Promise<string>((resolve, reject) => {
+      const parts: Buffer[] = [];
+      req.on("data", (c: Buffer) => parts.push(c));
+      req.on("end", () => resolve(Buffer.concat(parts).toString("utf-8")));
+      req.on("error", reject);
+    }).catch(() => null);
+    if (read === null) {
+      json(res, 400, { error: "could not read request body" });
+      return;
+    }
+    body = read;
+  }
+  const ac = new AbortController();
+  const deadline = setTimeout(() => ac.abort(), timeoutMs);
+  try {
+    const upstream = await fetch(new URL(brainPath, BRAIN), {
+      method,
+      headers: body !== undefined ? { "Content-Type": "application/json" } : undefined,
+      body,
+      signal: ac.signal,
+    });
+    const text = await upstream.text();
+    res.writeHead(upstream.status, { "Content-Type": "application/json; charset=utf-8" });
+    res.end(text);
+  } catch (err) {
+    json(res, 502, { error: "brain unreachable", detail: String(err) });
+  } finally {
+    clearTimeout(deadline);
+  }
+}
+
 async function serveStatic(req: IncomingMessage, res: ServerResponse): Promise<void> {
   const url = new URL(req.url ?? "/", "http://localhost");
   let rel = decodeURIComponent(url.pathname);
@@ -209,6 +253,18 @@ const server = createServer((req, res) => {
   // Selective pull: the discovery view's per-page ingest action.
   if (req.method === "POST" && url.pathname === "/api/ingest") {
     void proxyIngest(req, res);
+    return;
+  }
+  // Integrations: connection status (GET) + connect/disconnect Notion (PUT/DELETE).
+  if (req.method === "GET" && url.pathname === "/api/integrations") {
+    void proxyRead(res, url, "/integrations", []);
+    return;
+  }
+  if (
+    url.pathname === "/api/integrations/notion" &&
+    (req.method === "PUT" || req.method === "DELETE")
+  ) {
+    void proxyJson(req, res, req.method, "/integrations/notion");
     return;
   }
   if (req.method === "GET" || req.method === "HEAD") {

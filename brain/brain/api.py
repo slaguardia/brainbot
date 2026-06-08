@@ -28,7 +28,8 @@ from starlette.responses import JSONResponse
 
 from .config import Config
 from .db import apply_schema, close_pool, get_pool
-from .notion import NotionError, fetch_page, list_pages
+from .notion import NotionError, fetch_page, list_pages, verify_token
+from .settings import NOTION_TOKEN_KEY, delete_setting, get_setting, set_setting
 from .store import doc, map_, profile, recall, sources_last_edited, upsert_source
 
 logger = logging.getLogger(__name__)
@@ -46,6 +47,20 @@ mcp = FastMCP(
 
 
 # ---- Plain HTTP routes -------------------------------------------------------
+
+async def _active_notion_token(pool) -> tuple[str | None, str | None]:
+    """The Notion token in effect and where it came from. A token stored from the
+    Integrations UI ('db') wins over the NOTION_TOKEN env ('env'); neither set ->
+    (None, None). Returning the source lets the UI show how Notion is connected
+    (it never sees the token itself)."""
+    db = await get_setting(pool, NOTION_TOKEN_KEY)
+    if db:
+        return db, "db"
+    env = Config().notion_token
+    if env:
+        return env, "env"
+    return None, None
+
 
 @mcp.custom_route("/health", methods=["GET"])
 async def health(_request: Request) -> JSONResponse:
@@ -73,7 +88,9 @@ async def ingest(request: Request) -> JSONResponse:
         return JSONResponse({"error": "field 'url' must be a string"}, status_code=400)
 
     try:
-        page = await asyncio.to_thread(fetch_page, url)
+        pool = await get_pool()
+        token, _ = await _active_notion_token(pool)
+        page = await asyncio.to_thread(fetch_page, url, token)
     except NotionError as e:
         # Token / URL / not-shared — caller-fixable, so 400.
         return JSONResponse({"error": str(e)}, status_code=400)
@@ -82,7 +99,6 @@ async def ingest(request: Request) -> JSONResponse:
         return JSONResponse({"error": f"fetch failed: {e}"}, status_code=502)
 
     try:
-        pool = await get_pool()
         source_id, chunk_count = await upsert_source(
             pool,
             kind="notion_page",
@@ -118,7 +134,9 @@ async def notion_pages(_request: Request) -> JSONResponse:
     tree-building/staleness-judging/presentation is the consumer's.
     """
     try:
-        pages = await asyncio.to_thread(list_pages)
+        pool = await get_pool()
+        token, _ = await _active_notion_token(pool)
+        pages = await asyncio.to_thread(list_pages, token)
     except NotionError as e:
         # Missing token / API refusal — caller-visible config problem, so 400.
         return JSONResponse({"error": str(e)}, status_code=400)
@@ -127,7 +145,6 @@ async def notion_pages(_request: Request) -> JSONResponse:
         return JSONResponse({"error": f"discovery failed: {e}"}, status_code=502)
 
     try:
-        pool = await get_pool()
         ingested = await sources_last_edited(pool)
     except Exception as e:  # noqa: BLE001 — db failure: surface, don't 500
         logger.exception("notion/pages: sources_last_edited failed")
@@ -140,6 +157,67 @@ async def notion_pages(_request: Request) -> JSONResponse:
             # consumer should treat those as possibly stale.
             p["ingested_last_edited"] = ingested[p["id"]]
     return JSONResponse({"pages": pages})
+
+
+@mcp.custom_route("/integrations", methods=["GET"])
+async def integrations(_request: Request) -> JSONResponse:
+    """GET /integrations — connection status per integration, for the UI. Reports
+    only whether Notion is connected and how ('db' = token set from the UI, 'env'
+    = NOTION_TOKEN). Never returns the token itself."""
+    try:
+        pool = await get_pool()
+        token, source = await _active_notion_token(pool)
+    except Exception as e:  # noqa: BLE001 — db failure: surface, don't 500
+        logger.exception("integrations: status failed")
+        return JSONResponse({"error": f"status failed: {e}"}, status_code=502)
+    return JSONResponse({"notion": {"connected": bool(token), "source": source}})
+
+
+@mcp.custom_route("/integrations/notion", methods=["PUT", "DELETE"])
+async def notion_integration(request: Request) -> JSONResponse:
+    """Manage the Notion integration token (the UI's connect/disconnect).
+
+    PUT {token}: validate it against Notion (/users/me), then store it — a stored
+    token overrides the NOTION_TOKEN env. Returns {connected, source, bot,
+    workspace}; 400 if Notion rejects the token.
+    DELETE: drop the stored token, falling back to the env token if one is set.
+    Returns the resulting {connected, source}."""
+    pool = await get_pool()
+
+    if request.method == "DELETE":
+        try:
+            await delete_setting(pool, NOTION_TOKEN_KEY)
+            token, source = await _active_notion_token(pool)
+        except Exception as e:  # noqa: BLE001 — db failure: surface, don't 500
+            logger.exception("integrations: disconnect failed")
+            return JSONResponse({"error": f"disconnect failed: {e}"}, status_code=502)
+        return JSONResponse({"connected": bool(token), "source": source})
+
+    # PUT
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "body must be JSON {token}"}, status_code=400)
+    token = (body or {}).get("token")
+    if not token or not isinstance(token, str) or not token.strip():
+        return JSONResponse({"error": "missing required field: token"}, status_code=400)
+
+    try:
+        info = await asyncio.to_thread(verify_token, token)
+    except NotionError as e:
+        # Notion rejected the token (empty / 401) — caller-fixable, so 400.
+        return JSONResponse({"error": f"Notion rejected the token: {e}"}, status_code=400)
+    except Exception as e:  # noqa: BLE001 — surface the cause, don't swallow it
+        logger.exception("integrations: verify_token failed")
+        return JSONResponse({"error": f"verify failed: {e}"}, status_code=502)
+
+    try:
+        await set_setting(pool, NOTION_TOKEN_KEY, token.strip())
+    except Exception as e:  # noqa: BLE001 — db failure: surface, don't 500
+        logger.exception("integrations: store token failed")
+        return JSONResponse({"error": f"store failed: {e}"}, status_code=502)
+
+    return JSONResponse({"connected": True, "source": "db", **info})
 
 
 @mcp.custom_route("/recall", methods=["GET"])

@@ -306,7 +306,20 @@ def _ancestor_titles(page: dict, cfg: Config) -> list[str]:
 
 # ---- discovery: every page shared with the integration ------------------------
 
-def list_pages() -> list[dict]:
+def verify_token(token: str) -> dict:
+    """Validate a Notion token by calling /users/me, returning {bot, workspace}.
+
+    Used by the Integrations UI to test a pasted token before storing it. Raises
+    NotionTokenError (empty token) or NotionError (Notion rejected it, e.g. 401)."""
+    if not (token and token.strip()):
+        raise NotionTokenError("token is empty")
+    cfg = Config(notion_token=token.strip())
+    me = _get("/users/me", cfg)  # NotionError on a bad token (401 -> "API error 401")
+    bot = me.get("bot") or {}
+    return {"bot": me.get("name") or "", "workspace": bot.get("workspace_name") or ""}
+
+
+def list_pages(token: str | None = None) -> list[dict]:
     """List everything the integration has been granted access to — pages AND
     databases — via the search API (empty query = everything shared, children
     included). Databases matter because in Notion every database ROW is itself a
@@ -323,10 +336,12 @@ def list_pages() -> list[dict]:
     - url:       the canonical notion.so URL (what /ingest accepts; pages only —
                  a database has no block tree to flatten).
 
-    Raises NotionTokenError (no token) / NotionError (API failure). Synchronous —
-    wrap with asyncio.to_thread in async callers.
+    Pass `token` to override the env NOTION_TOKEN (the brain resolves a DB-stored
+    integration token first; see api._active_notion_token). Raises NotionTokenError
+    (no token) / NotionError (API failure). Synchronous — wrap with
+    asyncio.to_thread in async callers.
     """
-    cfg = Config()
+    cfg = Config(notion_token=token) if token else Config()
     if not cfg.notion_token:
         raise NotionTokenError("missing required env: NOTION_TOKEN")
 
@@ -374,7 +389,7 @@ def _parent_id(page: dict) -> str | None:
     return None
 
 
-def fetch_page(url: str) -> dict:
+def fetch_page(url: str, token: str | None = None) -> dict:
     """Fetch a Notion page as {id, title, text, path, parent_id, last_edited_time}.
 
     - id:    the dashed Notion page uuid (used as the stable source id).
@@ -386,10 +401,12 @@ def fetch_page(url: str) -> dict:
     - last_edited_time: Notion's real last-edited timestamp (ISO 8601), or None.
 
     Raises NotionTokenError / NotionURLError / NotionNotSharedError for the three
-    distinct failure modes. Synchronous (stdlib- or httpx-backed) — wrap with
+    distinct failure modes. Pass `token` to override the env NOTION_TOKEN (the
+    brain resolves a DB-stored integration token first; see
+    api._active_notion_token). Synchronous (stdlib- or httpx-backed) — wrap with
     asyncio.to_thread in async callers.
     """
-    cfg = Config()
+    cfg = Config(notion_token=token) if token else Config()
     if not cfg.notion_token:
         raise NotionTokenError("missing required env: NOTION_TOKEN")
     page_id = parse_page_id(url)  # raises NotionURLError on a bad URL

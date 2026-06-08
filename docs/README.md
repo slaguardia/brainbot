@@ -34,6 +34,7 @@ here discards reversed decisions instead of accumulating them.
 
 ## Operations
 
+- [quickstart.md](./quickstart.md) — run the brain locally: two containers, ingest a Notion page, recall it, plus the setup gotchas. The fast path before the full VPS deploy.
 - [deployment.md](./deployment.md) — end-to-end VPS runbook: provision the box, bring up the brain core, stand up the Caddy/SSO edge, add auxiliary apps, and day-2 ops (backups, updates, revocation).
 
 ## Principles & history

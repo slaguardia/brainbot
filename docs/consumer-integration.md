@@ -48,6 +48,21 @@ One service (`brain/api.py`) serves both: plain HTTP (`/ingest`, `/recall`,
 `/profile`, `/map`, `/health`) for apps, and MCP at `/mcp` (tools `recall`,
 `profile`, `map`) for Claude Code.
 
+## Where to reach the brain (and auth)
+
+Same contract, two addresses depending on where your consumer runs:
+
+- **On the VPS, on `brainnet`** (scout, the PWA backend, the Claude Code hook):
+  call `http://brain:8100` directly — **no token**. The brain's port is never
+  published, so being on `brainnet` *is* the authorization; only put services
+  you trust on it (there's no per-app auth inside).
+- **Off the box** (your laptop, another server): `https://brain.api.{domain}` +
+  the bearer token.
+
+This is the same split the PWA backend uses — it proxies `/api/brain/*` to the
+brain so the bearer stays server-side, never in the browser. Full topology +
+firewall in [`architecture.md`](./architecture.md).
+
 ---
 
 For the full operation reference, schemas, config, and run instructions, see

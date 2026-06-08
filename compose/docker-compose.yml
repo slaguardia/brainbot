@@ -142,6 +142,35 @@ services:
     volumes:
       - ./oauth2-proxy-emails.txt:/etc/oauth2-proxy/emails.txt:ro
 
+  caddy:
+    # The public edge — the ONLY service that publishes host ports (80/443).
+    # Terminates TLS (Let's Encrypt, automatic) and reverse-proxies each vhost
+    # to its app over brainnet by service name (brain:8100, pwa:8787,
+    # oauth2-proxy:4180, scout:8765), so it MUST sit on brainnet. The vhosts
+    # live in ./Caddyfile; it reads {$BRAIN_DOMAIN}/{$BRAIN_BEARER_TOKEN} from
+    # .env. VPS-only: the local overlay disables it (laptops use no TLS).
+    # See docs/deployment.md.
+    image: caddy:2
+    container_name: caddy
+    restart: unless-stopped
+    networks:
+      - brainnet
+    ports:
+      - "80:80"
+      - "443:443"
+    env_file:
+      - .env
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # Persist issued certs across redeploys (re-requesting risks Let's
+      # Encrypt rate limits) and Caddy's autosave config.
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - brain
+      - pwa
+      - oauth2-proxy
+
 networks:
   brainnet:
     driver: bridge
@@ -152,3 +181,6 @@ volumes:
   # rebuilds from a CSV — and deliberately NOT in the brain's Postgres (per
   # docs/app-platform.md "App data: two kinds": blast-radius isolation).
   scout-data:
+  # Caddy's Let's Encrypt certs (caddy-data) + autosaved config (caddy-config).
+  caddy-data:
+  caddy-config:

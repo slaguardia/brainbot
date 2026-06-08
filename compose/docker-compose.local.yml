@@ -41,3 +41,9 @@ services:
   # so `profiles: [vps-only]` keeps `docker compose up` from building it here.
   scout:
     profiles: ["vps-only"]
+
+  # Caddy is the VPS edge (TLS + SSO in front of the apps). Locally there's no
+  # TLS and you talk to the brain directly, so keep it out of `docker compose
+  # up` with the same vps-only profile.
+  caddy:
+    profiles: ["vps-only"]

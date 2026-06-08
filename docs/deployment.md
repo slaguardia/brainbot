@@ -9,15 +9,11 @@ This is the concrete companion to the design docs: the *what* and *why* live in
 [`app-platform.md`](./app-platform.md) (the app contract + the "adding an app is
 mechanical" recipe). This doc is the *do-it-in-order* version.
 
-> **Status note.** The committed `compose/docker-compose.yml` defines
-> `postgres`, `brain`, `pwa`, `scout`, and `oauth2-proxy` — but **not** Caddy,
-> even though `compose/Caddyfile` is written against docker service names
-> (`brain:8100`, `pwa:8787`, `oauth2-proxy:4180`, `scout:8765`). Caddy therefore
-> has to run **as a container on `brainnet`**, and that service does not exist in
-> the repo yet. [Step 4](#4-add-the-caddy-edge-the-missing-service) gives the
-> exact block to add; until it's committed, the edge is the one piece you wire by
-> hand. This is the gap behind the "VPS deployment of the full stack 🟡 pending"
-> line in the README.
+The stack is fully expressed in `compose/docker-compose.yml` — `postgres`,
+`brain`, `pwa`, `scout`, `oauth2-proxy`, and `caddy` (the public edge). On the
+VPS, `docker compose up -d --build` brings up everything; the local overlay
+(`docker-compose.local.yml`) excludes the VPS-only services (`caddy`, `pwa`,
+`scout`).
 
 ---
 
@@ -200,51 +196,19 @@ cp oauth2-proxy-emails.txt.example oauth2-proxy-emails.txt
 
 ---
 
-## 4. Add the Caddy edge (the missing service)
+## 4. The Caddy edge
 
-Caddy is the public door and the TLS terminator, and it must sit on `brainnet` to
-reach the apps by service name. **Add this service** to
-`compose/docker-compose.yml` (it's the one piece not yet committed):
+Nothing to add here — the `caddy` service ships in `compose/docker-compose.yml`.
+It's the public door and TLS terminator: it publishes 80/443 (the only host
+ports on the box), sits on `brainnet` so it can reach each app by service name,
+mounts `./Caddyfile`, and persists Let's Encrypt certs in the `caddy-data`
+volume (kept across redeploys so you don't re-request certs — and risk Let's
+Encrypt rate limits — on every `up`). It reads `{$BRAIN_DOMAIN}` /
+`{$BRAIN_BEARER_TOKEN}` from `.env`.
 
-```yaml
-  caddy:
-    image: caddy:2
-    container_name: caddy
-    restart: unless-stopped
-    networks:
-      - brainnet
-    ports:
-      - "80:80"
-      - "443:443"
-    env_file:
-      - .env                       # Caddyfile reads {$BRAIN_DOMAIN} / {$BRAIN_BEARER_TOKEN}
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy-data:/data           # Let's Encrypt certs — persist these
-      - caddy-config:/config
-    depends_on:
-      - brain
-      - pwa
-      - oauth2-proxy
-```
-
-…and declare the two volumes alongside the existing `postgres-data` / `scout-data`:
-
-```yaml
-volumes:
-  postgres-data:
-  scout-data:
-  caddy-data:
-  caddy-config:
-```
-
-The `caddy-data` volume holds the issued certificates — keep it across redeploys
-so you don't re-request certs (and risk Let's Encrypt rate limits) on every
-`up`.
-
-The `Caddyfile` itself ships in `compose/` and already defines the `brain.api`,
-`brain` (PWA), and `scout` vhosts. You don't edit it now — you'll add a vhost per
-new app in [Step 7](#7-add-an-auxiliary-app-end-to-end).
+The `Caddyfile` already defines the `brain.api`, `brain` (PWA), and `scout`
+vhosts. You don't edit it now — you'll add a vhost per new app in
+[Step 7](#7-add-an-auxiliary-app-end-to-end).
 
 ---
 

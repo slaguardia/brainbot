@@ -17,7 +17,7 @@ L1 and L2 were already built; L3 (the web-toolkit) and the apps launcher are the
 
 **An app (L4)** is a small contract: *a backend that owns its own working-set data and reads the brain read-only over HTTP, **+** a PWA built from the web-toolkit, **+** one vhost behind the shared edge.* Backends are **polyglot on purpose** — the brain is Python, scout is Go, the next thing might be 200 lines of Node. What makes them feel like one product is the shared edge, the shared toolkit, and the shared brain — not a shared runtime.
 
-Concrete example: keep your work history + the kind of roles you'd consider in Notion, ingest those pages, and build a separate app that fetches job listings. That app calls the brain to score each listing against what it actually knows about you — without you maintaining a separate profile per app. It signs in with the same Google login and looks like every other app, for free.
+Concrete example: keep your work history + the kind of roles you'd consider in Notion, ingest those pages, and build a separate app that scores incoming job listings against what the brain actually knows about you — no per-app profile, same Google login, same skin, for free. That one is [worked through in full below](#use-cases-worked-through), alongside two others.
 
 Two first-party apps ship with the project, both as worked examples:
 
@@ -37,6 +37,45 @@ The intent is **personal context as infrastructure, and a repeatable shape for t
 - **Single-user by design.** A platform for one person, shared across that person's apps — not a team knowledge base.
 
 The platform design lives in [`docs/app-platform.md`](./docs/app-platform.md) and [`docs/web-toolkit.md`](./docs/web-toolkit.md); the brain itself in [`docs/architecture.md`](./docs/architecture.md); the full doc set is indexed at [`docs/README.md`](./docs/README.md); how the design got here is the append-only [`docs/learnings.md`](./docs/learnings.md). To scaffold a new app, the `build-platform-app` skill walks the contract end to end.
+
+## Developing on the platform: what you get for free
+
+The whole point of the four layers is that **an app author writes almost nothing but the app.** Everything that is the same for every personal app — sign-in, HTTPS, the look, the offline shell, install-to-home-screen, and the connection to your knowledge — is *inherited*, not rebuilt each time.
+
+There are two shapes of consumer. A **pure consumer** (a script, a shell hook, an LLM tool) is anything that can make an HTTP call; it just reads the brain and is done. A **platform app** adds a face: a backend in any language plus a PWA built from the web-toolkit. For a platform app, here is the entire division of labor:
+
+| You write | The platform gives you, unchanged |
+|---|---|
+| your backend's `/api/*` — its own logic + working-set store, in **any language** | a real HTTPS origin + Google SSO at the edge; **no login code in the app** (L2) |
+| a ~3-route read-only proxy (`/api/brain/recall · /doc · /map`) that keeps the bearer token server-side | a typed brain client — `recall(q)` / `doc(id)` / `map()` — that the toolkit calls through that proxy (L3) |
+| your app-specific views (`views/*.ts`) | design tokens, app shell, hash router, and standard loading / empty / error states (L3) |
+| an icon + a manifest name | a service-worker + manifest generator → an **installable, offline-capable PWA**, for free (L3) |
+| a one-line `/api/me` that echoes the edge identity header | `currentUser()` — who's signed in — with no per-app auth code (L3) |
+| — | the shared, read-only knowledge about *you* (L1) |
+
+So "another little app for myself" collapses to **backend logic + a few views.** Skin, routing, sign-in, installability, and brain access come with the package — PWA-ness in particular is an *outcome* of the edge + toolkit, not something you build. The mechanical contract (the proxy routes, the `/api/me` endpoint, the Caddy vhost, the launcher entry) is in [step 6 below](#6-building-your-own-app) and [`docs/app-platform.md`](./docs/app-platform.md); the `build-platform-app` skill scaffolds all of it.
+
+## Use cases, worked through
+
+Every app follows the same shape: **you keep the knowledge in the brain by hand; the app keeps its own working set and reasons over what it recalls.** Three concrete ones, from a full app down to a one-file consumer.
+
+### Job-fit scorer — a full platform app
+
+- **In the brain:** your work history, the kinds of roles and companies you'd actually consider, your dealbreakers, your comp floor — ordinary Notion pages you write and edit by hand.
+- **The app:** a small backend (say 200 lines of Node) that pulls job listings on a schedule and stores its verdicts in its **own** store. SQLite is plenty — the verdicts are disposable, rebuildable output, and are never written back into the brain (the [two-kinds-of-data rule](./docs/app-platform.md#app-data-two-kinds-and-where-the-engines-live)).
+- **The query:** for each listing the backend calls `recall("staff-level remote backend roles, fintech, no on-call …")`. What comes back is the **faithful passages from your own pages** — not a synthesized profile. The app does the reasoning itself: score the listing against those passages, gate on dealbreakers, mark yes / maybe / no.
+- **What's inherited:** it signs in with the same Google login, looks like every other app, installs to your phone, and **never keeps its own copy of "who you are."** Edit the Notion page and every app sees the change on the next recall.
+
+### Reading-triage — another full app, sharing the same brain
+
+- **In the brain:** what you're going deep on right now, topics you're tired of, authors you trust — the *same* hand-edited pages the job scorer reads. One brain, many apps.
+- **The app:** owns a queue (unread / read / archived) in its own store. For each incoming article it `recall`s your current interests and ranks it: surface now, save for later, or drop.
+- **The boundary:** the brain never learns about the queue (that's the app's working set); the app never persists a profile (that's the brain's job). Same skin, same sign-in, installable — for the cost of the views and the ranking logic.
+
+### Claude Code memory injection — a pure consumer (ships today)
+
+- **No PWA, no backend, no working set** — just a read. A `UserPromptSubmit` hook in any project repo calls `recall` on each prompt and injects the relevant passages from your brain as context, so the assistant answers with what *you* actually know and prefer.
+- This is the minimal end of the contract: a consumer is anything that can make an HTTP call. It needs no toolkit and no edge — on the VPS it hits `http://brain:8100` directly. Drop-in config is in [`templates/claude-code-client/`](templates/claude-code-client/).
 
 ## How it compares
 

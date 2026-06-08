@@ -30,7 +30,7 @@ from .config import Config
 from .db import apply_schema, close_pool, get_pool
 from .notion import NotionError, fetch_page, list_pages, verify_token
 from .settings import NOTION_TOKEN_KEY, delete_setting, get_setting, set_setting
-from .store import doc, map_, profile, recall, sources_last_edited, upsert_source
+from .store import _parse_iso, doc, map_, profile, recall, sources_last_edited, upsert_source
 
 logger = logging.getLogger(__name__)
 
@@ -424,6 +424,74 @@ async def map_tool(scope: str | None = None) -> dict:
     return {"sources": tree}
 
 
+# ---- Periodic Notion sync ----------------------------------------------------
+
+def _is_stale(page: dict, ingested: dict[str, str | None]) -> bool:
+    """Whether an already-ingested Notion page's brain copy is behind its origin —
+    the backend twin of the PWA's isStale. Only pages in `ingested` (uuid ==
+    source id) are candidates: this never flags pages a human hasn't pulled. A
+    page with no url (databases) or no edit time can't be compared/re-ingested;
+    a page ingested before edit times were recorded (None) is treated as stale."""
+    pid = page["id"]
+    if pid not in ingested:
+        return False
+    if not page.get("url") or not page.get("last_edited_time"):
+        return False
+    captured = ingested[pid]
+    if captured is None:
+        return True
+    return _parse_iso(page["last_edited_time"]) > _parse_iso(captured)
+
+
+async def _sync_stale_pages(pool) -> tuple[int, int]:
+    """Re-ingest every ingested page whose Notion copy moved past the brain's.
+    Returns (synced, failed). Reuses the same fetch + wipe-replace upsert as
+    /ingest, so a re-sync is idempotent. No-ops when Notion isn't connected."""
+    token, _ = await _active_notion_token(pool)
+    if token is None:
+        return (0, 0)
+    pages = await asyncio.to_thread(list_pages, token)
+    ingested = await sources_last_edited(pool)
+    stale = [p for p in pages if _is_stale(p, ingested)]
+
+    synced = failed = 0
+    for p in stale:
+        try:
+            page = await asyncio.to_thread(fetch_page, p["url"], token)
+            await upsert_source(
+                pool,
+                kind="notion_page",
+                title=page["title"],
+                raw_text=page["text"],
+                path=page["path"],
+                source_id=page["id"],
+                parent_id=page.get("parent_id"),
+                last_edited=page.get("last_edited_time"),
+            )
+            synced += 1
+        except Exception:  # noqa: BLE001 — one bad page must not abort the sweep
+            logger.exception("sync: re-ingest failed for %s", p.get("url"))
+            failed += 1
+    return (synced, failed)
+
+
+async def _poll_loop(pool, interval: int) -> None:
+    """Re-ingest stale pages every `interval` seconds until cancelled at shutdown.
+    Sleeps first (don't hammer Notion at boot), and each tick is best-effort: a
+    failure is logged and the loop sleeps on rather than dying."""
+    logger.info("brain: notion poll loop started (every %ds)", interval)
+    while True:
+        await asyncio.sleep(interval)
+        try:
+            synced, failed = await _sync_stale_pages(pool)
+            if synced or failed:
+                logger.info("brain: notion sync — %d re-ingested, %d failed", synced, failed)
+        except asyncio.CancelledError:
+            raise
+        except Exception:  # noqa: BLE001 — keep the loop alive across tick failures
+            logger.exception("brain: notion sync tick failed")
+
+
 # The Starlette app FastMCP builds: serves /mcp (MCP) + the custom routes above.
 app: Starlette = mcp.streamable_http_app()
 
@@ -446,8 +514,16 @@ def _with_pool_lifespan(app: Starlette) -> None:
             # otherwise the module-global _pool stays set to an open pool.
             await apply_schema(pool)  # idempotent DDL — ensures sources/chunks exist on a fresh DB
             logger.info("brain: asyncpg pool opened + schema applied")
-            async with inner(app):
-                yield
+            interval = Config().poll_interval_seconds
+            poll = asyncio.create_task(_poll_loop(pool, interval)) if interval > 0 else None
+            try:
+                async with inner(app):
+                    yield
+            finally:
+                if poll is not None:
+                    poll.cancel()
+                    with contextlib.suppress(asyncio.CancelledError):
+                        await poll
         finally:
             await close_pool()
             logger.info("brain: asyncpg pool closed")

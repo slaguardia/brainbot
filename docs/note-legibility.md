@@ -132,10 +132,11 @@ ALTER TABLE sources ADD COLUMN IF NOT EXISTS rewrite_policy text NOT NULL DEFAUL
 Global config goes in the existing `settings` key/value table (no new table):
 
 - `legibility.enabled` — `"true"`/`"false"` (default false; off = today's behavior).
-- `legibility.mode` — `"auto"` | `"manual"`.
+- `legibility.mode` — `"auto"` | `"manual"` (default `"auto"`: rewrite fires on its
+  own for any page below the threshold).
 - `legibility.threshold` — health score below which auto-rewrite fires.
-- `legibility.model` — provider/model id (default: a fast Claude model; see
-  [open decisions](#open-decisions)).
+- `legibility.model` — model id (default `claude-sonnet-4-6`; one model for both the
+  health pass and the rewrite).
 
 ## Ingest flow changes
 
@@ -168,12 +169,11 @@ expected to *contain* the markdown headings the splitter already keys on.
 
 ## Read-surface changes
 
-- **`doc(id)` — unchanged.** Still returns `raw_text` **verbatim**. doc is ground
-  truth; the byte-exact guarantee is preserved. (Consequence to document: a recalled
-  chunk's text now comes from the rewrite, so it may not be a substring of `doc.text`.
-  This is intended — chunk = clean structure, doc = what you actually wrote. Whether
-  to *also* surface `rewrite_text` on doc is an [open decision](#open-decisions);
-  lean is no, keep the contract minimal.)
+- **`doc(id)` — unchanged.** Still returns `raw_text` **verbatim** — the rewrite is
+  not exposed on doc (decided). doc is ground truth; the byte-exact guarantee is
+  preserved. (Consequence to document: a recalled chunk's text now comes from the
+  rewrite, so it may not be a substring of `doc.text`. This is intended — chunk =
+  clean structure, doc = what you actually wrote.)
 - **`map()` — gains `health`.** Add the score (nullable) to each source dict so the
   dashboard and apps can surface "your notes are healthy / these three are hurting
   your agents." This is the consumer-visible payoff of putting health in the brain.
@@ -185,9 +185,10 @@ expected to *contain* the markdown headings the splitter already keys on.
 - **`brain/brain/legibility.py`** — the analyzer: `analyze(raw_text) -> (health, rewrite)`,
   one LLM call, synchronous, wrapped in `asyncio.to_thread` by `upsert_source` (mirrors
   how `embed()` is called). Prompt enforces structural-only + grounded.
-- **New dependency + secret:** the LLM provider SDK and an API key (e.g.
-  `ANTHROPIC_API_KEY`). This is a real addition — a new dep and a new secret in
-  deployment — and the feature is opt-in partly to keep the base brain free of it.
+- **New dependency + secret:** the Anthropic SDK and `ANTHROPIC_API_KEY`, calling
+  `claude-sonnet-4-6` for both the health pass and the rewrite. This is a real
+  addition — a new dep and a new secret in deployment — and the feature is opt-in
+  partly to keep the base brain free of it.
 - **Config:** the `legibility.*` settings above; `Config().validate()` should *not*
   require the LLM key unless `legibility.enabled`.
 
@@ -235,16 +236,18 @@ Phased so each step is independently verifiable. Earlier phases de-risk later on
 - [ ] Per-source `rewrite_policy` override (incl. 'off' = pin to raw voice). → verify: an 'off' page is never rewritten even below threshold.
 - [ ] Guidance doc/skill: how to write notes that power the rewrite well — framed as help, not a requirement (the point of the rewrite is to support messy notes). → verify: doc exists and links from health `notes`.
 
-## Open decisions
+## Decisions (resolved)
 
-These are the genuine forks left; resolve at build time.
+The forks that were open are now settled — the plan is decision-complete. The only
+value still set empirically is `legibility.threshold` (read off the Phase 3 curve).
 
-1. **Provider/model.** Default a fast, cheap Claude model for the always-on health
-   pass; possibly a stronger model for the rewrite. One model or two tiers? (Lean:
-   start with one configurable model, split only if rewrite quality demands it.)
-2. **Surface `rewrite_text` on `doc()`?** Lean: no — keep doc minimal and verbatim;
-   the rewrite is an internal chunking input, not consumer content.
-3. **Heuristic health tier.** A zero-LLM heuristic (heading count, section length,
-   pronoun density) could give always-on health even with the LLM layer disabled.
-   Worth it, or is opt-in LLM health enough? (Lean: defer — don't build two scorers
-   until there's demand.)
+1. **Model — one model, `claude-sonnet-4-6`,** for both the health pass and the
+   rewrite. At ~a page/day the cost gap over a cheaper model is pennies, so quality
+   (voice preservation + grounding) wins over a two-tier split.
+2. **`doc()` stays verbatim-only.** The rewrite is an internal chunking input, not
+   consumer content; doc remains byte-exact ground truth.
+3. **Health is LLM-only,** computed in the same pass as the rewrite. No zero-LLM
+   heuristic tier — health is null on un-analyzed sources; one scorer, less code.
+4. **Default mode is automatic.** Once enabled, any page below the threshold is
+   rewritten without a manual trigger (matches "as easy as taking notes"); the
+   per-source `'off'` override and the diff view are the safety net.

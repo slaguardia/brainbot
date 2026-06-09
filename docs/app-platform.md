@@ -343,6 +343,11 @@ order matters (each step stands alone and is independently shippable):
 - **Offline depth.** The toolkit's service worker should ship an offline *shell*
   first (cache assets, graceful "you're offline"); true offline *data* per app is
   app-specific and deferred until one actually needs it.
+- **Change-aware reads.** How a caching consumer knows its cached brain view is
+  stale *without a dumb TTL* — a cost cascade gated on the brain's `version`
+  stamp, surfaced through a transport-agnostic `onChange` on L3's brain client.
+  See the proposal in [`change-propagation.md`](./change-propagation.md); first
+  consumer is scout's company-fit brief.
 
 ## How this relates to the other docs
 

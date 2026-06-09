@@ -3,8 +3,10 @@
 // included) as flat {id, title, parent_id, last_edited_time, url, ingested,
 // ingested_last_edited} facts; this view builds the parent/child tree and offers
 // a per-page "pull" action that POSTs the page's URL to /api/ingest (the brain's
-// existing write path), plus ONE bulk "re-pull" button for ingested pages whose
-// Notion copy moved past what the brain captured. No per-page resync UI.
+// existing write path), a per-page "remove" action that DELETEs an ingested
+// page's source from the brain (/api/sources/{id}), plus ONE bulk "re-pull"
+// button for ingested pages whose Notion copy moved past what the brain
+// captured. No per-page resync UI.
 //
 // All Notion-returned strings (titles) are escaped before they touch innerHTML.
 
@@ -224,7 +226,7 @@ function rowHTML(node: PageNode): string {
       : count;
   } else {
     action = p.ingested
-      ? `<span class="disc-badge is-ingested">in brain</span>`
+      ? `<span class="disc-badge is-ingested">in brain</span><button class="disc-remove" type="button" data-id="${esc(p.id ?? "")}" data-url="${esc(p.url ?? "")}" title="remove from the brain">remove</button>`
       : `<button class="disc-pull" type="button" data-id="${esc(p.id ?? "")}" data-url="${esc(p.url ?? "")}">pull</button>`;
   }
   return `
@@ -273,6 +275,15 @@ function wireIngest(body: HTMLElement): void {
       const node = nodeById.get(btn.getAttribute("data-id") ?? "");
       const urls = node ? collectChildPages(node).map((p) => p.url!) : [];
       if (urls.length) void pullBatch(body, btn as HTMLButtonElement, urls);
+      return;
+    }
+    if (btn.classList.contains("disc-remove")) {
+      // Un-ingest: drop this one page from the brain. Per-page only — no cascade
+      // to children. A remove button can sit inside a <summary>; stop the click
+      // from also toggling the branch.
+      e.preventDefault();
+      const id = btn.getAttribute("data-id");
+      if (id) void removePage(btn as HTMLButtonElement, id, btn.getAttribute("data-url") ?? "");
       return;
     }
     if (!btn.classList.contains("disc-pull")) return;
@@ -372,6 +383,45 @@ async function pullBatch(body: HTMLElement, btn: HTMLButtonElement, urls: string
       "afterbegin",
       `<p class="home-status">${failed} of ${urls.length} pulls failed — retry from the tree.</p>`,
     );
+  }
+}
+
+// Un-ingest one page: DELETE its source from the brain, then swap the "in brain"
+// badge + remove button back to a pull button in place (and patch the cache, so
+// the next render doesn't resurrect the badge). The inverse of pullPage.
+async function removePage(btn: HTMLButtonElement, id: string, url: string): Promise<void> {
+  btn.disabled = true;
+  btn.textContent = "removing…";
+  try {
+    const res = await fetch(`/api/sources/${id}`, { method: "DELETE" });
+    const data = (await res.json()) as { error?: string };
+    if (!res.ok) {
+      btn.disabled = false;
+      btn.textContent = "retry";
+      btn.title = data.error ?? `HTTP ${res.status}`;
+      return;
+    }
+    const cached = currentPages.find((p) => p.id === id);
+    if (cached) {
+      cached.ingested = false;
+      cached.ingested_last_edited = null;
+      writeCache(currentPages, fetchedAt);
+    }
+    // Drop the "in brain" badge that precedes this button, then replace the
+    // button itself with a fresh pull button.
+    const badge = btn.previousElementSibling;
+    if (badge?.classList.contains("disc-badge")) badge.remove();
+    const pull = document.createElement("button");
+    pull.className = "disc-pull";
+    pull.type = "button";
+    pull.dataset.id = id;
+    pull.dataset.url = url;
+    pull.textContent = "pull";
+    btn.replaceWith(pull);
+  } catch (err) {
+    btn.disabled = false;
+    btn.textContent = "retry";
+    btn.title = String(err);
   }
 }
 

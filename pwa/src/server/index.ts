@@ -255,6 +255,17 @@ const server = createServer((req, res) => {
     void proxyIngest(req, res);
     return;
   }
+  // Revoke: the discovery view's per-page un-ingest action — drop the source
+  // (and its chunks) from the brain. The inverse of /api/ingest.
+  if (req.method === "DELETE" && url.pathname.startsWith("/api/sources/")) {
+    const id = url.pathname.slice("/api/sources/".length);
+    if (!/^[0-9a-fA-F-]{36}$/.test(id)) {
+      json(res, 400, { error: "id must be a uuid" });
+      return;
+    }
+    void proxyJson(req, res, "DELETE", `/sources/${id}`);
+    return;
+  }
   // Integrations: connection status (GET) + connect/disconnect Notion (PUT/DELETE).
   if (req.method === "GET" && url.pathname === "/api/integrations") {
     void proxyRead(res, url, "/integrations", []);

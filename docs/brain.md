@@ -7,6 +7,9 @@ faces — plain HTTP and MCP — on port 8100:
 - `POST /ingest {url}` — fetch a Notion page, upsert it as a **source**, and
   re-derive its **chunks** (wipe-replace). Capture = human edit = re-sync are the
   same operation.
+- `DELETE /sources/{id}` — un-ingest a source: drop the source row and its chunks
+  (`ON DELETE CASCADE`). The inverse of `/ingest`; returns `{deleted}`
+  (`false`, still 200, when no source had that id — revoking twice is safe).
 - `GET /recall?q=&scope=&k=&complete=` — targeted hybrid retrieval: cosine
   (pgvector) + full-text (`tsvector`), fused with Reciprocal Rank Fusion.
   Top-k sections, each carrying its owning document's stable `id`.

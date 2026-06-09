@@ -4,7 +4,7 @@ The first-party phone surface, and **the first app built on the [web-toolkit](./
 
 **Free-text capture is currently disabled:** with the document-substrate cutover the brain's write path is source ingest (Notion pages / docs), not a `/capture` endpoint. The legacy `POST /api/capture` still answers `410 Gone`.
 
-The backend is read-only against the brain. It exposes a small `/api/*` of its own and **never writes to the brain** — the one write it proxies is `POST /api/ingest` (the human pulling a Notion page in via discover). It keeps the brain's bearer token and URL server-side; the browser only ever talks to the backend.
+The backend is read-only against the brain. It exposes a small `/api/*` of its own and **never writes to the brain** — the only writes it proxies are `POST /api/ingest` (the human pulling a Notion page in via discover) and `DELETE /api/sources/{id}` (revoking one back out). It keeps the brain's bearer token and URL server-side; the browser only ever talks to the backend.
 
 The in-PWA "how the brain works" docs and the evolution timeline are **rendered from the canonical repo docs** (`docs/brain-architecture.md`, `docs/learnings.md`), bundled at build time via `?raw` imports and parsed with `marked`, so there is no hand-mirrored copy to keep in sync. The PWA holds no brain logic.
 
@@ -13,7 +13,7 @@ The in-PWA "how the brain works" docs and the evolution timeline are **rendered 
 The toolkit's `mountApp()` wires these routes (`pwa/src/main.ts`):
 
 - `#` (home) — the dashboard: source/domain counts, an inline **recall search** box, the **source map** (path tree), and the Notion **sync status** with a manual re-pull. Search and the map used to be separate routes; they now live on home.
-- `#discover` — Notion discovery + selective ingest.
+- `#discover` — Notion discovery + selective ingest/revoke.
 - `#apps` — the **launcher**: a card per app from the registry, each health-pinged (connected/offline) and linking out. See below.
 - `#docs` / `#learnings` — the in-app explainer + evolution timeline, rendered from the repo docs (`chrome:false` full-bleed views).
 
@@ -25,11 +25,11 @@ The toolkit's `mountApp()` wires these routes (`pwa/src/main.ts`):
 
 - `src/main.ts` — wires the brainbot views into the toolkit's hash router + nav; `registerSW()`.
 - `src/home.ts` — home dashboard: counts + inline recall search + source map + Notion sync, via the toolkit's `recall()` / `map()`.
-- `src/discover.ts` — Notion discovery + selective ingest view.
+- `src/discover.ts` — Notion discovery + selective ingest/revoke view.
 - `src/apps.ts` + `src/apps.json` — the launcher view and its registry.
 - `src/docs.ts` — renders `docs/*.md?raw` for the `#docs` / `#learnings` views.
 - `src/style.css` — app-specific CSS only (home/docs/discover); base + components come from the toolkit.
-- `src/server/index.ts` — Node HTTP backend: serves `dist/`; `/api/me`, `/api/brain/{recall,doc,map}` (GET proxy, bearer server-side), `/api/notion/pages`, `POST /api/ingest`, `/api/health`; `POST /api/capture` → 410.
+- `src/server/index.ts` — Node HTTP backend: serves `dist/`; `/api/me`, `/api/brain/{recall,doc,map}` (GET proxy, bearer server-side), `/api/notion/pages`, `POST /api/ingest`, `DELETE /api/sources/{id}`, `/api/health`; `POST /api/capture` → 410.
 - `scripts/gen-pwa.ts` — prebuild: generates `public/manifest.webmanifest` from the toolkit and copies the toolkit's `sw.js` into `public/`. **Both are build artifacts (gitignored)** — the toolkit is the single source of truth for the manifest shape + the SW.
 - `vite.config.ts` — extends the toolkit's Vite preset (dev `/api` proxy, `fs.allow ".."` for the `?raw` docs imports, dist build).
 

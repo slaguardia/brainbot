@@ -579,6 +579,18 @@ async def sources_last_edited(pool: asyncpg.Pool) -> dict[str, str | None]:
     }
 
 
+async def delete_source(pool: asyncpg.Pool, source_id: str) -> bool:
+    """Remove an ingested source (and its chunks, via ON DELETE CASCADE) by its
+    stable id — the inverse of `upsert_source`, for un-ingesting a page. Returns
+    True if a row was deleted, False if no source had that id (already gone)."""
+    async with pool.acquire() as conn:
+        result = await conn.execute(
+            "DELETE FROM sources WHERE id = $1::uuid", source_id
+        )
+    # asyncpg returns the command tag, e.g. "DELETE 1" / "DELETE 0".
+    return result.rsplit(" ", 1)[-1] != "0"
+
+
 # ---- doc (deterministic fetch): one whole document by stable id ---------------
 
 async def doc(pool: asyncpg.Pool, doc_id: str) -> dict | None:

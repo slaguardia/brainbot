@@ -30,7 +30,16 @@ from .config import Config
 from .db import apply_schema, close_pool, get_pool
 from .notion import NotionError, fetch_page, list_pages, verify_token
 from .settings import NOTION_TOKEN_KEY, delete_setting, get_setting, set_setting
-from .store import _parse_iso, doc, map_, profile, recall, sources_last_edited, upsert_source
+from .store import (
+    _parse_iso,
+    delete_source,
+    doc,
+    map_,
+    profile,
+    recall,
+    sources_last_edited,
+    upsert_source,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -122,6 +131,27 @@ async def ingest(request: Request) -> JSONResponse:
     return JSONResponse(
         {"source_id": source_id, "chunks": chunk_count, "path": page["path"], "title": page["title"]}
     )
+
+
+@mcp.custom_route("/sources/{source_id}", methods=["DELETE"])
+async def delete_source_route(request: Request) -> JSONResponse:
+    """DELETE /sources/{id} — un-ingest a source: drop the source row and its
+    chunks (ON DELETE CASCADE). The inverse of /ingest. Returns {deleted: bool}
+    — False (still 200) when no source had that id, so revoking twice is safe.
+    A non-uuid id is a caller-fixable 400."""
+    source_id = request.path_params["source_id"]
+    try:
+        uuid.UUID(source_id)
+    except (ValueError, AttributeError, TypeError):
+        return JSONResponse({"error": "id must be a uuid"}, status_code=400)
+
+    try:
+        pool = await get_pool()
+        deleted = await delete_source(pool, source_id)
+    except Exception as e:  # noqa: BLE001 — db failure: surface, don't 500
+        logger.exception("sources: delete failed")
+        return JSONResponse({"error": f"delete failed: {e}"}, status_code=502)
+    return JSONResponse({"deleted": deleted})
 
 
 @mcp.custom_route("/notion/pages", methods=["GET"])

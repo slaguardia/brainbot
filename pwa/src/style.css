@@ -377,7 +377,8 @@
   padding: 2px 8px;
   font-size: 12px;
 }
-.disc-pull {
+.disc-pull,
+.disc-pull-db {
   color: var(--link);
   background: var(--link-bg);
   border: 1px solid var(--border-strong);
@@ -386,10 +387,15 @@
   font-size: 12px;
   cursor: pointer;
 }
-.disc-pull:hover {
+.disc-pull-db {
+  margin-left: 8px;
+}
+.disc-pull:hover,
+.disc-pull-db:hover {
   border-color: var(--link);
 }
-.disc-pull:disabled {
+.disc-pull:disabled,
+.disc-pull-db:disabled {
   color: var(--fg-faint);
   background: transparent;
   cursor: default;

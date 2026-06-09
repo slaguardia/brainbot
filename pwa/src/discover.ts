@@ -206,18 +206,27 @@ function renderPages(body: HTMLElement, pages: NotionPage[]): void {
     <ul class="src-list disc-tree">${roots.map(renderNode).join("")}</ul>`;
 }
 
-// One row: title grows, edited date + action hug the right. Databases aren't
-// pullable (ingest is page-only) — they show a row count instead.
+// One row: title grows, edited date + action hug the right. A database isn't
+// itself a document, so it shows a row count — plus a "pull all" button that
+// ingests its not-yet-pulled rows (each row is a page) in one batch.
 function rowHTML(node: PageNode): string {
   const p = node.page;
   const isDb = p.kind === "database";
   const title = esc(p.title || "(untitled)");
   const edited = !isDb && p.last_edited_time ? esc(p.last_edited_time.slice(0, 10)) : "";
-  const action = isDb
-    ? `<span class="disc-count">${node.children.length} page${node.children.length === 1 ? "" : "s"}</span>`
-    : p.ingested
+  let action: string;
+  if (isDb) {
+    const n = node.children.length;
+    const pending = collectChildPages(node).length;
+    const count = `<span class="disc-count">${n} page${n === 1 ? "" : "s"}</span>`;
+    action = pending
+      ? `${count} <button class="disc-pull-db" type="button" data-id="${esc(p.id ?? "")}">pull all ${pending}</button>`
+      : count;
+  } else {
+    action = p.ingested
       ? `<span class="disc-badge is-ingested">in brain</span>`
       : `<button class="disc-pull" type="button" data-id="${esc(p.id ?? "")}" data-url="${esc(p.url ?? "")}">pull</button>`;
+  }
   return `
       ${isDb ? `<span class="disc-kind-db">db</span>` : ""}
       <span class="src-label">${title}</span>
@@ -253,6 +262,16 @@ function wireIngest(body: HTMLElement): void {
       // Bulk re-pull: ingest is wipe-replace keyed on the page id, so re-posting
       // each stale page's URL syncs it in place — same write path as a pull.
       const urls = currentPages.filter(isStale).map((p) => p.url!);
+      if (urls.length) void pullBatch(body, btn as HTMLButtonElement, urls);
+      return;
+    }
+    if (btn.classList.contains("disc-pull-db")) {
+      // Pull every not-yet-ingested row of a database in one batch. A pull-all
+      // button sits inside the database's <summary>; without this the click
+      // would also toggle the branch.
+      e.preventDefault();
+      const node = nodeById.get(btn.getAttribute("data-id") ?? "");
+      const urls = node ? collectChildPages(node).map((p) => p.url!) : [];
       if (urls.length) void pullBatch(body, btn as HTMLButtonElement, urls);
       return;
     }

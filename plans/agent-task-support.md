@@ -26,8 +26,11 @@ The one shipped agent integration (the Claude Code `UserPromptSubmit` hook) is
 the weakest expression of the vision: one `recall` over the raw prompt,
 prepended — ambient injection, not an agent driving retrieval to do a task.
 
-This is a holding doc for two directions worth pursuing later. Both stay inside
-settled decisions. A third direction (write-back) is explicitly parked below.
+This is a holding doc for three directions worth pursuing later. A and B stay
+inside settled decisions and live on the read path. C (write-back) is what
+closes the loop — it adds the *accumulation* axis the read directions
+structurally cannot — and it reopens two settled decisions, so it carries its
+own design constraints below.
 
 ## Direction A — app-side intelligence library (toolkit)
 
@@ -57,13 +60,49 @@ librarian (retrieve + arrange faithful content, never synthesize/decide).
   docs require it; any LLM use here would need its own sign-off against that
   invariant.
 
-## Parked — write-back / closed learning loop (not now)
+## Direction C — write-back / closed learning loop
 
-Letting agents deposit task output back into the brain (scout's verdicts, "had
-coffee with X") would close the loop and is the highest-leverage idea, but it
-**directly contradicts a settled decision** — `docs/consumer-integration.md`:
-*"Writes come only from sources."* Decided 2026-06-09 to leave this out for now;
-revisit only as a deliberate architectural call, not folded into A or B.
+Let agents deposit what they learn back into the brain, so tasks accumulate
+truth over time instead of only hand-curated Notion edits doing so. This is the
+highest-leverage direction *and* the one with the most design risk, because it
+reopens two settled lines — `docs/brain.md`/`brain-architecture.md`: *"There is
+no `capture`"*, and `docs/consumer-integration.md`: *"Writes come only from
+sources."* Pursuing C amends those docs; it does not work around them.
+
+Design constraints (settled in discussion 2026-06-09):
+
+- **Clean separation is mandatory, not tidiness.** Agent-written data must be
+  distinguishable from Notion-ingested sources at read time, always. Two reasons
+  it's load-bearing: (1) it protects the *canonical* invariant — without it an
+  agent grounds tomorrow's decision on yesterday's agent guess, a compounding
+  feedback loop; (2) lifecycles differ — Notion sources have wipe-replace
+  currency and an "edit the page → re-sync" mutation path; agent writes have no
+  page behind them and are append-mostly observations with their own staleness.
+
+- **The brain enforces the tier; the SDK is the ergonomic front door.** The
+  toolkit *exposes* the write, but separation cannot be SDK convention — the
+  first consumer that calls the raw endpoint (or a buggy one) would pollute the
+  canonical corpus. Discipline lives server-side, same shape as today's read
+  proxy.
+
+- **Narrow scope: agent-observed facts *about the user*, cross-app and
+  reusable.** App *working set* (scout's verdicts, a reader's read/unread) stays
+  in the app's own store — the existing docs already split this correctly, and C
+  must not become a dump for working-set or it breaks that separation. Only
+  brain-shaped, agent-origin user facts ("had coffee with X", "declined three
+  onsite roles → leans remote") are write-back candidates.
+
+- **Second-class tier with provenance and a promotion path.** Agent writes are
+  explicitly lower-trust: `recall` *may* include them but always stamps them
+  `agent-origin` with provenance (which agent, when, derived-from). A confirmed
+  agent fact can graduate into a real Notion source. This keeps "sources are
+  canonical" *true* — agent claims never silently become canon.
+
+- **Open fork: how to separate.** Start with an origin/`kind` tag in the
+  existing `sources`/`chunks` tables (the `kind` column already exists; recall
+  filters/weights by origin); split into a separate captures store only if the
+  lifecycles diverge enough to warrant it. Path-namespace convention is the
+  cheap third option but is convention, not an enforced wall.
 
 ## Notes
 

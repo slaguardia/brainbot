@@ -41,8 +41,9 @@ services:
       # Secrets (VOYAGE_API_KEY, NOTION_TOKEN, POSTGRES_PASSWORD) come from .env.
       PG_DSN: postgresql://brain:${POSTGRES_PASSWORD}@postgres:5432/brain
       # How often (seconds) the brain re-ingests pages changed in Notion, so it
-      # stays current with no dashboard open. Default 3600 (1h); 0 disables.
-      BRAIN_POLL_INTERVAL_SECONDS: ${BRAIN_POLL_INTERVAL_SECONDS:-3600}
+      # stays current with no dashboard open. Default 300 (5m); 0 disables.
+      # Override per-deployment here or, at runtime, from the PWA's #integrations.
+      BRAIN_POLL_INTERVAL_SECONDS: ${BRAIN_POLL_INTERVAL_SECONDS:-300}
     depends_on:
       postgres:
         condition: service_healthy

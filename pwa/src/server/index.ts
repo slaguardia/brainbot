@@ -278,6 +278,14 @@ const server = createServer((req, res) => {
     void proxyJson(req, res, req.method, "/integrations/notion");
     return;
   }
+  // Auto-sync interval: set (PUT) or revert to env (DELETE) the Notion poll loop.
+  if (
+    url.pathname === "/api/integrations/notion/sync" &&
+    (req.method === "PUT" || req.method === "DELETE")
+  ) {
+    void proxyJson(req, res, req.method, "/integrations/notion/sync");
+    return;
+  }
   if (req.method === "GET" || req.method === "HEAD") {
     void serveStatic(req, res);
     return;

@@ -29,7 +29,13 @@ from starlette.responses import JSONResponse
 from .config import Config
 from .db import apply_schema, close_pool, get_pool
 from .notion import NotionError, fetch_page, list_pages, verify_token
-from .settings import NOTION_TOKEN_KEY, delete_setting, get_setting, set_setting
+from .settings import (
+    NOTION_TOKEN_KEY,
+    POLL_INTERVAL_KEY,
+    delete_setting,
+    get_setting,
+    set_setting,
+)
 from .store import (
     _parse_iso,
     delete_source,
@@ -42,6 +48,11 @@ from .store import (
 )
 
 logger = logging.getLogger(__name__)
+
+# Set when the poll interval is changed from the UI, so the running poll loop
+# wakes from its sleep and re-reads the new interval instead of waiting out the
+# old one. Lives in the app's single event loop alongside the loop and routes.
+_poll_reconfig = asyncio.Event()
 
 
 mcp = FastMCP(
@@ -69,6 +80,20 @@ async def _active_notion_token(pool) -> tuple[str | None, str | None]:
     if env:
         return env, "env"
     return None, None
+
+
+async def _effective_poll_interval(pool) -> tuple[int, str]:
+    """Seconds between Notion sync sweeps and where the value came from. A value
+    stored from the UI ('db') wins over BRAIN_POLL_INTERVAL_SECONDS ('env'); 0
+    (from either) means the loop idles. A malformed stored value is ignored in
+    favour of env so a bad row can't wedge syncing off."""
+    db = await get_setting(pool, POLL_INTERVAL_KEY)
+    if db is not None:
+        try:
+            return max(0, int(db)), "db"
+        except ValueError:
+            pass
+    return Config().poll_interval_seconds, "env"
 
 
 @mcp.custom_route("/health", methods=["GET"])
@@ -200,7 +225,17 @@ async def integrations(_request: Request) -> JSONResponse:
     except Exception as e:  # noqa: BLE001 — db failure: surface, don't 500
         logger.exception("integrations: status failed")
         return JSONResponse({"error": f"status failed: {e}"}, status_code=502)
-    return JSONResponse({"notion": {"connected": bool(token), "source": source}})
+    try:
+        interval, isource = await _effective_poll_interval(pool)
+    except Exception as e:  # noqa: BLE001 — db failure: surface, don't 500
+        logger.exception("integrations: poll interval read failed")
+        return JSONResponse({"error": f"status failed: {e}"}, status_code=502)
+    return JSONResponse(
+        {
+            "notion": {"connected": bool(token), "source": source},
+            "sync": {"interval_seconds": interval, "source": isource},
+        }
+    )
 
 
 @mcp.custom_route("/integrations/notion", methods=["PUT", "DELETE"])
@@ -248,6 +283,57 @@ async def notion_integration(request: Request) -> JSONResponse:
         return JSONResponse({"error": f"store failed: {e}"}, status_code=502)
 
     return JSONResponse({"connected": True, "source": "db", **info})
+
+
+@mcp.custom_route("/integrations/notion/sync", methods=["PUT", "DELETE"])
+async def notion_sync_setting(request: Request) -> JSONResponse:
+    """Manage the automatic Notion sync interval (the UI's auto-sync control).
+
+    PUT {interval_seconds}: store the interval (0 = off) — it overrides the
+    BRAIN_POLL_INTERVAL_SECONDS env. DELETE: drop the stored value, falling back
+    to the env interval. Both wake the running poll loop so the change takes
+    effect without a restart, and return the resulting {interval_seconds, source}."""
+    pool = await get_pool()
+
+    if request.method == "DELETE":
+        try:
+            await delete_setting(pool, POLL_INTERVAL_KEY)
+        except Exception as e:  # noqa: BLE001 — db failure: surface, don't 500
+            logger.exception("integrations: sync interval reset failed")
+            return JSONResponse({"error": f"reset failed: {e}"}, status_code=502)
+    else:  # PUT
+        try:
+            body = await request.json()
+        except Exception:
+            return JSONResponse(
+                {"error": "body must be JSON {interval_seconds}"}, status_code=400
+            )
+        raw = (body or {}).get("interval_seconds")
+        try:
+            interval = int(raw)
+        except (TypeError, ValueError):
+            return JSONResponse(
+                {"error": "field 'interval_seconds' must be an integer"}, status_code=400
+            )
+        if interval < 0:
+            return JSONResponse(
+                {"error": "field 'interval_seconds' must be >= 0 (0 disables sync)"},
+                status_code=400,
+            )
+        try:
+            await set_setting(pool, POLL_INTERVAL_KEY, str(interval))
+        except Exception as e:  # noqa: BLE001 — db failure: surface, don't 500
+            logger.exception("integrations: sync interval store failed")
+            return JSONResponse({"error": f"store failed: {e}"}, status_code=502)
+
+    # Wake the poll loop to pick up the new interval immediately.
+    _poll_reconfig.set()
+    try:
+        eff, source = await _effective_poll_interval(pool)
+    except Exception as e:  # noqa: BLE001 — db failure: surface, don't 500
+        logger.exception("integrations: sync interval read-back failed")
+        return JSONResponse({"error": f"read failed: {e}"}, status_code=502)
+    return JSONResponse({"interval_seconds": eff, "source": source})
 
 
 @mcp.custom_route("/recall", methods=["GET"])
@@ -505,13 +591,27 @@ async def _sync_stale_pages(pool) -> tuple[int, int]:
     return (synced, failed)
 
 
-async def _poll_loop(pool, interval: int) -> None:
-    """Re-ingest stale pages every `interval` seconds until cancelled at shutdown.
-    Sleeps first (don't hammer Notion at boot), and each tick is best-effort: a
-    failure is logged and the loop sleeps on rather than dying."""
-    logger.info("brain: notion poll loop started (every %ds)", interval)
+async def _poll_loop(pool) -> None:
+    """Re-ingest stale pages on the effective interval until cancelled at shutdown.
+    The interval is re-read each cycle (so a UI change takes effect without a
+    restart) and the sleep wakes early on a reconfig. An interval of 0 idles the
+    loop until it's re-enabled. Sleeps before the first sync (don't hammer Notion
+    at boot), and each tick is best-effort: a failure is logged and the loop
+    sleeps on rather than dying."""
+    logger.info("brain: notion poll loop started")
     while True:
-        await asyncio.sleep(interval)
+        interval, _ = await _effective_poll_interval(pool)
+        _poll_reconfig.clear()
+        if interval <= 0:
+            # Disabled — idle until the interval is changed from the UI.
+            await _poll_reconfig.wait()
+            continue
+        try:
+            # Sleep the interval, but wake early (and re-read it) on a reconfig.
+            await asyncio.wait_for(_poll_reconfig.wait(), timeout=interval)
+            continue
+        except asyncio.TimeoutError:
+            pass  # the interval elapsed → run a sweep
         try:
             synced, failed = await _sync_stale_pages(pool)
             if synced or failed:
@@ -544,16 +644,16 @@ def _with_pool_lifespan(app: Starlette) -> None:
             # otherwise the module-global _pool stays set to an open pool.
             await apply_schema(pool)  # idempotent DDL — ensures sources/chunks exist on a fresh DB
             logger.info("brain: asyncpg pool opened + schema applied")
-            interval = Config().poll_interval_seconds
-            poll = asyncio.create_task(_poll_loop(pool, interval)) if interval > 0 else None
+            # Always start the loop; it idles when the effective interval is 0 and
+            # can be enabled from the UI without a restart.
+            poll = asyncio.create_task(_poll_loop(pool))
             try:
                 async with inner(app):
                     yield
             finally:
-                if poll is not None:
-                    poll.cancel()
-                    with contextlib.suppress(asyncio.CancelledError):
-                        await poll
+                poll.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await poll
         finally:
             await close_pool()
             logger.info("brain: asyncpg pool closed")

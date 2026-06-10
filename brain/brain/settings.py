@@ -13,8 +13,11 @@ from __future__ import annotations
 
 import asyncpg
 
-# The single settings key in use today.
+# The settings keys in use today.
 NOTION_TOKEN_KEY = "notion_token"
+# Seconds between automatic Notion sync sweeps, set from the UI. A stored value
+# overrides BRAIN_POLL_INTERVAL_SECONDS (env); "0" explicitly disables the loop.
+POLL_INTERVAL_KEY = "notion_poll_interval"
 
 
 async def get_setting(pool: asyncpg.Pool, key: str) -> str | None:

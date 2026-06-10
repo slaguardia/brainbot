@@ -7,7 +7,9 @@ edges (never-pulled, no url, no captured time, equal times) are what matter.
 
 from __future__ import annotations
 
-from brain.api import _is_stale
+import asyncio
+
+from brain.api import _effective_poll_interval, _is_stale
 from brain.config import Config
 
 
@@ -51,7 +53,46 @@ def test_no_edit_time_cannot_be_compared():
 
 def test_empty_interval_env_falls_back_to_default(monkeypatch):
     # An accidental `BRAIN_POLL_INTERVAL_SECONDS=` in .env must not crash boot
-    # with int('') — it falls back to the 1h default like an unset var.
+    # with int('') — it falls back to the default like an unset var.
     monkeypatch.setenv("BRAIN_POLL_INTERVAL_SECONDS", "")
-    assert Config().poll_interval_seconds == 3600
+    assert Config().poll_interval_seconds == 300
+
+
+# --- _effective_poll_interval: DB-over-env precedence (the UI's control) ------
+
+class _FakePool:
+    """Minimal stand-in for the asyncpg pool get_setting reads: fetchrow returns
+    a {'value': ...} row for the stored key, or None when nothing is stored."""
+
+    def __init__(self, stored: str | None):
+        self._stored = stored
+
+    async def fetchrow(self, _sql: str, _key: str):
+        return {"value": self._stored} if self._stored is not None else None
+
+
+def test_stored_interval_overrides_env(monkeypatch):
+    monkeypatch.setenv("BRAIN_POLL_INTERVAL_SECONDS", "3600")
+    seconds, source = asyncio.run(_effective_poll_interval(_FakePool("900")))
+    assert (seconds, source) == (900, "db")
+
+
+def test_stored_zero_disables(monkeypatch):
+    # A stored 0 is an explicit "off" that wins over an env that's on.
+    monkeypatch.setenv("BRAIN_POLL_INTERVAL_SECONDS", "3600")
+    seconds, source = asyncio.run(_effective_poll_interval(_FakePool("0")))
+    assert (seconds, source) == (0, "db")
+
+
+def test_malformed_stored_falls_back_to_env(monkeypatch):
+    # A garbage row must not wedge syncing off — env wins instead.
+    monkeypatch.setenv("BRAIN_POLL_INTERVAL_SECONDS", "1800")
+    seconds, source = asyncio.run(_effective_poll_interval(_FakePool("not-a-number")))
+    assert (seconds, source) == (1800, "env")
+
+
+def test_no_stored_uses_env_default(monkeypatch):
+    monkeypatch.delenv("BRAIN_POLL_INTERVAL_SECONDS", raising=False)
+    seconds, source = asyncio.run(_effective_poll_interval(_FakePool(None)))
+    assert (seconds, source) == (300, "env")
 

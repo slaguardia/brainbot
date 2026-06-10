@@ -62,7 +62,7 @@ internal.
 | **`shell`** | the app chrome: header/nav, a hash-router mount (`mountApp(routes)`), and standard `loading` / `empty` / `error` states | brainbot `pwa/src/main.ts` hash router |
 | **`components`** | the reusable UI elements — buttons, cards, tables, modals, the SSE progress view — **harvested from scout's existing UI**, not a third-party library | scout's `internal/web/index.html` elements |
 | **`pwa`** | `manifest(opts)` generator (per-app name/short_name/icons/theme_color) + a standard `registerSW()` (offline app-shell + asset cache) | brainbot `pwa/public/manifest.webmanifest` + `sw.js` |
-| **`brain`** | typed client: `recall(q, k?)`, `doc(id)`, `map()` over the app backend's `/api` proxy; returns the brain's chunk/doc/map shapes from [`consumer-api.md`](./consumer-api.md) | brainbot `pwa/src/server` proxy + ad-hoc fetches |
+| **`brain`** | typed client: `recall(q, k?)`, `doc(id)`, `map()`, `changes(since?)`, `onChange(cb)` over the app backend's `/api` proxy; returns the brain's chunk/doc/map/change shapes from [`consumer-api.md`](./consumer-api.md) | brainbot `pwa/src/server` proxy + ad-hoc fetches |
 | **`session`** | `currentUser()` — reads the identity the edge injects (`X-Auth-Request-Email`, surfaced by the app backend); no login UI, no token handling | nothing (no app does this yet) |
 
 ### Module contracts (sketch — finalize in the toolkit repo)
@@ -75,8 +75,10 @@ mountApp(routes: Record<string, () => View>, opts?: { title; nav?: NavItem[] }):
 // brain  (calls the *app's own* /api/brain/* proxy, never the brain directly —
 //         the app backend forwards to the brain so the bearer/edge stay server-side)
 recall(q: string, k?: number): Promise<Chunk[]>   // {id,heading,text,score,path}
-doc(id: string): Promise<{ text: string; version: string }>
+doc(id: string): Promise<Doc>                       // {id,title,path,version,text} — verbatim
 map(): Promise<Source[]>                            // {id,title,path,parent_id,version}
+changes(since?: string): Promise<Change>            // {cursor,changed} — Tier 0 change signal
+onChange(cb: () => void, opts?): () => void         // subscribe (polls changes); returns unsubscribe
 
 // pwa
 manifest(opts: { name; short_name; themeColor?; icons? }): WebManifest  // build-time
@@ -92,7 +94,7 @@ The toolkit's `brain` client talks to the **app's own backend** (`/api/brain/rec
 etc.), not to `brain.api.{domain}` directly. Reason: the bearer token and the
 brain URL stay server-side in each app, exactly as brainbot's PWA already proxies
 `/api/recall` and `/api/map`. The toolkit standardizes the *client* call; each app
-backend keeps a tiny read-only proxy (3 routes). This preserves
+backend keeps a tiny read-only proxy (`recall`/`doc`/`map`/`changes`). This preserves
 [`consumer-integration.md`](./consumer-integration.md)'s read-only, no-secrets-in-
 the-browser posture.
 

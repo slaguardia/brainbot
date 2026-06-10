@@ -129,30 +129,59 @@ ALTER TABLE sources ADD COLUMN IF NOT EXISTS analysis_hash text;
 ALTER TABLE sources ADD COLUMN IF NOT EXISTS rewrite_policy text NOT NULL DEFAULT 'auto';
 ```
 
-Global config goes in the existing `settings` key/value table (no new table):
+### Where each knob lives: secret in env, policy in the DB
 
-- `legibility.enabled` — `"true"`/`"false"` (default false; off = today's behavior).
-- `legibility.mode` — `"auto"` | `"manual"` (default `"auto"`: rewrite fires on its
-  own for any page below the threshold).
-- `legibility.threshold` — health score below which auto-rewrite fires.
-- `legibility.model` — model id (default `claude-sonnet-4-6`; one model for both the
-  health pass and the rewrite).
+The one place this could go wrong is conflating the API key (a deployment secret)
+with the on/off switch (a runtime toggle). They live in different places, mirroring
+the **existing** `poll_interval` split (`Config.poll_interval_seconds` env default,
+overridden by a `settings`-table value, resolved per-request by `_effective_poll_interval`):
+
+- **`ANTHROPIC_API_KEY` — env only, like `VOYAGE_API_KEY`.** A secret, never stored in
+  the DB, read once into `Config`. Present-or-absent is a deployment fact, not a runtime
+  toggle.
+- **`legibility.*` — `settings` k/v table, runtime, no restart.** Toggleable from the
+  UI exactly like the Notion poll interval:
+  - `legibility.enabled` — `"true"`/`"false"` (default false; off = today's behavior).
+  - `legibility.mode` — `"auto"` | `"manual"` (default `"auto"`: rewrite fires on its
+    own for any page below the threshold; `"manual"` = analyze for health on every
+    ingest but only rewrite on an explicit per-page request, see [Manual trigger](#manual-trigger-surface)).
+  - `legibility.threshold` — health score below which auto-rewrite fires.
+  - `legibility.model` — model id (default `claude-sonnet-4-6`; one model for both the
+    health pass and the rewrite).
+
+**The seam resolution (this is the part the plan previously left ambiguous):**
+
+`Config().validate()` does **not** gate on `ANTHROPIC_API_KEY` — it can't, because
+`enabled` is a DB value and `validate()` runs at boot with no pool. Boot stays
+key-agnostic. Instead, an `_effective_legibility(pool) -> (enabled, model, ...)`
+helper — the exact shape of `_effective_poll_interval` — resolves the live policy at
+ingest time, and **treats "enabled but no key" as disabled (pass-through), logging a
+warning.** This mirrors the established defense that "a malformed stored value can't
+wedge syncing off": flipping the toggle on without provisioning the secret degrades to
+today's behavior, it never crashes ingest. So `validate()` is unchanged; the only new
+boot-time concern is that `Config` reads `ANTHROPIC_API_KEY` (empty string when unset).
 
 ## Ingest flow changes
 
 `upsert_source` gains an analysis step **before** chunking. Pseudocode of the new
 order (embedding still happens outside the transaction, as today):
 
-```
-raw_text         = fetched page text (verbatim, stored as-is)
-h                = md5(raw_text)
+`upsert_source` takes one new optional argument, `force_rewrite: bool = False`, set
+only by the [manual-trigger endpoint](#manual-trigger-surface); auto/poll ingest leaves
+it false.
 
-if legibility.enabled and rewrite_policy != 'off':
-    if h == stored analysis_hash:
-        reuse stored health + rewrite_text          # idempotency gate — no LLM
+```
+raw_text          = fetched page text (verbatim, stored as-is)
+h                 = md5(raw_text)
+enabled, mode, threshold, model = _effective_legibility(pool)   # 'enabled but no key' -> disabled
+
+if enabled and rewrite_policy != 'off':
+    if h == stored analysis_hash and not force_rewrite:
+        reuse stored health + rewrite_text            # idempotency gate — no LLM
     else:
-        health, rewrite = analyze(raw_text)          # ONE LLM call (segment + score)
-        if not (auto-below-threshold) and policy != 'manual-triggered':
+        health, rewrite = analyze(raw_text, model)    # ONE LLM call (segment + score)
+        want_rewrite = force_rewrite or (mode == 'auto' and health.score < threshold)
+        if not want_rewrite:
             rewrite = None                            # health stored, rewrite skipped
         store health, rewrite_text, analysis_hash = h
 else:
@@ -167,6 +196,12 @@ The single behavioral fork is `chunk_source = rewrite_text or raw_text`. Everyth
 downstream (`_split_sections`, embedding, wipe-replace) is unchanged — the rewrite is
 expected to *contain* the markdown headings the splitter already keys on.
 
+Note the three rewrite triggers are now fully disambiguated: **auto** (`mode == 'auto'`
+and `health.score < threshold`), **manual** (`force_rewrite`, which also bypasses the
+analysis-hash cache so a re-request re-runs even on unchanged text), and **never**
+(`rewrite_policy == 'off'`, the per-source pin — see below for how a manual request
+interacts with it).
+
 ## Read-surface changes
 
 - **`doc(id)` — unchanged.** Still returns `raw_text` **verbatim** — the rewrite is
@@ -180,17 +215,57 @@ expected to *contain* the markdown headings the splitter already keys on.
 - **`recall()` — unchanged contract.** Chunks now derive from the rewrite when present;
   the shape `{id, heading, text, score, path}` is identical.
 
+## Manual trigger surface
+
+`mode: "manual"` and the per-source `'manual'` policy both need a way to say "rewrite
+*this* page now." That action gets one endpoint, in the established REST style of
+`POST /ingest` and `DELETE /sources/{source_id}`:
+
+```
+POST /sources/{source_id}/rewrite
+  -> 200 {id, health, rewrote: bool, chunk_count}
+```
+
+It re-fetches nothing — it re-analyzes the **already-stored** `raw_text` for that source
+and re-derives chunks. Concretely it just calls `upsert_source(..., force_rewrite=True)`
+with the source's own stored `raw_text`/`title`/`path`, so it reuses the entire ingest
+path (analyze → `chunk_source` fork → embed → wipe-replace) rather than duplicating it.
+`force_rewrite` is what bypasses both the auto-threshold check and the analysis-hash
+cache, so the rewrite runs even if `mode` is `manual` and even if the text is unchanged
+since the last analysis.
+
+**Interaction with the `'off'` pin (the one real precedence decision):** a source with
+`rewrite_policy == 'off'` is **not** rewritten even by this endpoint — `'off'` means
+"pin to the raw voice," a deliberate human choice that an explicit rewrite request should
+not silently override. The endpoint returns `200 {rewrote: false}` with a reason rather
+than a `4xx`, so the caller (dashboard button) can show "this page is pinned to raw —
+clear the pin first." Clearing the pin (set policy back to `'auto'`/`'manual'`) and
+re-requesting is the two-step path; there is no force-past-`'off'`. This keeps `'off'`
+meaning exactly one thing.
+
+The endpoint is also what the **Phase 4 dashboard diff view** calls: "rewrite this page"
+→ `POST .../rewrite` → show the raw-vs-rewrite diff from the stored columns.
+
+The global on/off (`legibility.enabled`) still applies: with the feature disabled the
+endpoint is a `409` (or returns `{rewrote: false, reason: "legibility disabled"}`) —
+there is no per-page path that runs the analyzer while the feature is globally off.
+
 ## New module / config / deps
 
-- **`brain/brain/legibility.py`** — the analyzer: `analyze(raw_text) -> (health, rewrite)`,
+- **`brain/brain/legibility.py`** — the analyzer: `analyze(raw_text, model) -> (health, rewrite)`,
   one LLM call, synchronous, wrapped in `asyncio.to_thread` by `upsert_source` (mirrors
   how `embed()` is called). Prompt enforces structural-only + grounded.
 - **New dependency + secret:** the Anthropic SDK and `ANTHROPIC_API_KEY`, calling
   `claude-sonnet-4-6` for both the health pass and the rewrite. This is a real
   addition — a new dep and a new secret in deployment — and the feature is opt-in
   partly to keep the base brain free of it.
-- **Config:** the `legibility.*` settings above; `Config().validate()` should *not*
-  require the LLM key unless `legibility.enabled`.
+- **Config:** `Config` gains an `anthropic_api_key` field read from env (empty string
+  when unset), alongside the existing Voyage/Notion fields. `Config().validate()` is
+  **unchanged** — it does *not* require the LLM key, because `legibility.enabled` is a
+  runtime DB setting with no pool at boot (see [the seam resolution](#where-each-knob-lives-secret-in-env-policy-in-the-db)).
+  Enforcement moves to `_effective_legibility(pool)`, which resolves the live policy at
+  ingest and degrades "enabled but no key" to pass-through. The `legibility.*` settings
+  themselves live in the `settings` table, not in env.
 
 ## Eval / A/B plan
 
@@ -220,8 +295,8 @@ Phased so each step is independently verifiable. Earlier phases de-risk later on
 ### Phase 1 — Schema + analyzer (off by default)
 - [ ] Add the four `sources` columns (idempotent DDL in `db.py`). → verify: `apply_schema` runs clean on an existing DB; columns present.
 - [ ] Add `legibility.py` analyzer: one call returns structured health + structural, grounded rewrite. → verify: unit test on a sample dump returns valid `health` shape + a rewrite that adds headings and invents no facts.
-- [ ] Wire into `upsert_source`: analysis-hash gate, `chunk_source = rewrite_text or raw_text`. → verify: with `legibility.enabled=false`, ingest output (chunk count/text) is byte-identical to today; with it on, a headingless dump produces multiple chunks.
-- [ ] Config: `legibility.*` settings; key required only when enabled. → verify: brain boots without the LLM key when disabled.
+- [ ] Wire into `upsert_source`: add `force_rewrite` arg, analysis-hash gate, `chunk_source = rewrite_text or raw_text`. → verify: with `legibility.enabled=false`, ingest output (chunk count/text) is byte-identical to today; with it on, a headingless dump produces multiple chunks.
+- [ ] Config + resolver: add `Config.anthropic_api_key` (env); add `_effective_legibility(pool)` mirroring `_effective_poll_interval`, degrading "enabled but no key" to pass-through. → verify: `validate()` unchanged; brain boots without the LLM key; toggling `legibility.enabled=true` with no key logs a warning and ingests as pass-through (no crash).
 
 ### Phase 2 — Read surface
 - [ ] Add `health` to `map()` output. → verify: `/map` returns the score; null for un-analyzed sources.
@@ -233,7 +308,8 @@ Phased so each step is independently verifiable. Earlier phases de-risk later on
 
 ### Phase 4 — Surfacing, override, guidance
 - [ ] Dashboard health view: score + actionable `notes`; rewrite diff (raw vs rewrite). → verify: a low-health page shows its reasons and the diff.
-- [ ] Per-source `rewrite_policy` override (incl. 'off' = pin to raw voice). → verify: an 'off' page is never rewritten even below threshold.
+- [ ] `POST /sources/{id}/rewrite` manual-trigger endpoint (`force_rewrite=True`; respects the `'off'` pin and global disable). → verify: endpoint rewrites an unchanged page on demand; returns `{rewrote: false}` for an `'off'` page and when the feature is globally disabled.
+- [ ] Per-source `rewrite_policy` override (incl. 'off' = pin to raw voice). → verify: an 'off' page is never rewritten even below threshold or by the manual endpoint.
 - [ ] Guidance doc/skill: how to write notes that power the rewrite well — framed as help, not a requirement (the point of the rewrite is to support messy notes). → verify: doc exists and links from health `notes`.
 
 ## Decisions (resolved)
@@ -251,3 +327,12 @@ value still set empirically is `legibility.threshold` (read off the Phase 3 curv
 4. **Default mode is automatic.** Once enabled, any page below the threshold is
    rewritten without a manual trigger (matches "as easy as taking notes"); the
    per-source `'off'` override and the diff view are the safety net.
+5. **Config seam — secret in env, policy in the DB.** `ANTHROPIC_API_KEY` is an env
+   secret (never DB); `legibility.*` are runtime `settings`-table values. `validate()`
+   stays key-agnostic; `_effective_legibility(pool)` enforces policy at ingest and
+   degrades "enabled but no key" to pass-through. Mirrors the existing `poll_interval`
+   split, so no new pattern is introduced.
+6. **Manual rewrite is one endpoint, and `'off'` always wins.** `POST /sources/{id}/rewrite`
+   forces a rewrite of stored `raw_text` via `force_rewrite=True`, bypassing the
+   threshold and the hash cache — but a `'off'`-pinned page is never rewritten, even
+   here (clear the pin first). `'off'` means exactly one thing.

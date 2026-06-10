@@ -5,8 +5,10 @@
 > do apps read the brain." This one answers the question that shows up once an app
 > *caches* what it read: *how does a consumer know when its cached view of the
 > brain is actually out of date — without polling on a dumb timer?* Status:
-> **proposal, not yet built.** Written 2026-06-09. First motivating consumer:
-> scout's company-fit brief cache.
+> **Tier 0 + the SDK seam are built** (the brain's `/changes` cursor and the L3
+> toolkit's `onChange`, 2026-06-09); **Tier 1 + Tier 2 (the consumer's relevance
+> gate + recompute) are not** — scout, the first motivating consumer, still owns
+> those. Written 2026-06-09.
 
 ## The problem this solves
 
@@ -87,11 +89,23 @@ The app stores the last `cursor`/`version` and polls it. Backed by
 query — far cheaper than `/map`, and it's the natural substrate for the SDK's
 push upgrade later (a cursor is already the right shape for a replayable feed).
 
-**Recommendation:** start with **Option A** (the toolkit's brain client can do it
-unilaterally, unblocking scout immediately), and add **Option B** when a second
-caching consumer exists or `/map` payloads grow enough that fingerprinting them
-per check stings. The SDK interface (below) is identical either way — A vs B is
-an implementation detail behind `onChange`.
+**Built 2026-06-09** (the `/changes?since=` shape; see
+[`consumer-api.md`](./consumer-api.md#changes--the-tier-0-change-signal)). One
+refinement on the literal "stamp over `max(updated_at)`": the cursor stamps
+`count(*)` **and** `max(updated_at)` over `sources`. `max(updated_at)` alone
+catches inserts and re-syncs (`upsert_source` sets `updated_at=now()`) but
+misses the **deletion** of a non-latest source — a delete bumps no surviving
+row's timestamp. Since `upsert_source` and `delete_source` are the only writers
+of `sources`, pairing the two makes the cursor move on every insert, re-sync,
+and delete, still as one cheap aggregate. The cursor is opaque (md5 over that
+basis); consumers compare for equality only.
+
+**Original recommendation** (B was built directly here instead, per the goal):
+start with **Option A** (the toolkit's brain client can do it unilaterally,
+unblocking scout immediately), and add **Option B** when a second caching
+consumer exists or `/map` payloads grow enough that fingerprinting them per
+check stings. The SDK interface (below) is identical either way — A vs B is an
+implementation detail behind `onChange`.
 
 ## Tier 1 — the relevance gate (app-side, already half-built in scout)
 
@@ -114,11 +128,12 @@ than per-app code is that the *programming model* and the *transport* get
 decoupled. The SDK exposes one change primitive:
 
 ```ts
-// L3 toolkit brain client — proposed addition
+// L3 toolkit brain client — built 2026-06-09 (web-toolkit/src/brain)
 brain.onChange(() => revalidate())   // fires when the brain's content moves
 ```
 
-Today `onChange` is implemented by **polling** Tier 0 (Option A or B) on an
+Today `onChange` is implemented by **polling** Tier 0 (Option B's `/changes`
+cursor) on an
 interval. If true push is ever justified, the brain grows an SSE/webhook feed and
 `onChange` swaps polling for a subscription **inside the SDK** — and **no
 consumer app changes**, because they only ever called `onChange`. This is the
@@ -127,7 +142,7 @@ and defer the real-infrastructure decision indefinitely.
 
 | Concern | Lives in | Why |
 |---|---|---|
-| "did it change?" signal | the **brain** (`/map` version today; `/changes` cursor later) | only the write side knows |
+| "did it change?" signal | the **brain** (`/changes` cursor — built 2026-06-09) | only the write side knows |
 | poll-vs-push, fingerprint, debounce | the **SDK** (toolkit brain client) | one implementation, every app inherits it |
 | relevance gate (basis hash) + recompute | the **app** | only the app knows what its view derives from |
 
@@ -188,9 +203,11 @@ criteria**, and a badge that reflects content, not a clock.
 
 ## Open questions (decide when they bite)
 
-- **Tier 0 transport.** `/map` fingerprint (zero brain work, ship now) vs a
+- **Tier 0 transport.** ~~`/map` fingerprint (zero brain work, ship now) vs a
   `/changes` cursor (small brain work, cheaper + push-ready). Start with the
-  fingerprint; add the cursor at the second caching consumer.
+  fingerprint; add the cursor at the second caching consumer.~~ **Resolved
+  2026-06-09:** built the `/changes` cursor directly — it's `onChange`'s polling
+  target, and the fingerprint never shipped.
 - **Poll interval / who drives it.** A live PWA can poll on focus + an interval;
   a long-running backend (scout's `serve`) revalidates lazily on the next read.
   Pick per-consumer; the SDK exposes the primitive, not the schedule.

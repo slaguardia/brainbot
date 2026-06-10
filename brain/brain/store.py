@@ -36,6 +36,7 @@ and passed in.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import logging
 import re
 from dataclasses import asdict, dataclass
@@ -666,3 +667,39 @@ async def map_(pool: asyncpg.Pool, scope: str | None = None) -> list[dict]:
         }
         for r in rows
     ]
+
+
+# ---- change cursor (Tier 0 change signal): "did anything move?" ----------------
+
+async def change_cursor(pool: asyncpg.Pool) -> str:
+    """An opaque GLOBAL change stamp over all sources — the Tier 0 change signal
+    (`/changes`). A caching consumer stores it and re-reads it cheaply; when it
+    moves, *something* in the brain changed and the consumer re-checks (its own
+    relevance gate then decides whether the change touched its view).
+
+    The stamp is `md5(count(*) || max(updated_at))` over `sources`. The design
+    doc frames this as a stamp over `max(updated_at)` alone; that catches every
+    insert and re-sync (`upsert_source` sets `updated_at=now()`), but NOT the
+    deletion of a non-latest source — a delete bumps no surviving row's
+    timestamp, so `max(updated_at)` wouldn't budge. Pairing it with `count(*)`
+    closes that gap: `delete_source` drops a row, so the count moves. Those two
+    are the ONLY writers of `sources`, so `(count, max(updated_at))` shifts on
+    every insert, re-sync, and delete — a complete change detector, still a
+    single cheap aggregate (far cheaper than fingerprinting `/map`).
+
+    Deliberately COARSER than the per-document `version` stamp: a no-op re-sync
+    (identical content) bumps `updated_at` and so moves this cursor, even though
+    no `version` changed. That over-trigger is by design — Tier 0 only says
+    "re-check," and the consumer's Tier 1 relevance gate makes a false positive
+    cheap (no recompute when its basis is unchanged).
+
+    Opaque by contract: consumers compare it for equality only, never parse it.
+    Empty brain → a stable stamp over (0, NULL). md5() hashes server-encoding
+    bytes (a UTF8 DB, per `_VERSION_SQL`)."""
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            "SELECT count(*) AS n, max(updated_at) AS max_updated FROM sources"
+        )
+    max_updated = row["max_updated"]
+    basis = f"{row['n']}:{max_updated.isoformat() if max_updated is not None else '0'}"
+    return hashlib.md5(basis.encode()).hexdigest()

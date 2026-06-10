@@ -2,7 +2,8 @@
 
 - MCP (streamable HTTP at /mcp): tools `recall`, `doc`, `profile`, `map`.
 - Plain HTTP (custom routes): /health, /ingest, /recall, /doc, /profile, /map,
-  /notion/pages (discovery: what the integration can see vs. what's ingested).
+  /changes (the Tier 0 change signal), /notion/pages (discovery: what the
+  integration can see vs. what's ingested).
 
 Both faces are thin: they parse input, call the same `store` functions, and
 return the contract shapes (`Chunk` / `Context` / the document / the source
@@ -38,6 +39,7 @@ from .settings import (
 )
 from .store import (
     _parse_iso,
+    change_cursor,
     delete_source,
     doc,
     map_,
@@ -417,6 +419,23 @@ async def map_route(request: Request) -> JSONResponse:
         logger.exception("map failed")
         return JSONResponse({"error": f"map failed: {e}"}, status_code=502)
     return JSONResponse({"sources": tree})
+
+
+@mcp.custom_route("/changes", methods=["GET"])
+async def changes_route(request: Request) -> JSONResponse:
+    """GET /changes?since=<cursor> — the Tier 0 change signal. Returns the current
+    opaque change `cursor` over all sources and whether it differs from `since`:
+    {cursor, changed}. `changed` is true when `since` is absent or stale, false
+    when it matches — so a caching consumer polls this one cheap query and only
+    does expensive work when `changed` flips true. Read-only; writes nothing."""
+    since = request.query_params.get("since")
+    try:
+        pool = await get_pool()
+        cursor = await change_cursor(pool)
+    except Exception as e:  # noqa: BLE001 — db failure: surface, don't 500
+        logger.exception("changes failed")
+        return JSONResponse({"error": f"changes failed: {e}"}, status_code=502)
+    return JSONResponse({"cursor": cursor, "changed": since != cursor})
 
 
 def _id_param(request: Request) -> str | None:

@@ -17,8 +17,8 @@ import { fileURLToPath } from "node:url";
 
 const PORT = Number(process.env.PORT ?? 8787);
 
-// Brain service base. Reads are proxied here (GET /api/brain/recall|doc|map) so
-// the owner PWA can surface the brain's recall/doc/map without the browser
+// Brain service base. Reads are proxied here (GET /api/brain/recall|doc|map|changes)
+// so the owner PWA can surface the brain's recall/doc/map without the browser
 // talking to the brain directly. The one proxied write is POST /api/ingest — the
 // discovery view's "pull this page into the brain" action, forwarding to the
 // brain's existing /ingest. Free-text capture stays disabled.
@@ -230,8 +230,9 @@ const server = createServer((req, res) => {
     json(res, 200, typeof email === "string" && email ? { email } : {});
     return;
   }
-  // Owner read-views: the toolkit brain client (recall / doc / map) calls these
-  // /api/brain/* routes; we proxy GET-only to the brain, bearer + URL server-side.
+  // Owner read-views: the toolkit brain client (recall / doc / map / changes)
+  // calls these /api/brain/* routes; we proxy GET-only to the brain, bearer + URL
+  // server-side.
   if (req.method === "GET" && url.pathname === "/api/brain/recall") {
     void proxyRead(res, url, "/recall", ["q", "k", "scope", "complete"]);
     return;
@@ -242,6 +243,12 @@ const server = createServer((req, res) => {
   }
   if (req.method === "GET" && url.pathname === "/api/brain/map") {
     void proxyRead(res, url, "/map", ["scope"]);
+    return;
+  }
+  // Tier 0 change signal: the toolkit's onChange() polls this to know when a
+  // cached view is stale. One cheap call, no LLM — forwards the `since` cursor.
+  if (req.method === "GET" && url.pathname === "/api/brain/changes") {
+    void proxyRead(res, url, "/changes", ["since"]);
     return;
   }
   // Discovery: every Notion page the integration can see, flagged ingested/not.

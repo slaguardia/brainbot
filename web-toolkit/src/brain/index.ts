@@ -36,6 +36,16 @@ export type Source = {
   version: string;
 };
 
+/**
+ * The Tier 0 change signal. `cursor` is the brain's current opaque change stamp
+ * (compare for equality only — never parse it); `changed` is whether it differs
+ * from the `since` you passed.
+ */
+export type Change = {
+  cursor: string;
+  changed: boolean;
+};
+
 async function getJson<T>(path: string): Promise<T> {
   const res = await fetch(path, { headers: { Accept: "application/json" } });
   if (!res.ok) {
@@ -71,4 +81,81 @@ export async function doc(id: string): Promise<Doc> {
 export async function map(): Promise<Source[]> {
   const body = await getJson<{ sources: Source[] }>(`/api/brain/map`);
   return body.sources;
+}
+
+/**
+ * Tier 0 change signal — the current change `cursor` and whether it differs from
+ * `since`. One cheap call, no LLM. Use it directly to revalidate a cached view
+ * lazily (store the `cursor`, pass it back as `since`, recompute when
+ * `changed`); or use {@link onChange} to be called when it moves.
+ */
+export async function changes(since?: string): Promise<Change> {
+  const params = new URLSearchParams();
+  if (since !== undefined) params.set("since", since);
+  const qs = params.toString();
+  return getJson<Change>(`/api/brain/changes${qs ? `?${qs}` : ""}`);
+}
+
+/** Options for {@link onChange}. */
+export type OnChangeOptions = {
+  /** Poll period in ms. Default 60_000 — the brain is human-paced, so a 30–60 s
+   *  poll is effectively instant; tune per consumer. */
+  intervalMs?: number;
+  /** Seed the baseline from a stored cursor (e.g. one persisted last session),
+   *  so a change that happened while you were away fires on the first poll.
+   *  Omit for a view that is current at subscribe time. */
+  since?: string;
+};
+
+/**
+ * Subscribe to brain content changes. TRANSPORT-AGNOSTIC by design: today this
+ * POLLS the Tier 0 cursor ({@link changes}) on an interval; if a push feed
+ * (SSE/webhook) is ever added, this swaps to a subscription INSIDE the toolkit
+ * and no caller changes — they only ever called `onChange`. That seam is the
+ * point: get the event-driven feel now, pay only for polling, defer push.
+ *
+ * Fires `callback` whenever the brain's content moves (the cursor advances).
+ * It establishes a baseline at subscribe time (or from `opts.since`) and fires
+ * on every later move — never on the baseline itself. Transient poll failures
+ * are swallowed and retried on the next tick (the timer is a fallback ceiling).
+ * Returns an unsubscribe function; call it to stop polling.
+ */
+export function onChange(callback: () => void, opts: OnChangeOptions = {}): () => void {
+  const intervalMs = opts.intervalMs ?? 60_000;
+  let last = opts.since;
+  let baselined = opts.since !== undefined;
+  let stopped = false;
+  let inFlight = false;
+
+  async function poll(): Promise<void> {
+    if (stopped || inFlight) return; // skip if a slow poll is still running
+    inFlight = true;
+    try {
+      const { cursor } = await changes(last);
+      if (stopped) return; // unsubscribed mid-fetch: don't baseline or fire into a dead view
+      if (!baselined) {
+        // First poll with no seed: adopt the current cursor silently — "moved"
+        // means moved FROM here, so this isn't a change to report.
+        last = cursor;
+        baselined = true;
+      } else if (cursor !== last) {
+        last = cursor;
+        callback();
+      }
+    } catch {
+      // Transient failure (brain blip, offline): leave the baseline as-is and
+      // let the next tick retry. A real outage surfaces through the consumer's
+      // own reads, not here.
+    } finally {
+      inFlight = false;
+    }
+  }
+
+  const timer = setInterval(poll, intervalMs);
+  void poll(); // kick once so a seeded `since` (or first check) doesn't wait a full interval
+
+  return () => {
+    stopped = true;
+    clearInterval(timer);
+  };
 }

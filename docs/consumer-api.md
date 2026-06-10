@@ -15,6 +15,7 @@ at `/mcp`.
 | Recall | `GET /recall?q=&scope=&k=&complete=` | `recall` | read | **yes — search** |
 | Doc | `GET /doc?id=` | `doc` | read | **yes — deterministic whole-document fetch** |
 | Map | `GET /map?scope=` | `map` | read | **yes — discovery (ids, versions)** |
+| Changes | `GET /changes?since=` | — | read | **yes — Tier 0 change signal (cache invalidation)** |
 | Profile | `GET /profile?scope=&budget=` | `profile` | read | no — brain machinery + owner |
 | Ingest | `POST /ingest {url}` | — | write | the write path |
 | Health | `GET /health` | — | read | liveness |
@@ -77,6 +78,34 @@ synced set — treat it loudly, not as an empty result.
 This is where a consumer discovers ids; titles/paths are never lookup keys.
 `parent_id` null is overloaded (true root *or* parent-not-synced) — a linkage
 hint, not an authoritative tree. No chunk contents, no sync metadata.
+
+## Changes — the Tier 0 change signal
+
+`changes(since)` is the cheap "did *anything* in the brain move?" read that lets
+a caching consumer invalidate without polling its expensive derivation on a dumb
+timer:
+
+```
+GET /changes?since=<cursor>  →  { cursor:  str    # the brain's current opaque change stamp
+                                  changed: bool }  # whether it differs from `since`
+```
+
+`cursor` is an **opaque** global stamp over the source set — compare it for
+equality only, never parse it. It moves on **any** insert, re-sync, or delete
+(it is backed by `count(*)` + `max(updated_at)` over `sources`). `changed` is
+`true` when `since` is absent or stale, `false` when it matches the current
+`cursor`. One indexed aggregate, no LLM — far cheaper than fingerprinting `/map`.
+
+**Cache rules:** store the `cursor` beside your cached view; re-read `/changes`
+on a timer (the brain is human-paced — a 30–60 s poll is effectively instant)
+and only re-derive when `changed` flips `true`. This cursor is deliberately
+**coarser** than `/doc`'s `version`: a no-op re-sync advances it even though no
+document's content changed, so it is a "re-check now" trigger, not proof your
+specific view changed — gate the actual recompute on whatever basis your view
+derives from (e.g. the recalled chunk text), not on the cursor alone. The L3
+toolkit brain client wraps this as `onChange(cb)` (polling today, push-ready
+later); see [`change-propagation.md`](./change-propagation.md) for the full
+cost-cascade rationale.
 
 ## Profile — not a consumer endpoint
 

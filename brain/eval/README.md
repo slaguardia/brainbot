@@ -106,9 +106,16 @@ dimension deltas to find X: the lowest health score at which the rewrite still
 > the `postgres`/`brain` container names are this machine's local stack. Adjust for
 > another deployment.
 
-## Known follow-up (separate from legibility)
+## Known follow-up (separate from legibility) — the brain doesn't read DB properties
 
-The brain currently holds ~24 **empty, title-only** sources (0-char `raw_text`).
-Their embeddings are just the title, so they out-rank real content on topical
-queries and **pollute recall** — visible here as a depressed baseline MRR. Worth
-filtering at ingest or pruning; it's a data-hygiene issue, not a legibility one.
+The brain currently holds ~24 sources with **0-char `raw_text`**. They are NOT junk
+stubs — they are rows of a Notion **database** whose real content lives in
+**properties** (e.g. a 1001-char `Body` rich_text property), and the brain's ingest
+reads page-**body** blocks only, so it captured just the title. Their title-only
+embeddings out-rank real content on topical queries and depress baseline recall.
+
+**Don't prune them — the fix is to capture the property text at ingest.** The
+Notion migrator (`brain/notion.py`) should, for a database row, fold its rich_text
+properties into the ingested content instead of returning an empty body. Doing so
+would turn ~24 title-only sources into ~24 real content sources — which also gives
+this eval a corpus big enough to actually set the threshold.

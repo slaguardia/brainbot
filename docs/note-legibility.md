@@ -295,7 +295,9 @@ The experiment:
 The harness is built: `brain/eval/recall_scorecard.py` (recall@k / precision@k / MRR
 over `/recall`, baseline-vs-treatment diff) and `brain/eval/run_ab.py` (the full
 in-process A/B against an isolated copy of the corpus — real Voyage + Anthropic,
-never touches the live brain). Re-run when the corpus grows.
+never touches the live brain). **How to re-run when the corpus grows — including how
+to find the "real dumps" and what counts as enough data — is the runbook at
+[`../brain/eval/README.md`](../brain/eval/README.md).**
 
 ### Eval run — 2026-06-11 (deployed live; mechanism works, but corpus too small to set the threshold)
 

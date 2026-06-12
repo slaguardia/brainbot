@@ -8,9 +8,10 @@
 > health + docs; manual-trigger endpoint + per-source policy + UI). The Phase 0/3
 > A/B has been run against the live corpus (see [Eval run](#eval-run--2026-06-11-deployed-live-mechanism-works-but-corpus-too-small-to-set-the-threshold)):
 > the mechanism is verified (a grounded structural rewrite lifts the buried-sub-idea
-> MRR), but the corpus is still too small to set `legibility.threshold` off a curve,
-> so it stays at the placeholder `60` until there are more real messy dumps.
-> Owner-writing guidance: [`writing-legible-notes.md`](./writing-legible-notes.md).
+> MRR). The recall@k curve still can't set `legibility.threshold` (recall saturates
+> on this corpus), so it's set to **`65`** from the health-score distribution
+> (borderline content clusters at 62–63). Owner-writing guidance:
+> [`writing-legible-notes.md`](./writing-legible-notes.md).
 > **Not yet landed in git** — the change lives on the `note-legibility` worktree
 > branch; the live brain image was rebuilt directly from it.
 
@@ -324,12 +325,17 @@ chunks). A/B over `brain/eval/probes.json` (k=5):
 - **Still no threshold curve — corpus too small.** Of 30 sources, ~24 are empty
   title-only stubs and the content ones are *already* multi-heading; only Chainguard
   is a genuine dump. One illegible page can't produce a curve.
-- **Signal worth keeping:** Chainguard scored **63** (62 on a second pass), *just
-  above* the `60` cutoff, so auto-mode wouldn't have rewritten it — hinting the
-  threshold wants ~65–70. But it's **n=1** — a signal, not a decision.
-- **Decision:** keep `legibility.threshold = 60` (placeholder) and re-run
-  `run_ab.py` once the corpus has more real messy dumps. (Aside: the empty
-  title-only stubs measurably pollute live recall — a separate data-hygiene issue.)
+- **Threshold set to 65 (from the score distribution).** After the empty stubs were
+  found to be uncaptured DB-property content and the migrator was fixed to fold those
+  properties in (`brain/notion.py`), the corpus grew to ~30 real, topically-
+  overlapping sources. Their health scores **cluster at 62–63** for borderline
+  one-paragraph content — just above the old `60` cutoff, so auto-mode left them as
+  is. So `legibility.threshold` is now **`65`**, chosen from that distribution rather
+  than guessed. The recall@k curve still can't refine it (recall saturates even at 30
+  sources); re-tune via `run_ab.py` when the corpus grows further.
+- **Aside (acted on):** the ~24 "empty stubs" were not junk — they were Notion
+  database rows whose content lives in rich_text properties the brain wasn't reading.
+  Fixed; they're now real content sources.
 
 ## Build checklist
 
@@ -341,7 +347,8 @@ Phased so each step is independently verifiable. Earlier phases de-risk later on
 > diff view) typecheck. Phase 0 and Phase 3 are the eval phases: they need the live
 > brain + `ANTHROPIC_API_KEY` + the real messy dumps, so they're left unchecked —
 > the methodology stands in [Eval / A/B plan](#eval--ab-plan), and `threshold`
-> defaults to a documented placeholder (`60`) until the curve sets it.
+> defaults to `65` (set from the corpus health-score distribution, not a recall
+> curve — see the Eval run).
 
 ### Phase 0 — Eval baseline (so we can measure) — needs the live corpus + key
 - [ ] Assemble a probe set: real dumps + queries with known-relevant sources. → verify: set committed/fixtured.

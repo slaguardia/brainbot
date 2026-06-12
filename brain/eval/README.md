@@ -10,8 +10,10 @@ As of 2026-06-11 the brain has ~6 content sources, only **one** of which is a
 genuine headingless dump (Chainguard). The rewrite's benefit is *within-dump chunk
 discrimination*, which only becomes measurable when a query about one dump's
 sub-idea has to out-rank chunks from **other** overlapping dumps. With one illegible
-source, `recall@5` saturates at 1.0 and there's no curve. So **`threshold` stays at
-the placeholder `60`** — re-run this eval once there's more data.
+source, `recall@5` saturates at 1.0 and there's no curve. `threshold` is set to
+**`65`** from the corpus health-score distribution (borderline content clusters at
+62–63) rather than a recall curve — re-run this eval to refine it once there's more
+data.
 
 A live A/B did show the mechanism working where it could: rewriting Chainguard
 lifted that one buried sub-idea's rank from 3rd → 1st (MRR 0.92 → 1.00, precision

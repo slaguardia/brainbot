@@ -40,9 +40,11 @@ LEGIBILITY_MODEL_KEY = "legibility.model"          # model id for the analysis c
 
 # Defaults when the corresponding row is unset or malformed.
 _LEGIBILITY_DEFAULT_MODE = "auto"
-# PLACEHOLDER pending the Phase 3 A/B curve (docs/note-legibility.md "Eval / A/B").
-# The threshold is the one value still set by evidence, not by feel.
-_LEGIBILITY_DEFAULT_THRESHOLD = 60
+# Set to 65 from the health-score distribution on the real corpus (2026-06-11):
+# borderline one-paragraph content clusters at 62-63, so a 60 cutoff left it
+# un-rewritten. The recall@k curve still can't refine this on the current corpus
+# (recall saturates) — re-tune via brain/eval/run_ab.py when it grows.
+_LEGIBILITY_DEFAULT_THRESHOLD = 65
 _LEGIBILITY_DEFAULT_MODEL = "claude-sonnet-4-6"
 
 

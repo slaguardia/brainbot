@@ -601,4 +601,4 @@ def test_delete_legibility_resets(client, monkeypatch):
     client.put("/integrations/legibility", json={"enabled": True, "threshold": 30})
     leg = client.delete("/integrations/legibility").json()
     assert leg["enabled"] is False
-    assert leg["threshold"] == 60  # back to the default placeholder
+    assert leg["threshold"] == 65  # back to the default

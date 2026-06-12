@@ -6,6 +6,15 @@
    knowledge base, and the #discover view.
    =========================================================================== */
 
+/* Widen the shared shell's content column for this app. The toolkit base.css
+   caps <main> at 720px — fine for a reading column, but the home source map and
+   the discover table are denser and read better with the extra width. Scoped to
+   this app's style.css (loaded after base.css), so other toolkit apps keep the
+   narrower default. */
+main {
+  max-width: 1080px;
+}
+
 /* ===========================================================================
    Home hub (default view, no hash). The one place you read the brain: stat
    tiles (source / domain counts), an embedded recall search box, and a
@@ -421,9 +430,10 @@
   display: flex;
   align-items: center;
   justify-content: flex-end;
+  white-space: nowrap;
 }
 .disc-cell-meta {
-  width: 72px;
+  width: 84px;
   color: var(--fg-faint);
   font-size: 12px;
   font-family: var(--font-mono);

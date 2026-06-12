@@ -35,6 +35,7 @@ interface LegibilityStatus {
   threshold?: number;
   model?: string;
   has_key?: boolean;
+  key_source?: "db" | "env" | null; // how the Anthropic key is provided
 }
 
 interface IntegrationsStatus {
@@ -298,19 +299,34 @@ async function disconnect_(
 
 // ---- Note-legibility settings card (mirrors the auto-sync card) ---------------
 // Appended after the Notion card. The on/off toggle + knobs are runtime settings;
-// the ANTHROPIC_API_KEY secret is env-only on the brain and never touched here.
+// the Anthropic API key is its own stored credential, set here like the Notion
+// token (or supplied via the ANTHROPIC_API_KEY env).
 
 function appendLegibilityCard(body: HTMLElement, leg: LegibilityStatus): void {
   const enabled = !!leg.enabled;
   const active = !!leg.active;
   const mode = leg.mode === "manual" ? "manual" : "auto";
   const threshold = typeof leg.threshold === "number" ? leg.threshold : 60;
+  const hasKey = !!leg.has_key;
+  const keyViaEnv = hasKey && leg.key_source === "env";
+  const keyViaDb = hasKey && leg.key_source === "db";
 
   const status = !enabled
     ? `<span class="intg-dot is-off"></span> Off — notes are chunked exactly as written.`
     : active
       ? `<span class="intg-dot is-on"></span> On and running (${esc(mode)} mode).`
-      : `<span class="intg-dot is-off"></span> On, but <code>ANTHROPIC_API_KEY</code> is missing — ingesting as pass-through until it's set in the deployment env.`;
+      : `<span class="intg-dot is-off"></span> On, but no Anthropic API key is set — ingesting as pass-through until you add one below.`;
+
+  // How the key is provided, shown under the key form.
+  const keyStatus = !hasKey
+    ? `<span class="intg-dot is-off"></span> No Anthropic API key set.`
+    : keyViaEnv
+      ? `<span class="intg-dot is-on"></span> Key set via <code>ANTHROPIC_API_KEY</code> (environment). Paste a key below to manage it here instead.`
+      : `<span class="intg-dot is-on"></span> Key set here.`;
+  // Remove only makes sense for a key we stored here; an env key is the deployment's.
+  const keyRemove = keyViaDb
+    ? `<button class="intg-key-remove" type="button">Remove key</button>`
+    : "";
 
   body.insertAdjacentHTML(
     "beforeend",
@@ -322,9 +338,24 @@ function appendLegibilityCard(body: HTMLElement, leg: LegibilityStatus): void {
         An optional pass that restructures messy notes into self-describing
         sections the brain can recall well — <strong>your original is never
         changed and Notion is never written to</strong>. See
-        <a href="#docs">writing legible notes</a>. The
-        <code>ANTHROPIC_API_KEY</code> secret lives in the deployment env, not here.
+        <a href="#docs">writing legible notes</a>.
       </p>
+      <div class="intg-key">
+        <span class="intg-key-name">Anthropic API key</span>
+        <p class="intg-help">${keyStatus}</p>
+        <p class="intg-help">
+          Get a key at
+          <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">console.anthropic.com</a>.
+          It's stored by the brain and used only for this pass — never returned to the browser.
+        </p>
+        <form class="intg-key-form">
+          <input class="intg-key-input" type="password" autocomplete="off"
+            placeholder="sk-ant-…" aria-label="Anthropic API key" />
+          <button class="intg-key-save" type="submit">${hasKey ? "Replace key" : "Save key"}</button>
+          ${keyRemove}
+        </form>
+        <p class="intg-key-msg" role="status"></p>
+      </div>
       <form class="intg-leg-form">
         <label class="intg-leg-row">
           <input class="intg-leg-enabled" type="checkbox" ${enabled ? "checked" : ""} /> Enable
@@ -369,6 +400,80 @@ function appendLegibilityCard(body: HTMLElement, leg: LegibilityStatus): void {
   });
   const resetBtn = body.querySelector<HTMLButtonElement>(".intg-leg-reset")!;
   resetBtn.addEventListener("click", () => void resetLegibility(body, resetBtn, msg));
+
+  const keyForm = body.querySelector<HTMLFormElement>(".intg-key-form")!;
+  const keyInput = body.querySelector<HTMLInputElement>(".intg-key-input")!;
+  const keySave = body.querySelector<HTMLButtonElement>(".intg-key-save")!;
+  const keyMsg = body.querySelector<HTMLElement>(".intg-key-msg")!;
+  keyForm.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const key = keyInput.value.trim();
+    if (!key) {
+      keyMsg.textContent = "Enter a key first.";
+      return;
+    }
+    void saveAnthropicKey(body, keySave, keyMsg, key);
+  });
+  const keyRemoveBtn = body.querySelector<HTMLButtonElement>(".intg-key-remove");
+  keyRemoveBtn?.addEventListener("click", () => void removeAnthropicKey(body, keyRemoveBtn, keyMsg));
+}
+
+async function saveAnthropicKey(
+  body: HTMLElement,
+  btn: HTMLButtonElement,
+  msg: HTMLElement,
+  key: string,
+): Promise<void> {
+  const label = btn.textContent ?? "Save key";
+  btn.disabled = true;
+  btn.textContent = "Saving…";
+  msg.textContent = "";
+  try {
+    const res = await fetch(`/api/integrations/anthropic`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ key }),
+    });
+    const data = (await res.json()) as { error?: string };
+    if (!res.ok) {
+      btn.disabled = false;
+      btn.textContent = label;
+      msg.textContent = data.error ?? `HTTP ${res.status}`;
+      return;
+    }
+    await loadStatus(body);
+    body.querySelector<HTMLElement>(".intg-key-msg")!.textContent = "Anthropic API key saved.";
+  } catch (err) {
+    btn.disabled = false;
+    btn.textContent = label;
+    msg.textContent = String(err);
+  }
+}
+
+async function removeAnthropicKey(
+  body: HTMLElement,
+  btn: HTMLButtonElement,
+  msg: HTMLElement,
+): Promise<void> {
+  btn.disabled = true;
+  btn.textContent = "Removing…";
+  msg.textContent = "";
+  try {
+    const res = await fetch(`/api/integrations/anthropic`, { method: "DELETE" });
+    const data = (await res.json()) as { error?: string };
+    if (!res.ok) {
+      btn.disabled = false;
+      btn.textContent = "Remove key";
+      msg.textContent = data.error ?? `HTTP ${res.status}`;
+      return;
+    }
+    await loadStatus(body);
+    body.querySelector<HTMLElement>(".intg-key-msg")!.textContent = "Anthropic API key removed.";
+  } catch (err) {
+    btn.disabled = false;
+    btn.textContent = "Remove key";
+    msg.textContent = String(err);
+  }
 }
 
 async function saveLegibility(

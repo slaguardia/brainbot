@@ -299,7 +299,7 @@ async def upsert_source(
     # what's served. health_json/rewrite_text/analysis_hash stay None unless the
     # feature actually runs — that None triple is what keeps a disabled (or 'off')
     # ingest byte-identical to the base brain.
-    enabled, mode, threshold, model = await _effective_legibility(pool)
+    enabled, mode, threshold, model, api_key = await _effective_legibility(pool)
     policy, stored_hash, stored_health, stored_rewrite = await _stored_legibility(
         pool, source_id
     )
@@ -320,7 +320,7 @@ async def upsert_source(
         else:
             try:
                 # ONE LLM call (segment + score), off the event loop like embed().
-                health, rewrite = await asyncio.to_thread(analyze, page_text, model)
+                health, rewrite = await asyncio.to_thread(analyze, page_text, model, api_key)
                 # Three disambiguated triggers: manual (force_rewrite) | auto
                 # (mode=='auto' and below threshold) | else health-only, no rewrite.
                 want_rewrite = force_rewrite or (

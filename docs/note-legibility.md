@@ -139,16 +139,17 @@ ALTER TABLE sources ADD COLUMN IF NOT EXISTS analysis_hash text;
 ALTER TABLE sources ADD COLUMN IF NOT EXISTS rewrite_policy text NOT NULL DEFAULT 'auto';
 ```
 
-### Where each knob lives: secret in env, policy in the DB
+### Where each knob lives: secret and policy both runtime, in the DB (env fallback)
 
-The one place this could go wrong is conflating the API key (a deployment secret)
-with the on/off switch (a runtime toggle). They live in different places, mirroring
-the **existing** `poll_interval` split (`Config.poll_interval_seconds` env default,
-overridden by a `settings`-table value, resolved per-request by `_effective_poll_interval`):
+The on/off switch and the secret are distinct, but both are runtime values now,
+mirroring the **existing** `poll_interval` split (`Config.*` env default, overridden by
+a `settings`-table value, resolved per-request):
 
-- **`ANTHROPIC_API_KEY` — env only, like `VOYAGE_API_KEY`.** A secret, never stored in
-  the DB, read once into `Config`. Present-or-absent is a deployment fact, not a runtime
-  toggle.
+- **The Anthropic API key — `settings` k/v table, with `ANTHROPIC_API_KEY` env as a
+  fallback.** Set/replaced/removed from the Integrations UI exactly like the Notion
+  token (`PUT/DELETE /integrations/anthropic`): a stored key wins over the env, resolved
+  per ingest by `_active_anthropic_key(pool)`. So deployers needn't bake the secret into
+  env — it can be provided from the dashboard. The key is never returned to the client.
 - **`legibility.*` — `settings` k/v table, runtime, no restart.** Toggleable from the
   UI exactly like the Notion poll interval:
   - `legibility.enabled` — `"true"`/`"false"` (default false; off = today's behavior).
@@ -161,15 +162,16 @@ overridden by a `settings`-table value, resolved per-request by `_effective_poll
 
 **The seam resolution (this is the part the plan previously left ambiguous):**
 
-`Config().validate()` does **not** gate on `ANTHROPIC_API_KEY` — it can't, because
-`enabled` is a DB value and `validate()` runs at boot with no pool. Boot stays
-key-agnostic. Instead, an `_effective_legibility(pool) -> (enabled, model, ...)`
-helper — the exact shape of `_effective_poll_interval` — resolves the live policy at
-ingest time, and **treats "enabled but no key" as disabled (pass-through), logging a
-warning.** This mirrors the established defense that "a malformed stored value can't
-wedge syncing off": flipping the toggle on without provisioning the secret degrades to
-today's behavior, it never crashes ingest. So `validate()` is unchanged; the only new
-boot-time concern is that `Config` reads `ANTHROPIC_API_KEY` (empty string when unset).
+`Config().validate()` does **not** gate on the key — it can't, because both `enabled`
+and the key are DB values and `validate()` runs at boot with no pool. Boot stays
+key-agnostic. Instead, an `_effective_legibility(pool) -> (enabled, mode, threshold,
+model, api_key)` helper — the exact shape of `_effective_poll_interval` — resolves the
+live policy and the key (via `_active_anthropic_key`, DB-over-env) at ingest time, and
+**treats "enabled but no key" as disabled (pass-through), logging a warning.** This
+mirrors the established defense that "a malformed stored value can't wedge syncing off":
+flipping the toggle on without providing the secret degrades to today's behavior, it
+never crashes ingest. So `validate()` is unchanged; `Config` still reads
+`ANTHROPIC_API_KEY` as the env fallback (empty string when unset).
 
 ## Ingest flow changes
 
@@ -376,7 +378,8 @@ Phased so each step is independently verifiable. Earlier phases de-risk later on
 - [x] Guidance doc: how to write notes that power the rewrite well — framed as help, not a requirement. → [`writing-legible-notes.md`](./writing-legible-notes.md); linked from the badge tooltip's destination and the legibility view.
 
 ### Also built (completing the UI-toggle seam the config section calls for)
-- [x] `legibility.*` status on `GET /integrations` + `PUT/DELETE /integrations/legibility` (set/reset the runtime policy from the UI, exactly like the poll interval). The `ANTHROPIC_API_KEY` secret is never managed here.
+- [x] `legibility.*` status on `GET /integrations` + `PUT/DELETE /integrations/legibility` (set/reset the runtime policy from the UI, exactly like the poll interval).
+- [x] The Anthropic API key set/removed from the UI via `PUT/DELETE /integrations/anthropic` (validated against the API before storing, like the Notion token; a stored key wins over the `ANTHROPIC_API_KEY` env). Status (`has_key`, `key_source`) rides on `GET /integrations` under `legibility`.
 - [x] `GET /sources/{id}/rewrite` owner read (stored raw/rewrite/health/policy) — the diff view's data source.
 
 ## Decisions (resolved)
@@ -394,11 +397,13 @@ value still set empirically is `legibility.threshold` (read off the Phase 3 curv
 4. **Default mode is automatic.** Once enabled, any page below the threshold is
    rewritten without a manual trigger (matches "as easy as taking notes"); the
    per-source `'off'` override and the diff view are the safety net.
-5. **Config seam — secret in env, policy in the DB.** `ANTHROPIC_API_KEY` is an env
-   secret (never DB); `legibility.*` are runtime `settings`-table values. `validate()`
-   stays key-agnostic; `_effective_legibility(pool)` enforces policy at ingest and
-   degrades "enabled but no key" to pass-through. Mirrors the existing `poll_interval`
-   split, so no new pattern is introduced.
+5. **Config seam — key and policy both runtime in the DB (env fallback).** The Anthropic
+   key is a `settings`-table credential set from the UI (`PUT/DELETE /integrations/anthropic`),
+   with `ANTHROPIC_API_KEY` env as a fallback; `legibility.*` are runtime `settings`-table
+   values. `validate()` stays key-agnostic; `_effective_legibility(pool)` resolves the key
+   (`_active_anthropic_key`, DB-over-env) + policy at ingest and degrades "enabled but no
+   key" to pass-through. Mirrors the existing `poll_interval` and Notion-token splits, so
+   no new pattern is introduced.
 6. **Manual rewrite is one endpoint, and `'off'` always wins.** `POST /sources/{id}/rewrite`
    forces a rewrite of stored `raw_text` via `force_rewrite=True`, bypassing the
    threshold and the hash cache — but a `'off'`-pinned page is never rewritten, even

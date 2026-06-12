@@ -11,7 +11,7 @@ ONE Anthropic call per source returns BOTH halves of the feature in one pass
   (``store._split_sections``) can chunk it well instead of collapsing the whole
   page into one mushy embedding.
 
-``analyze(raw_text, model) -> (health, rewrite)`` is SYNCHRONOUS (like ``embed``),
+``analyze(raw_text, model, api_key) -> (health, rewrite)`` is SYNCHRONOUS (like ``embed``),
 wrapped in ``asyncio.to_thread`` by ``upsert_source``. analyze always returns BOTH
 halves; the DECISION of whether to *use* the rewrite (auto-threshold vs. manual
 vs. the per-source ``'off'`` pin) belongs to the caller, which stores the rewrite
@@ -30,9 +30,10 @@ Hard guardrails — enforced by the prompt + the structured-output schema:
 - ``raw_text`` is never mutated and Notion is never written back — the rewrite is
   a derived artifact stored *beside* the source, disposable like ``chunks``.
 
-The Anthropic SDK is a real new dependency + secret (``ANTHROPIC_API_KEY``). It is
-imported lazily inside the client builder so the base brain still imports without
-it; the whole feature is opt-in partly to keep the base brain free of both.
+The Anthropic SDK is a real new dependency + secret. The key is resolved per ingest
+(``settings._active_anthropic_key``: a UI-stored key wins over the ANTHROPIC_API_KEY
+env) and threaded into ``analyze``; the SDK is imported lazily inside the client
+builder so the base brain still imports without exercising it.
 """
 
 from __future__ import annotations
@@ -156,28 +157,44 @@ third line has no antecedent"). Empty list if the note is already legible.
 
 
 _client_singleton = None
+_client_key = None
 _client_lock = threading.Lock()
 
 
-def _client():
-    """Process-wide Anthropic client, built lazily. Missing key fails loud — but
-    the caller (`upsert_source`) only reaches analyze() when
-    `settings._effective_legibility` already confirmed the key is present, so in
-    practice this RuntimeError is a defensive backstop, not the live degrade path
-    (that one is in the resolver: 'enabled but no key' -> pass-through)."""
-    global _client_singleton
-    cfg = Config()
-    if not cfg.anthropic_api_key:
-        raise RuntimeError("missing required env: ANTHROPIC_API_KEY")
-    if _client_singleton is None:
+def _client(api_key: str):
+    """Process-wide Anthropic client for `api_key`, built lazily and re-keyed when
+    the key changes. The key is now a runtime value (a UI-stored key can be set,
+    replaced, or removed without a restart), so the cached client is rebuilt the
+    moment the effective key differs from the one it was built with — a stale
+    client never outlives a key swap. Missing key fails loud — but the caller
+    (`upsert_source`) only reaches analyze() when `settings._effective_legibility`
+    confirmed the key is present, so this RuntimeError is a defensive backstop, not
+    the live degrade path (that one is in the resolver: 'enabled but no key' ->
+    pass-through)."""
+    global _client_singleton, _client_key
+    if not api_key:
+        raise RuntimeError("missing Anthropic API key")
+    if _client_singleton is None or _client_key != api_key:
         # analyze() runs under asyncio.to_thread, so concurrent first-callers can
         # race — a double-checked lock keeps the single-client invariant real.
         with _client_lock:
-            if _client_singleton is None:
+            if _client_singleton is None or _client_key != api_key:
                 import anthropic  # lazy: the base brain imports without this dep
 
-                _client_singleton = anthropic.Anthropic(api_key=cfg.anthropic_api_key)
+                _client_singleton = anthropic.Anthropic(api_key=api_key)
+                _client_key = api_key
     return _client_singleton
+
+
+def verify_key(api_key: str) -> None:
+    """Validate an Anthropic API key by making one cheap authenticated call
+    (`models.list`), mirroring how the Notion connect flow validates a token before
+    storing it. Raises `anthropic.AuthenticationError` if the key is rejected; other
+    SDK/network errors propagate to the caller (mapped to a 502 there). Does not
+    touch the cached client — this is a one-off pre-store check."""
+    import anthropic  # lazy: only the integrations endpoint needs this
+
+    anthropic.Anthropic(api_key=api_key).models.list(limit=1)
 
 
 def _clamp(value: float, lo: float, hi: float) -> float:
@@ -201,14 +218,16 @@ def _normalize_health(health: dict) -> dict:
     }
 
 
-def analyze(raw_text: str, model: str = DEFAULT_MODEL) -> tuple[dict, str]:
+def analyze(raw_text: str, model: str = DEFAULT_MODEL, api_key: str = "") -> tuple[dict, str]:
     """Run the one analysis call → (health, rewrite).
 
     `health` is the normalized structured signal; `rewrite` is the structural,
     grounded restructuring (markdown-headed idea-units in the author's own words).
-    Synchronous — wrap with asyncio.to_thread in async callers. Raises on a missing
-    key, an API failure, or an unparseable/truncated response; `upsert_source`
-    catches that and degrades to pass-through so analysis never crashes ingest.
+    `api_key` is the resolved secret (`settings._active_anthropic_key`) the caller
+    threads in. Synchronous — wrap with asyncio.to_thread in async callers. Raises on
+    a missing key, an API failure, or an unparseable/truncated response;
+    `upsert_source` catches that and degrades to pass-through so analysis never
+    crashes ingest.
     """
     text = raw_text or ""
     if len(text) > _INPUT_CHAR_BUDGET:
@@ -219,7 +238,7 @@ def analyze(raw_text: str, model: str = DEFAULT_MODEL) -> tuple[dict, str]:
         )
         text = text[:_INPUT_CHAR_BUDGET]
 
-    client = _client()
+    client = _client(api_key)
     # Adaptive thinking + structured output: voice-preservation and grounding are
     # judgment-heavy, so let the model think; the json_schema format pins the
     # return shape. (Both are supported together on claude-sonnet-4-6.)

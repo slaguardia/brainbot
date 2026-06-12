@@ -29,14 +29,17 @@ from starlette.responses import JSONResponse
 
 from .config import Config
 from .db import apply_schema, close_pool, get_pool
+from .legibility import verify_key
 from .notion import NotionError, fetch_page, list_pages, verify_token
 from .settings import (
+    ANTHROPIC_API_KEY_KEY,
     LEGIBILITY_ENABLED_KEY,
     LEGIBILITY_MODE_KEY,
     LEGIBILITY_MODEL_KEY,
     LEGIBILITY_THRESHOLD_KEY,
     NOTION_TOKEN_KEY,
     POLL_INTERVAL_KEY,
+    _active_anthropic_key,
     _effective_legibility,
     delete_setting,
     get_setting,
@@ -241,7 +244,7 @@ async def rewrite_source_route(request: Request) -> JSONResponse:
 
     try:
         pool = await get_pool()
-        enabled, _mode, _threshold, _model = await _effective_legibility(pool)
+        enabled, _mode, _threshold, _model, _key = await _effective_legibility(pool)
         if not enabled:
             # Globally off (toggle false, or enabled-but-no-key) — never analyze.
             return JSONResponse(
@@ -430,6 +433,59 @@ async def notion_integration(request: Request) -> JSONResponse:
         return JSONResponse({"error": f"store failed: {e}"}, status_code=502)
 
     return JSONResponse({"connected": True, "source": "db", **info})
+
+
+@mcp.custom_route("/integrations/anthropic", methods=["PUT", "DELETE"])
+async def anthropic_integration(request: Request) -> JSONResponse:
+    """Manage the Anthropic API key the note-legibility LLM uses (the UI's
+    set/remove), so deployers needn't bake ANTHROPIC_API_KEY into env.
+
+    PUT {key}: validate it against the Anthropic API (models.list), then store it —
+    a stored key overrides the ANTHROPIC_API_KEY env. Returns {has_key, key_source};
+    400 if Anthropic rejects the key. DELETE: drop the stored key, falling back to
+    the env key if one is set. Returns the resulting {has_key, key_source}. The key
+    is write-only from the UI's view — it's never returned."""
+    pool = await get_pool()
+
+    if request.method == "DELETE":
+        try:
+            await delete_setting(pool, ANTHROPIC_API_KEY_KEY)
+            key, source = await _active_anthropic_key(pool)
+        except Exception as e:  # noqa: BLE001 — db failure: surface, don't 500
+            logger.exception("integrations: anthropic key remove failed")
+            return JSONResponse({"error": f"remove failed: {e}"}, status_code=502)
+        return JSONResponse({"has_key": bool(key), "key_source": source})
+
+    # PUT
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "body must be JSON {key}"}, status_code=400)
+    key = (body or {}).get("key")
+    if not key or not isinstance(key, str) or not key.strip():
+        return JSONResponse({"error": "missing required field: key"}, status_code=400)
+    key = key.strip()
+
+    try:
+        await asyncio.to_thread(verify_key, key)
+    except Exception as e:  # noqa: BLE001 — distinguish a rejected key from infra failure
+        # An AuthenticationError means the key is bad (caller-fixable, 400); any other
+        # SDK/network error is infra (502). Match on the SDK's class name so api.py
+        # needs no hard anthropic import.
+        if type(e).__name__ == "AuthenticationError":
+            return JSONResponse(
+                {"error": f"Anthropic rejected the key: {e}"}, status_code=400
+            )
+        logger.exception("integrations: verify_key failed")
+        return JSONResponse({"error": f"verify failed: {e}"}, status_code=502)
+
+    try:
+        await set_setting(pool, ANTHROPIC_API_KEY_KEY, key)
+    except Exception as e:  # noqa: BLE001 — db failure: surface, don't 500
+        logger.exception("integrations: store anthropic key failed")
+        return JSONResponse({"error": f"store failed: {e}"}, status_code=502)
+
+    return JSONResponse({"has_key": True, "key_source": "db"})
 
 
 @mcp.custom_route("/integrations/notion/sync", methods=["PUT", "DELETE"])

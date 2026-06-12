@@ -1507,11 +1507,22 @@ main {
    Integrations view (#integrations) — one card per source. Reuses the home
    shell (.home section) + the .disc-head/.disc-sub header from discover.
    =========================================================================== */
+/* The cards sit in a width-aware grid: auto-fit measures the real content width,
+   so the cards stay a single, properly-gapped column in a narrow layout and flow
+   into two side-by-side columns once the page is wide enough to give each card
+   room (~380px min) — filling a wide page's margins without ever cramping the
+   forms. The min(100%, …) floor keeps a single column (no overflow) on mobile. */
+.intg-body {
+  display: grid;
+  gap: 18px;
+  align-items: start;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 380px), 1fr));
+}
 .intg-card {
   border: 1px solid var(--border);
   background: var(--bg-elevated);
   border-radius: var(--r-lg);
-  padding: 16px 18px;
+  padding: 18px 20px;
 }
 .intg-card-head {
   display: flex;
@@ -1693,14 +1704,86 @@ main {
   line-height: 1.5;
 }
 
+/* Anthropic API key sub-block inside the legibility card — a divider'd section
+   mirroring the Notion card's .intg-sync, with a token-style input + buttons. */
+.intg-key {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+.intg-key-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fg);
+}
+.intg-key-form {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+.intg-key-input {
+  flex: 1;
+  min-width: 0;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
+  padding: 8px 11px;
+  font-size: 13px;
+  font-family: var(--font-mono);
+  color: var(--fg);
+}
+.intg-key-input:focus-visible {
+  outline: none;
+  border-color: var(--link);
+}
+.intg-key-save {
+  color: var(--link);
+  background: var(--link-bg);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
+  padding: 8px 14px;
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.intg-key-save:hover {
+  border-color: var(--link);
+}
+.intg-key-save:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.intg-key-remove {
+  color: var(--no);
+  background: none;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
+  padding: 8px 12px;
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.intg-key-remove:hover {
+  border-color: var(--no);
+}
+.intg-key-msg {
+  margin: 10px 0 0;
+  font-size: 12.5px;
+  color: var(--fg-muted);
+  min-height: 1em;
+}
+
 /* Note-legibility settings card — reuses .intg-card chrome; the form stacks its
-   labelled rows (enable / mode / threshold) then the Save + Reset buttons. */
+   labelled rows (enable / mode / threshold) then the Save + Reset buttons. A top
+   divider sets the policy controls apart from the key block above them. */
 .intg-leg-form {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 10px 12px;
-  margin-top: 12px;
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
 }
 .intg-leg-row {
   display: inline-flex;

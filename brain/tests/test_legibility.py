@@ -27,9 +27,11 @@ from pgvector.asyncpg import register_vector
 
 from brain import store
 from brain.settings import (
+    ANTHROPIC_API_KEY_KEY,
     LEGIBILITY_ENABLED_KEY,
     LEGIBILITY_MODE_KEY,
     LEGIBILITY_THRESHOLD_KEY,
+    _active_anthropic_key,
     set_setting,
 )
 
@@ -49,7 +51,7 @@ class FakeAnalyze:
         self.score = score
         self.calls = 0
 
-    def __call__(self, raw_text: str, model: str = "fake-model"):
+    def __call__(self, raw_text: str, model: str = "fake-model", api_key: str = ""):
         self.calls += 1
         lines = [ln for ln in raw_text.splitlines() if ln.strip()]
         rewrite = "\n\n".join(f"## {ln.split()[-1]}\n{ln}" for ln in lines)
@@ -418,9 +420,11 @@ def test_analyze_parses_and_normalizes(monkeypatch):
     class _Client:
         messages = _Messages()
 
-    monkeypatch.setattr(legibility, "_client", lambda: _Client())
+    monkeypatch.setattr(legibility, "_client", lambda api_key="": _Client())
 
-    health, rewrite = legibility.analyze("apples and bananas", model="claude-sonnet-4-6")
+    health, rewrite = legibility.analyze(
+        "apples and bananas", model="claude-sonnet-4-6", api_key="k"
+    )
 
     assert health["score"] == 35
     assert health["grounded"] is True
@@ -440,9 +444,9 @@ def test_analyze_raises_on_no_text_block(monkeypatch):
 
     client = _Client()
     client.messages.create = lambda **k: type("R", (), {"content": [], "stop_reason": "end_turn"})()
-    monkeypatch.setattr(legibility, "_client", lambda: client)
+    monkeypatch.setattr(legibility, "_client", lambda api_key="": client)
     with pytest.raises(RuntimeError):
-        legibility.analyze("x")
+        legibility.analyze("x", api_key="k")
 
 
 # ---- config seam: the secret is env, validate() stays key-agnostic ------------
@@ -551,10 +555,11 @@ def test_rewrite_policy_validation_and_404(client, seed):
 
 @pytest.fixture
 def integrations_clean(client):
-    """Reset the legibility settings after a test so they don't leak (the settings
-    table isn't truncated by clean_db)."""
+    """Reset the legibility settings + any UI-stored Anthropic key after a test so
+    they don't leak (the settings table isn't truncated by clean_db)."""
     yield
     client.delete("/integrations/legibility")
+    client.delete("/integrations/anthropic")
 
 
 def test_integrations_reports_legibility_default_off(client, integrations_clean):
@@ -563,7 +568,7 @@ def test_integrations_reports_legibility_default_off(client, integrations_clean)
     leg = body["legibility"]
     assert leg["enabled"] is False  # off by default
     assert leg["active"] is False
-    assert set(leg) == {"enabled", "active", "mode", "threshold", "model", "has_key"}
+    assert set(leg) == {"enabled", "active", "mode", "threshold", "model", "has_key", "key_source"}
 
 
 def test_put_legibility_settings_roundtrip(client, integrations_clean, monkeypatch):
@@ -602,3 +607,124 @@ def test_delete_legibility_resets(client, monkeypatch):
     leg = client.delete("/integrations/legibility").json()
     assert leg["enabled"] is False
     assert leg["threshold"] == 65  # back to the default
+
+
+# ---- Anthropic key: resolved DB-over-env, set/removed from the UI --------------
+
+
+def test_active_anthropic_key_db_wins_over_env(clean_db, monkeypatch):
+    """The resolver mirrors `_active_notion_token`: a UI-stored key ('db') beats the
+    ANTHROPIC_API_KEY env ('env'); deleting it falls back to env; neither -> none."""
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "env-key")
+
+    async def _stored(pool):
+        await set_setting(pool, ANTHROPIC_API_KEY_KEY, "db-key")
+        return await _active_anthropic_key(pool)
+
+    assert _run(clean_db, _stored) == ("db-key", "db")
+
+    async def _dropped(pool):
+        await pool.execute("DELETE FROM settings WHERE key=$1", ANTHROPIC_API_KEY_KEY)
+        return await _active_anthropic_key(pool)
+
+    assert _run(clean_db, _dropped) == ("env-key", "env")
+
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    assert _run(clean_db, _active_anthropic_key) == (None, None)
+
+
+def test_client_rebuilds_when_key_changes(monkeypatch):
+    """The client cache is keyed on the api_key: a changed key (UI set/replace/
+    remove with no restart) rebuilds the Anthropic client instead of reusing a stale
+    one built from the old key."""
+    import sys
+    import types
+
+    built: list[str] = []
+
+    class _Fake:
+        def __init__(self, api_key):
+            self.api_key = api_key
+            built.append(api_key)
+
+    fake_mod = types.SimpleNamespace(Anthropic=_Fake)
+    monkeypatch.setitem(sys.modules, "anthropic", fake_mod)
+    monkeypatch.setattr(legibility, "_client_singleton", None)
+    monkeypatch.setattr(legibility, "_client_key", None)
+
+    c1 = legibility._client("k1")
+    assert legibility._client("k1") is c1  # same key -> cached, no rebuild
+    c2 = legibility._client("k2")  # changed key -> rebuilt
+    assert c2 is not c1
+    assert c2.api_key == "k2"
+    assert built == ["k1", "k2"]
+    with pytest.raises(RuntimeError):
+        legibility._client("")  # missing key still fails loud
+
+
+# ---- Anthropic key: the /integrations/anthropic UI endpoint --------------------
+
+
+class _FakeAuthError(Exception):
+    """Stands in for anthropic.AuthenticationError — the endpoint matches on the
+    class NAME so it needs no real SDK import."""
+
+
+_FakeAuthError.__name__ = "AuthenticationError"
+
+
+def test_put_anthropic_key_validates_and_stores(client, integrations_clean, monkeypatch):
+    """PUT validates the key against Anthropic (mocked), stores it, and the key then
+    powers legibility with NO ANTHROPIC_API_KEY env — the whole point: deploy without
+    the secret, set it from the dashboard."""
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    seen = {}
+    monkeypatch.setattr("brain.api.verify_key", lambda key: seen.update(key=key))
+
+    resp = client.put("/integrations/anthropic", json={"key": "sk-ant-good"})
+    assert resp.status_code == 200
+    assert resp.json() == {"has_key": True, "key_source": "db"}
+    assert seen["key"] == "sk-ant-good"  # the key was validated before storing
+
+    # GET reports it present + sourced from the UI, never echoes the key itself.
+    leg = client.get("/integrations").json()["legibility"]
+    assert leg["has_key"] is True
+    assert leg["key_source"] == "db"
+    assert "sk-ant-good" not in resp.text
+
+
+def test_put_anthropic_key_rejected_is_400(client, integrations_clean, monkeypatch):
+    """A key Anthropic rejects is a caller-fixable 400 (not a 502), and nothing is
+    stored."""
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+
+    def _reject(key):
+        raise _FakeAuthError("invalid x-api-key")
+
+    monkeypatch.setattr("brain.api.verify_key", _reject)
+    resp = client.put("/integrations/anthropic", json={"key": "sk-ant-bad"})
+    assert resp.status_code == 400
+    assert client.get("/integrations").json()["legibility"]["has_key"] is False
+
+
+def test_put_anthropic_key_missing_field_is_400(client, integrations_clean):
+    assert client.put("/integrations/anthropic", json={}).status_code == 400
+    assert client.put("/integrations/anthropic", json={"key": "  "}).status_code == 400
+
+
+def test_delete_anthropic_key_falls_back_to_env(client, integrations_clean, monkeypatch):
+    """DELETE drops the UI-stored key; if an ANTHROPIC_API_KEY env is set the status
+    falls back to it ('env'), else reports no key."""
+    monkeypatch.setattr("brain.api.verify_key", lambda key: None)
+    client.put("/integrations/anthropic", json={"key": "sk-ant-stored"})
+
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "env-key")
+    resp = client.delete("/integrations/anthropic")
+    assert resp.status_code == 200
+    assert resp.json() == {"has_key": True, "key_source": "env"}
+
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    assert client.delete("/integrations/anthropic").json() == {
+        "has_key": False,
+        "key_source": None,
+    }

@@ -318,13 +318,22 @@ const server = createServer((req, res) => {
     void proxyJson(req, res, req.method, "/integrations/notion/sync");
     return;
   }
-  // Note-legibility policy: set fields (PUT) or reset to defaults (DELETE). The
-  // ANTHROPIC_API_KEY secret is never managed here — env-only on the brain side.
+  // Note-legibility policy: set fields (PUT) or reset to defaults (DELETE).
   if (
     url.pathname === "/api/integrations/legibility" &&
     (req.method === "PUT" || req.method === "DELETE")
   ) {
     void proxyJson(req, res, req.method, "/integrations/legibility");
+    return;
+  }
+  // Anthropic API key: set/validate (PUT, body is the key) or remove (DELETE). A
+  // stored key overrides the ANTHROPIC_API_KEY env on the brain. Status is read
+  // back via GET /api/integrations (has_key + key_source), never the key itself.
+  if (
+    url.pathname === "/api/integrations/anthropic" &&
+    (req.method === "PUT" || req.method === "DELETE")
+  ) {
+    void proxyJson(req, res, req.method, "/integrations/anthropic");
     return;
   }
   if (req.method === "GET" || req.method === "HEAD") {

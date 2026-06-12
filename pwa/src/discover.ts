@@ -209,8 +209,9 @@ function renderPages(body: HTMLElement, pages: NotionPage[]): void {
 }
 
 // One row: title grows, edited date + action hug the right. A database isn't
-// itself a document, so it shows a row count — plus a "pull all" button that
-// ingests its not-yet-pulled rows (each row is a page) in one batch.
+// itself a document, so it shows a row count — plus "pull all" / "remove all"
+// buttons that ingest its not-yet-pulled rows or drop its ingested rows (each
+// row is a page) in one batch.
 function rowHTML(node: PageNode): string {
   const p = node.page;
   const isDb = p.kind === "database";
@@ -219,11 +220,17 @@ function rowHTML(node: PageNode): string {
   let action: string;
   if (isDb) {
     const n = node.children.length;
+    const id = esc(p.id ?? "");
     const pending = collectChildPages(node).length;
+    const ingested = collectIngestedChildPages(node).length;
     const count = `<span class="disc-count">${n} page${n === 1 ? "" : "s"}</span>`;
-    action = pending
-      ? `${count} <button class="disc-pull-db" type="button" data-id="${esc(p.id ?? "")}">pull all ${pending}</button>`
-      : count;
+    const pull = pending
+      ? ` <button class="disc-pull-db" type="button" data-id="${id}">pull all ${pending}</button>`
+      : "";
+    const remove = ingested
+      ? ` <button class="disc-remove-db" type="button" data-id="${id}">remove all ${ingested}</button>`
+      : "";
+    action = `${count}${pull}${remove}`;
   } else {
     action = p.ingested
       ? `<span class="disc-badge is-ingested">in brain</span><button class="disc-remove" type="button" data-id="${esc(p.id ?? "")}" data-url="${esc(p.url ?? "")}" title="remove from the brain">remove</button>`
@@ -277,6 +284,16 @@ function wireIngest(body: HTMLElement): void {
       if (urls.length) void pullBatch(body, btn as HTMLButtonElement, urls);
       return;
     }
+    if (btn.classList.contains("disc-remove-db")) {
+      // Un-ingest every ingested row of a database in one batch — the inverse of
+      // pull-all. The button sits inside the database's <summary>, so stop the
+      // click from also toggling the branch.
+      e.preventDefault();
+      const node = nodeById.get(btn.getAttribute("data-id") ?? "");
+      const pages = node ? collectIngestedChildPages(node) : [];
+      if (pages.length) void removeBatch(body, btn as HTMLButtonElement, pages);
+      return;
+    }
     if (btn.classList.contains("disc-remove")) {
       // Un-ingest: drop this one page from the brain. Per-page only — no cascade
       // to children. A remove button can sit inside a <summary>; stop the click
@@ -312,6 +329,22 @@ function collectChildPages(node: PageNode): NotionPage[] {
     for (const c of n.children) {
       if (c.page.kind === "database") continue;
       if (!c.page.ingested && c.page.url) out.push(c.page);
+      walk(c);
+    }
+  };
+  walk(node);
+  return out;
+}
+
+// The inverse of collectChildPages — ingested descendants, for bulk removal.
+// Same subtree walk and same database-branch skip; removal is keyed on the page
+// id (the /api/sources/{id} DELETE), so a row needs an id, not a url.
+function collectIngestedChildPages(node: PageNode): NotionPage[] {
+  const out: NotionPage[] = [];
+  const walk = (n: PageNode) => {
+    for (const c of n.children) {
+      if (c.page.kind === "database") continue;
+      if (c.page.ingested && c.page.id) out.push(c.page);
       walk(c);
     }
   };
@@ -382,6 +415,34 @@ async function pullBatch(body: HTMLElement, btn: HTMLButtonElement, urls: string
     body.insertAdjacentHTML(
       "afterbegin",
       `<p class="home-status">${failed} of ${urls.length} pulls failed — retry from the tree.</p>`,
+    );
+  }
+}
+
+// Sequential batch remove — the inverse of pullBatch: DELETE each source in
+// turn, narrating progress on the button, then re-render the whole tree from the
+// server so every removed row flips back to a "pull" action at once.
+async function removeBatch(
+  body: HTMLElement,
+  btn: HTMLButtonElement,
+  pages: NotionPage[],
+): Promise<void> {
+  btn.disabled = true;
+  let failed = 0;
+  for (let i = 0; i < pages.length; i++) {
+    btn.textContent = `removing ${i + 1}/${pages.length}…`;
+    try {
+      const res = await fetch(`/api/sources/${pages[i].id}`, { method: "DELETE" });
+      if (!res.ok) failed++;
+    } catch {
+      failed++;
+    }
+  }
+  await loadPages(body);
+  if (failed > 0) {
+    body.insertAdjacentHTML(
+      "afterbegin",
+      `<p class="home-status">${failed} of ${pages.length} removals failed — retry from the tree.</p>`,
     );
   }
 }

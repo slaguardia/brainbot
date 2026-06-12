@@ -342,6 +342,26 @@
   align-items: center;
   gap: 10px;
 }
+/* Discovery is a far denser tree than the home Sources map (every database row
+   is its own page), so give its rows more vertical air, a little side padding,
+   and a hover affordance — a big shared workspace shouldn't read as a wall. */
+.disc-tree .src-label {
+  padding-top: 10px;
+  padding-bottom: 10px;
+}
+.disc-tree .disc-row {
+  padding: 0 8px;
+  border-radius: var(--r-md);
+}
+.disc-tree .disc-row:hover {
+  background: var(--panel-2);
+}
+/* A touch more indent between nesting levels than the home map, so deep
+   database trees stay legible. */
+.disc-tree .src-list .src-list {
+  margin-left: 11px;
+  padding-left: 16px;
+}
 /* Collapsible branch: a leading caret that rotates when open. The summary IS
    the row, so the whole line is the toggle target. */
 .disc-branch > summary {
@@ -420,8 +440,10 @@
   cursor: pointer;
 }
 /* Un-ingest action, sitting just after the "in brain" badge — muted by default
-   so it doesn't compete with the badge, reddening on hover to signal removal. */
-.disc-remove {
+   so it doesn't compete with the badge, reddening on hover to signal removal.
+   The batch variant (remove every ingested row of a database) shares the look. */
+.disc-remove,
+.disc-remove-db {
   margin-left: 8px;
   color: var(--fg-faint);
   background: transparent;
@@ -431,11 +453,13 @@
   font-size: 12px;
   cursor: pointer;
 }
-.disc-remove:hover {
+.disc-remove:hover,
+.disc-remove-db:hover {
   color: var(--no);
   border-color: var(--no);
 }
-.disc-remove:disabled {
+.disc-remove:disabled,
+.disc-remove-db:disabled {
   color: var(--fg-faint);
   border-color: var(--border-strong);
   cursor: default;

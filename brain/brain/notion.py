@@ -300,20 +300,27 @@ def _page_text(page_id: str, cfg: Config) -> str:
 # ---- ancestry / path ---------------------------------------------------------
 
 def _ancestor_titles(page: dict, cfg: Config) -> list[str]:
-    """Walk the parent-page chain (closest-first), returning ancestor titles
-    ordered root -> ... -> immediate parent. Stops at a workspace/database/block
-    parent (no further page to walk)."""
+    """Walk the parent chain (closest-first), returning ancestor titles ordered
+    root -> ... -> immediate parent. Follows BOTH page and database parents — a
+    database ROW's parent is the database (type `database_id`), so walking it puts
+    the row under its database (and the database under its own ancestor pages)
+    instead of stranding every row at the tree root. Stops at a workspace/block
+    parent (no further document to walk)."""
     titles: list[str] = []
     parent = page.get("parent", {})
     # Guard against pathological cycles (Notion shouldn't produce them).
     for _ in range(50):
-        if parent.get("type") != "page_id":
-            break
-        parent_id = parent.get("page_id")
-        if not parent_id:
+        ptype = parent.get("type")
+        if ptype == "page_id":
+            endpoint = f"/pages/{parent.get('page_id')}" if parent.get("page_id") else None
+        elif ptype == "database_id":
+            endpoint = f"/databases/{parent.get('database_id')}" if parent.get("database_id") else None
+        else:
+            break  # workspace/block parent — no document above this
+        if endpoint is None:
             break
         try:
-            ancestor = _get(f"/pages/{parent_id}", cfg)
+            ancestor = _get(endpoint, cfg)
         except NotionError:
             # An ancestor the integration can't read (only the leaf page was
             # shared, not its parents). Stop the walk and use the partial path —

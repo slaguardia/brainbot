@@ -152,9 +152,10 @@ Let's Encrypt, which needs these resolving **before** you bring the edge up.
 | `<app>.${BRAIN_DOMAIN}` | A | VPS IP | one per future app |
 
 A wildcard `*.${BRAIN_DOMAIN}` A record also works and means new apps need no DNS
-change — but per-host TLS via Let's Encrypt then needs the DNS-01 challenge;
-per-host A records with the default HTTP challenge is the simpler path. Start with
-explicit per-host records.
+change. Caddy still issues a separate cert per explicit vhost via the default
+HTTP-01 challenge — the DNS-01 challenge is only needed for wildcard
+*certificates*, which this setup doesn't use. Existing explicit records on the
+domain (apex site, MX) take precedence over the wildcard and keep working.
 
 ---
 

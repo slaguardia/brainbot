@@ -208,39 +208,46 @@ function renderPages(body: HTMLElement, pages: NotionPage[]): void {
     <ul class="src-list disc-tree">${roots.map(renderNode).join("")}</ul>`;
 }
 
-// One row: title grows, edited date + action hug the right. A database isn't
-// itself a document, so it shows a row count — plus "pull all" / "remove all"
-// buttons that ingest its not-yet-pulled rows or drop its ingested rows (each
-// row is a page) in one batch.
+// One row, laid out as columns so the eye can scan down: the title grows to
+// fill the middle, then three fixed-width cells hug the right edge — meta (a
+// page's edited date / a database's row count), status (pull · in brain · pull
+// all), and remove (remove · remove all). The cells are pinned to the shared
+// right edge and right-align their content, so dates line up under dates and
+// buttons under buttons across every row, whatever the title length or depth.
 function rowHTML(node: PageNode): string {
   const p = node.page;
   const isDb = p.kind === "database";
   const title = esc(p.title || "(untitled)");
-  const edited = !isDb && p.last_edited_time ? esc(p.last_edited_time.slice(0, 10)) : "";
-  let action: string;
+  let meta = ""; // a page's edited date, or a database's row count
+  let status = ""; // pull · in brain · pull all
+  let remove = ""; // remove · remove all
   if (isDb) {
-    const n = node.children.length;
     const id = esc(p.id ?? "");
+    const n = node.children.length;
     const pending = collectChildPages(node).length;
     const ingested = collectIngestedChildPages(node).length;
-    const count = `<span class="disc-count">${n} page${n === 1 ? "" : "s"}</span>`;
-    const pull = pending
-      ? ` <button class="disc-pull-db" type="button" data-id="${id}">pull all ${pending}</button>`
-      : "";
-    const remove = ingested
-      ? ` <button class="disc-remove-db" type="button" data-id="${id}">remove all ${ingested}</button>`
-      : "";
-    action = `${count}${pull}${remove}`;
+    meta = `${n} page${n === 1 ? "" : "s"}`;
+    if (pending)
+      status = `<button class="disc-pull-db" type="button" data-id="${id}">pull all ${pending}</button>`;
+    if (ingested)
+      remove = `<button class="disc-remove-db" type="button" data-id="${id}">remove all ${ingested}</button>`;
   } else {
-    action = p.ingested
-      ? `<span class="disc-badge is-ingested">in brain</span><button class="disc-remove" type="button" data-id="${esc(p.id ?? "")}" data-url="${esc(p.url ?? "")}" title="remove from the brain">remove</button>`
-      : `<button class="disc-pull" type="button" data-id="${esc(p.id ?? "")}" data-url="${esc(p.url ?? "")}">pull</button>`;
+    const id = esc(p.id ?? "");
+    const url = esc(p.url ?? "");
+    meta = p.last_edited_time ? esc(p.last_edited_time.slice(0, 10)) : "";
+    if (p.ingested) {
+      status = `<span class="disc-badge is-ingested">in brain</span>`;
+      remove = `<button class="disc-remove" type="button" data-id="${id}" data-url="${url}" title="remove from the brain">remove</button>`;
+    } else {
+      status = `<button class="disc-pull" type="button" data-id="${id}" data-url="${url}">pull</button>`;
+    }
   }
   return `
       ${isDb ? `<span class="disc-kind-db">db</span>` : ""}
       <span class="src-label">${title}</span>
-      ${edited ? `<span class="disc-edited">${edited}</span>` : ""}
-      ${action}`;
+      <span class="disc-cell disc-cell-meta">${meta}</span>
+      <span class="disc-cell disc-cell-status">${status}</span>
+      <span class="disc-cell disc-cell-remove">${remove}</span>`;
 }
 
 function renderNode(node: PageNode): string {

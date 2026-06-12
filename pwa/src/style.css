@@ -405,11 +405,6 @@
   text-transform: uppercase;
   letter-spacing: 0.06em;
 }
-.disc-count {
-  color: var(--fg-faint);
-  font-size: 12px;
-  font-family: var(--font-mono);
-}
 .disc-row .src-label {
   flex: 1;
   min-width: 0;
@@ -417,10 +412,27 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.disc-edited {
+/* Right-hand columns: fixed-width cells pinned to the shared right edge, each
+   right-aligning its content, so dates line up under dates and buttons under
+   buttons down the whole list. An empty cell still holds its width, so a row
+   with no date or no action stays in column. */
+.disc-cell {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+}
+.disc-cell-meta {
+  width: 72px;
   color: var(--fg-faint);
   font-size: 12px;
   font-family: var(--font-mono);
+}
+.disc-cell-status {
+  width: 104px;
+}
+.disc-cell-remove {
+  width: 116px;
 }
 .disc-badge.is-ingested {
   color: var(--yes);
@@ -444,7 +456,6 @@
    The batch variant (remove every ingested row of a database) shares the look. */
 .disc-remove,
 .disc-remove-db {
-  margin-left: 8px;
   color: var(--fg-faint);
   background: transparent;
   border: 1px solid var(--border-strong);
@@ -463,9 +474,6 @@
   color: var(--fg-faint);
   border-color: var(--border-strong);
   cursor: default;
-}
-.disc-pull-db {
-  margin-left: 8px;
 }
 .disc-pull:hover,
 .disc-pull-db:hover {

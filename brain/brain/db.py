@@ -55,6 +55,26 @@ ALTER TABLE sources ADD COLUMN IF NOT EXISTS source_last_edited timestamptz;
 -- FK was inline lose it on the next startup; a no-op everywhere else.
 ALTER TABLE sources DROP CONSTRAINT IF EXISTS sources_parent_id_fkey;
 
+-- Note-legibility layer (opt-in; see docs/note-legibility.md). These four columns
+-- are additive and ALL nullable / defaulted, so a DB created before the feature
+-- gains them on the next startup and, with legibility disabled, they stay NULL /
+-- 'auto' and ingest output is byte-identical to before the feature existed.
+--
+-- The structural rewrite of raw_text. NULL = pass-through (chunk from raw_text);
+-- non-null = the chunker splits THIS instead. Never written back to Notion.
+ALTER TABLE sources ADD COLUMN IF NOT EXISTS rewrite_text text;
+-- Structured legibility signal (jsonb): score 0-100, four 0-1 dimensions
+-- (separability, self_containment, redundancy, signal_density), actionable notes,
+-- and a grounded flag. NULL on un-analyzed sources (no zero-LLM heuristic tier).
+ALTER TABLE sources ADD COLUMN IF NOT EXISTS health jsonb;
+-- md5(raw_text) the stored health+rewrite were computed against. Re-ingest of
+-- unchanged content reuses the stored analysis instead of re-running the LLM —
+-- idempotency: no nondeterministic chunk churn under consumers, no needless cost.
+ALTER TABLE sources ADD COLUMN IF NOT EXISTS analysis_hash text;
+-- Per-source override of the global policy: 'auto' (follow global), 'off' (never
+-- rewrite — pin to the raw voice), 'manual' (rewrite only on explicit request).
+ALTER TABLE sources ADD COLUMN IF NOT EXISTS rewrite_policy text NOT NULL DEFAULT 'auto';
+
 CREATE TABLE IF NOT EXISTS chunks (
     id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     source_id  uuid NOT NULL REFERENCES sources(id) ON DELETE CASCADE,

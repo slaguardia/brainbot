@@ -37,6 +37,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import json
 import logging
 import re
 from dataclasses import asdict, dataclass
@@ -45,6 +46,8 @@ from datetime import datetime
 import asyncpg
 
 from .embed import embed
+from .legibility import analyze
+from .settings import _effective_legibility
 
 logger = logging.getLogger(__name__)
 
@@ -145,6 +148,16 @@ def _parse_iso(value: str | None) -> datetime | None:
         return None
 
 
+def _as_health(value) -> dict | None:
+    """Parse a stored `health` jsonb value to a dict (or None). asyncpg returns
+    jsonb as text by default, so this json.loads a str; it also tolerates a dict in
+    case a jsonb codec is ever registered. One shared parser so every reader of the
+    column (map_, _stored_legibility, source_for_rewrite) handles it identically."""
+    if value is None:
+        return None
+    return json.loads(value) if isinstance(value, str) else value
+
+
 def _split_sections(title: str, text: str) -> list[tuple[str, str]]:
     """Split a page's markdown into (heading, body) sections by its OWN heading
     structure — one section per heading line, plus a leading section for any
@@ -206,6 +219,32 @@ def _embed_input(heading: str, body: str) -> str:
     return text
 
 
+async def _stored_legibility(
+    pool: asyncpg.Pool, source_id: str | None
+) -> tuple[str, str | None, dict | None, str | None]:
+    """The source's stored legibility state →
+    (rewrite_policy, analysis_hash, health, rewrite_text). A new/unknown source
+    yields the column defaults ('auto', None, None, None) so the fork treats it as
+    'no per-source pin, no cached analysis'. `health` is parsed back to a dict
+    (asyncpg hands jsonb back as text by default)."""
+    if source_id is None:
+        return ("auto", None, None, None)
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            "SELECT rewrite_policy, analysis_hash, health, rewrite_text "
+            "FROM sources WHERE id = $1::uuid",
+            source_id,
+        )
+    if row is None:
+        return ("auto", None, None, None)
+    return (
+        row["rewrite_policy"],
+        row["analysis_hash"],
+        _as_health(row["health"]),
+        row["rewrite_text"],
+    )
+
+
 async def upsert_source(
     pool: asyncpg.Pool,
     *,
@@ -216,6 +255,7 @@ async def upsert_source(
     source_id: str | None = None,
     parent_id: str | None = None,
     last_edited: str | None = None,
+    force_rewrite: bool = False,
 ) -> tuple[str, int]:
     """Create or replace a source, then re-derive its chunks (wipe-replace).
 
@@ -229,6 +269,17 @@ async def upsert_source(
     FK-checked (the parent may never have been synced). None when the origin has
     no parent document (workspace root) or doesn't supply one.
 
+    `force_rewrite` is set ONLY by the manual-trigger endpoint
+    (POST /sources/{id}/rewrite): it forces an analysis even on unchanged text
+    (bypassing the analysis-hash cache) and uses the rewrite regardless of mode/
+    threshold. The per-source `'off'` pin still wins over it. Auto/poll ingest
+    leaves it False.
+
+    The note-legibility layer (docs/note-legibility.md) sits at the edge of this
+    function: with it disabled (or the source pinned 'off'), the legibility columns
+    are NULL and `chunk_source` is the raw text, so ingest output is byte-identical
+    to before the feature existed.
+
     Returns (source id, chunk count).
     """
     # Postgres text columns can't hold a NUL byte (U+0000); Notion plain_text can
@@ -241,10 +292,71 @@ async def upsert_source(
     # datetime for the timestamptz column. None when the origin doesn't supply it.
     last_edited_dt = _parse_iso(last_edited)
 
+    # ---- Note-legibility fork (opt-in) --------------------------------------
+    # Resolve the live policy ('enabled but no key' already degraded to disabled),
+    # and read this source's stored state (per-source 'off' pin + analysis-hash
+    # cache). content_hash is md5 of the EXACT stored text, so the cache keys on
+    # what's served. health_json/rewrite_text/analysis_hash stay None unless the
+    # feature actually runs — that None triple is what keeps a disabled (or 'off')
+    # ingest byte-identical to the base brain.
+    enabled, mode, threshold, model = await _effective_legibility(pool)
+    policy, stored_hash, stored_health, stored_rewrite = await _stored_legibility(
+        pool, source_id
+    )
+    content_hash = hashlib.md5(page_text.encode("utf-8", "surrogatepass")).hexdigest()
+    health_json: str | None = None
+    rewrite_text: str | None = None
+    analysis_hash: str | None = None
+
+    if enabled and policy != "off":
+        if content_hash == stored_hash and not force_rewrite:
+            # Idempotency gate: unchanged content -> reuse the stored analysis, no
+            # LLM call (prevents nondeterministic chunk churn + needless cost).
+            health_json = (
+                json.dumps(stored_health) if stored_health is not None else None
+            )
+            rewrite_text = stored_rewrite
+            analysis_hash = content_hash
+        else:
+            try:
+                # ONE LLM call (segment + score), off the event loop like embed().
+                health, rewrite = await asyncio.to_thread(analyze, page_text, model)
+                # Three disambiguated triggers: manual (force_rewrite) | auto
+                # (mode=='auto' and below threshold) | else health-only, no rewrite.
+                want_rewrite = force_rewrite or (
+                    mode == "auto" and health["score"] < threshold
+                )
+                rewrite_text = rewrite if want_rewrite else None
+                health_json = json.dumps(health)
+                analysis_hash = content_hash
+            except Exception:  # noqa: BLE001
+                # Analysis must NEVER crash ingest (the opt-in layer can't break the
+                # base brain). Degrade to pass-through — BUT if the stored analysis
+                # still matches the current text, KEEP it: a force_rewrite re-trigger
+                # that hits a transient LLM error must not destroy a valid existing
+                # rewrite (the text hasn't changed, so the old analysis still applies).
+                # Only when the content changed (or there was none) do we null out and
+                # chunk from raw — a stale rewrite for changed content would be worse.
+                logger.exception(
+                    "legibility: analyze failed; ingesting as pass-through"
+                )
+                if content_hash == stored_hash:
+                    health_json = (
+                        json.dumps(stored_health) if stored_health is not None else None
+                    )
+                    rewrite_text = stored_rewrite
+                    analysis_hash = stored_hash
+                else:
+                    health_json = rewrite_text = analysis_hash = None
+    # else: disabled or 'off' pin -> the None triple above => base ingest unchanged.
+
+    # The ONE behavioral fork: chunk from the rewrite when present, else raw text.
+    chunk_source = rewrite_text or page_text
+
     # Split into sections, then embed all of them in ONE batched Voyage call.
     # Embed first (outside the txn) so an embedder failure aborts before we touch
     # the store — never leave a source with stale or zero chunks.
-    sections = _split_sections(title, page_text)
+    sections = _split_sections(title, chunk_source)
     embed_inputs = [_embed_input(h, b) for h, b in sections]
     embeddings = await asyncio.to_thread(embed, embed_inputs)
 
@@ -252,11 +364,14 @@ async def upsert_source(
         async with conn.transaction():
             src_id = await conn.fetchval(
                 """
-                INSERT INTO sources (id, kind, title, raw_text, path, parent_id, source_last_edited)
-                VALUES (COALESCE($1::uuid, gen_random_uuid()), $2, $3, $4, $5, $6::uuid, $7)
+                INSERT INTO sources (id, kind, title, raw_text, path, parent_id,
+                                     source_last_edited, rewrite_text, health, analysis_hash)
+                VALUES (COALESCE($1::uuid, gen_random_uuid()), $2, $3, $4, $5, $6::uuid,
+                        $7, $8, $9::jsonb, $10)
                 ON CONFLICT (id) DO UPDATE
                   SET kind=$2, title=$3, raw_text=$4, path=$5, parent_id=$6::uuid,
-                      source_last_edited=$7, version=sources.version+1, updated_at=now()
+                      source_last_edited=$7, rewrite_text=$8, health=$9::jsonb,
+                      analysis_hash=$10, version=sources.version+1, updated_at=now()
                 RETURNING id
                 """,
                 source_id,
@@ -266,6 +381,9 @@ async def upsert_source(
                 path,
                 parent_id,
                 last_edited_dt,
+                rewrite_text,
+                health_json,
+                analysis_hash,
             )
             # Wipe-replace: drop this source's chunks, re-insert one per section
             # (position = document order, so profile reassembles in the human's order).
@@ -592,6 +710,51 @@ async def delete_source(pool: asyncpg.Pool, source_id: str) -> bool:
     return result.rsplit(" ", 1)[-1] != "0"
 
 
+# ---- note-legibility owner surface: manual rewrite + per-source policy ---------
+
+async def source_for_rewrite(pool: asyncpg.Pool, source_id: str) -> dict | None:
+    """Everything the manual-trigger endpoint needs to re-run analysis on a source
+    IN PLACE — its own stored provenance (so it re-fetches nothing) plus the
+    per-source `rewrite_policy` (the 'off' precedence check) and the current
+    `health`/`rewrite_text` (for the response). None if no such source. `health`
+    is parsed back to a dict (asyncpg hands jsonb back as text)."""
+    async with pool.acquire() as conn:
+        r = await conn.fetchrow(
+            "SELECT kind, title, raw_text, path, parent_id, source_last_edited, "
+            "rewrite_policy, health, rewrite_text FROM sources WHERE id=$1::uuid",
+            source_id,
+        )
+    if r is None:
+        return None
+    return {
+        "kind": r["kind"],
+        "title": r["title"],
+        "raw_text": r["raw_text"],
+        "path": r["path"],
+        "parent_id": str(r["parent_id"]) if r["parent_id"] is not None else None,
+        "last_edited": (
+            r["source_last_edited"].isoformat()
+            if r["source_last_edited"] is not None
+            else None
+        ),
+        "rewrite_policy": r["rewrite_policy"],
+        "health": _as_health(r["health"]),
+        "rewrite_text": r["rewrite_text"],
+    }
+
+
+async def set_rewrite_policy(pool: asyncpg.Pool, source_id: str, policy: str) -> bool:
+    """Set a source's per-source `rewrite_policy` ('auto' | 'off' | 'manual').
+    Returns True if a row was updated, False if no source had that id. 'off' is the
+    human pin to the raw voice that even a manual rewrite request won't override —
+    clearing it (back to 'auto'/'manual') is the two-step path to re-enable."""
+    async with pool.acquire() as conn:
+        result = await conn.execute(
+            "UPDATE sources SET rewrite_policy=$2 WHERE id=$1::uuid", source_id, policy
+        )
+    return result.rsplit(" ", 1)[-1] != "0"
+
+
 # ---- doc (deterministic fetch): one whole document by stable id ---------------
 
 async def doc(pool: asyncpg.Pool, doc_id: str) -> dict | None:
@@ -630,15 +793,21 @@ async def doc(pool: asyncpg.Pool, doc_id: str) -> dict | None:
 
 async def map_(pool: asyncpg.Pool, scope: str | None = None) -> list[dict]:
     """Discovery: the source tree under the prefix (or all sources), ordered by
-    path — `{id, title, path, parent_id, version}` per source. This is where a
-    consumer finds the stable ids to pin (`doc(id)`) and the version stamps to
-    diff for cheap change detection; title/path are display-only.
+    path — `{id, title, path, parent_id, version, health}` per source. This is
+    where a consumer finds the stable ids to pin (`doc(id)`) and the version stamps
+    to diff for cheap change detection; title/path are display-only.
 
     `parent_id` is the parent document's id when that parent is itself a synced
     source, else None — resolved at read time (LEFT JOIN) so ids of pages that
     were never synced don't leak into the consumer surface. Null is therefore
     overloaded (true root OR parent-not-synced): a best-effort linkage hint, not
-    an authoritative tree. No chunk contents, no sync metadata."""
+    an authoritative tree.
+
+    `health` is the source's structured legibility signal (docs/note-legibility.md)
+    or None for un-analyzed sources — the consumer-visible payoff of putting health
+    in the brain: a dashboard can surface "your notes are healthy / these are
+    hurting your agents" straight off the discovery read. No chunk contents, no
+    sync metadata otherwise."""
     # Empty/whitespace scope means UNSCOPED, not "match the root prefix".
     if scope is not None:
         scope = scope.strip() or None
@@ -650,7 +819,8 @@ async def map_(pool: asyncpg.Pool, scope: str | None = None) -> list[dict]:
     async with pool.acquire() as conn:
         rows = await conn.fetch(
             f"""
-            SELECT s.id, s.title, s.path, p.id AS parent_id, {_VERSION_SQL} AS version
+            SELECT s.id, s.title, s.path, p.id AS parent_id, {_VERSION_SQL} AS version,
+                   s.health
             FROM sources s LEFT JOIN sources p ON p.id = s.parent_id
             {scope_clause}
             ORDER BY s.path
@@ -664,6 +834,11 @@ async def map_(pool: asyncpg.Pool, scope: str | None = None) -> list[dict]:
             "path": r["path"] or "",
             "parent_id": str(r["parent_id"]) if r["parent_id"] is not None else None,
             "version": r["version"],
+            # asyncpg returns jsonb as text by default; parse so map carries the
+            # structured object (or None), not a JSON string. The isinstance guard
+            # matches _stored_legibility/source_for_rewrite — tolerant if a jsonb
+            # codec is ever registered (then it's already a dict).
+            "health": _as_health(r["health"]),
         }
         for r in rows
     ]

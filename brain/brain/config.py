@@ -1,9 +1,13 @@
 """Brain service configuration — all from env, with sane defaults.
 
 The brain is a pgvector document store: sources are split into section-chunks,
-embedded with Voyage, stored in Postgres+pgvector. There is no graphiti, no
-FalkorDB, and no write-time LLM. Config is just the four things the substrate
-needs: the Postgres DSN, the Voyage key + model, and the Notion token for ingest.
+embedded with Voyage, stored in Postgres+pgvector. There is no graphiti and no
+FalkorDB. There is no write-time LLM *by default* — the optional note-legibility
+layer (docs/note-legibility.md) adds one at the edge of ingest, gated by a runtime
+DB setting; its secret (`anthropic_api_key`) is read here, but the on/off switch
+lives in the `settings` table, not env. Config is the substrate's deploy secrets +
+defaults: the Postgres DSN, the Voyage key + model, the Notion token, the poll
+interval, and the (optional) Anthropic key.
 """
 
 from __future__ import annotations
@@ -33,6 +37,17 @@ class Config:
 
     # Notion ingest.
     notion_token: str = field(default_factory=lambda: os.environ.get("NOTION_TOKEN", ""))
+
+    # Note-legibility LLM (opt-in; see docs/note-legibility.md). A DEPLOYMENT SECRET,
+    # read once here like VOYAGE_API_KEY — never stored in the DB. The on/off switch
+    # is NOT here: it's the `legibility.*` runtime settings (settings table). Boot
+    # stays key-agnostic — validate() does NOT require this, because whether the
+    # feature is on is a DB value with no pool at boot. Enforcement is deferred to
+    # settings._effective_legibility(), which degrades 'enabled but no key' to
+    # pass-through. Empty string when unset.
+    anthropic_api_key: str = field(
+        default_factory=lambda: os.environ.get("ANTHROPIC_API_KEY", "")
+    )
 
     # Periodic Notion sync. Every `poll_interval_seconds` the brain re-ingests
     # pages whose Notion copy changed since it last captured them — so the brain

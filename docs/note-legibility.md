@@ -3,7 +3,16 @@
 > Feature plan. The *why*, the *shape*, and a build checklist. Lands next to
 > [`brain-architecture.md`](./brain-architecture.md) (the brain's settled design)
 > and amends one of its settled principles — see [Principle amendment](#principle-amendment).
-> Status: **planned, not built.**
+> Status: **built + deployed to the live brain, enabled.** Phases 1, 2, and 4 are
+> implemented and tested (schema + analyzer + ingest fork + config seam; `map`
+> health + docs; manual-trigger endpoint + per-source policy + UI). The Phase 0/3
+> A/B has been run against the live corpus (see [Eval run](#eval-run--2026-06-11-deployed-live-mechanism-works-but-corpus-too-small-to-set-the-threshold)):
+> the mechanism is verified (a grounded structural rewrite lifts the buried-sub-idea
+> MRR), but the corpus is still too small to set `legibility.threshold` off a curve,
+> so it stays at the placeholder `60` until there are more real messy dumps.
+> Owner-writing guidance: [`writing-legible-notes.md`](./writing-legible-notes.md).
+> **Not yet landed in git** — the change lives on the `note-legibility` worktree
+> branch; the live brain image was rebuilt directly from it.
 
 ## The problem
 
@@ -283,34 +292,83 @@ The experiment:
 4. Compare per health-dimension. The auto rule becomes "rewrite when health < X **and**
    it measurably lifts recall," with X read off the curve — not picked by feel.
 
+The harness is built: `brain/eval/recall_scorecard.py` (recall@k / precision@k / MRR
+over `/recall`, baseline-vs-treatment diff) and `brain/eval/run_ab.py` (the full
+in-process A/B against an isolated copy of the corpus — real Voyage + Anthropic,
+never touches the live brain). Re-run when the corpus grows.
+
+### Eval run — 2026-06-11 (deployed live; mechanism works, but corpus too small to set the threshold)
+
+The feature was deployed to the live brain (image rebuilt for the `anthropic` dep,
+container recreated, `legibility.enabled` flipped on) and the one real headingless
+dump ("Chainguard") was rewritten in place via `POST /sources/{id}/rewrite` (1 → 7
+chunks). A/B over `brain/eval/probes.json` (k=5):
+
+| metric | baseline (off) | treatment (rewrite) | Δ |
+|---|---|---|---|
+| recall@5 | 1.00 | 1.00 | +0.00 (saturated) |
+| precision@5 | 0.24 | 0.46 | **+0.22** |
+| MRR | 0.92 | 1.00 | **+0.08** |
+
+- **Mechanism works in the real setting.** The live Anthropic call produced a
+  **grounded** (`grounded:true`) structural rewrite — one mushy paragraph-blob → 7
+  self-describing `##` idea-units in the author's own words, dangling refs resolved
+  ("they"→"Chainguard", "this"→the rebuild situation), no new claims; `notes` nailed
+  the real defects. On the live corpus the empty title-stubs create genuine
+  competition, so Chainguard's buried "coordination" sub-idea ranked **3rd** as one
+  mushy chunk (rr 0.33) and **1st** after the rewrite (rr 1.0) — the exact
+  within-dump discrimination the feature is for. `recall@5` stays saturated (the
+  relevant source is always in top-5 on this tiny corpus).
+- **Still no threshold curve — corpus too small.** Of 30 sources, ~24 are empty
+  title-only stubs and the content ones are *already* multi-heading; only Chainguard
+  is a genuine dump. One illegible page can't produce a curve.
+- **Signal worth keeping:** Chainguard scored **63** (62 on a second pass), *just
+  above* the `60` cutoff, so auto-mode wouldn't have rewritten it — hinting the
+  threshold wants ~65–70. But it's **n=1** — a signal, not a decision.
+- **Decision:** keep `legibility.threshold = 60` (placeholder) and re-run
+  `run_ab.py` once the corpus has more real messy dumps. (Aside: the empty
+  title-only stubs measurably pollute live recall — a separate data-hygiene issue.)
+
 ## Build checklist
 
 Phased so each step is independently verifiable. Earlier phases de-risk later ones.
 
-### Phase 0 — Eval baseline (so we can measure)
+> **Implementation status** (2026-06-11). Phases 1, 2, and 4 are implemented and
+> tested (`brain/tests/test_legibility.py`, 28 tests; the brain suite is green at
+> 64). The PWA surfaces (home health badge, integrations settings card, per-source
+> diff view) typecheck. Phase 0 and Phase 3 are the eval phases: they need the live
+> brain + `ANTHROPIC_API_KEY` + the real messy dumps, so they're left unchecked —
+> the methodology stands in [Eval / A/B plan](#eval--ab-plan), and `threshold`
+> defaults to a documented placeholder (`60`) until the curve sets it.
+
+### Phase 0 — Eval baseline (so we can measure) — needs the live corpus + key
 - [ ] Assemble a probe set: real dumps + queries with known-relevant sources. → verify: set committed/fixtured.
 - [ ] Stand up / adopt a recall-eval scorecard (recall@k, precision) via `test-brain`. → verify: produces numbers on the current brain.
 - [ ] Record the heading-only baseline. → verify: baseline numbers captured.
 
 ### Phase 1 — Schema + analyzer (off by default)
-- [ ] Add the four `sources` columns (idempotent DDL in `db.py`). → verify: `apply_schema` runs clean on an existing DB; columns present.
-- [ ] Add `legibility.py` analyzer: one call returns structured health + structural, grounded rewrite. → verify: unit test on a sample dump returns valid `health` shape + a rewrite that adds headings and invents no facts.
-- [ ] Wire into `upsert_source`: add `force_rewrite` arg, analysis-hash gate, `chunk_source = rewrite_text or raw_text`. → verify: with `legibility.enabled=false`, ingest output (chunk count/text) is byte-identical to today; with it on, a headingless dump produces multiple chunks.
-- [ ] Config + resolver: add `Config.anthropic_api_key` (env); add `_effective_legibility(pool)` mirroring `_effective_poll_interval`, degrading "enabled but no key" to pass-through. → verify: `validate()` unchanged; brain boots without the LLM key; toggling `legibility.enabled=true` with no key logs a warning and ingests as pass-through (no crash).
+- [x] Add the four `sources` columns (idempotent DDL in `db.py`). → verified: `apply_schema` runs clean on the existing DB; `test_schema_has_legibility_columns`.
+- [x] Add `legibility.py` analyzer: one call returns structured health + structural, grounded rewrite. → verified mechanically (parse + clamp + heading-bearing rewrite) with a mocked SDK; the live voice/grounding quality is the Phase-3 eval.
+- [x] Wire into `upsert_source`: `force_rewrite` arg, analysis-hash gate, `chunk_source = rewrite_text or raw_text`. → verified: disabled ingest is byte-identical (`test_disabled_is_byte_identical` + the 36 pre-existing tests still pass); enabled, a headingless dump yields multiple chunks.
+- [x] Config + resolver: `Config.anthropic_api_key` (env); `_effective_legibility(pool)` mirroring `_effective_poll_interval`, degrading "enabled but no key" to pass-through. → verified: `validate()` unchanged; boots without the key; toggle-on-without-key warns + passes through (no crash).
 
 ### Phase 2 — Read surface
-- [ ] Add `health` to `map()` output. → verify: `/map` returns the score; null for un-analyzed sources.
-- [ ] Document the doc-vs-chunk text divergence in `consumer-api.md`. → verify: doc note present.
+- [x] Add `health` to `map()` output. → verified: `/map` carries the structured `health` (score in it), null for un-analyzed sources.
+- [x] Document the doc-vs-chunk text divergence in `consumer-api.md`. → done (doc note + map `health` shape).
 
-### Phase 3 — A/B + policy
+### Phase 3 — A/B + policy — needs the live corpus + key
 - [ ] Run raw-vs-rewrite on the Phase-0 scorecard. → verify: per-dimension deltas recorded.
 - [ ] Set `legibility.threshold` from the curve; tune the prompt against failures. → verify: chosen threshold lifts recall on held-out probes.
 
 ### Phase 4 — Surfacing, override, guidance
-- [ ] Dashboard health view: score + actionable `notes`; rewrite diff (raw vs rewrite). → verify: a low-health page shows its reasons and the diff.
-- [ ] `POST /sources/{id}/rewrite` manual-trigger endpoint (`force_rewrite=True`; respects the `'off'` pin and global disable). → verify: endpoint rewrites an unchanged page on demand; returns `{rewrote: false}` for an `'off'` page and when the feature is globally disabled.
-- [ ] Per-source `rewrite_policy` override (incl. 'off' = pin to raw voice). → verify: an 'off' page is never rewritten even below threshold or by the manual endpoint.
-- [ ] Guidance doc/skill: how to write notes that power the rewrite well — framed as help, not a requirement (the point of the rewrite is to support messy notes). → verify: doc exists and links from health `notes`.
+- [x] Dashboard health view: score + actionable `notes`; rewrite diff (raw vs rewrite). → built: home score badge (reasons in tooltip) + the `#legibility/<id>` view (health + reasons + raw-vs-rewrite diff). Typecheck-verified; UI behavior needs the live PWA.
+- [x] `POST /sources/{id}/rewrite` manual-trigger endpoint (`force_rewrite=True`; respects the `'off'` pin and global disable). → verified: rewrites an unchanged page on demand; `{rewrote: false}` for an `'off'` page and a 409 when globally disabled.
+- [x] Per-source `rewrite_policy` override (incl. 'off' = pin to raw voice). → verified: an 'off' page is never rewritten, even by the manual endpoint; set via `PUT /sources/{id}/rewrite-policy`.
+- [x] Guidance doc: how to write notes that power the rewrite well — framed as help, not a requirement. → [`writing-legible-notes.md`](./writing-legible-notes.md); linked from the badge tooltip's destination and the legibility view.
+
+### Also built (completing the UI-toggle seam the config section calls for)
+- [x] `legibility.*` status on `GET /integrations` + `PUT/DELETE /integrations/legibility` (set/reset the runtime policy from the UI, exactly like the poll interval). The `ANTHROPIC_API_KEY` secret is never managed here.
+- [x] `GET /sources/{id}/rewrite` owner read (stored raw/rewrite/health/policy) — the diff view's data source.
 
 ## Decisions (resolved)
 

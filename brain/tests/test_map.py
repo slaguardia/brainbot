@@ -19,8 +19,11 @@ def test_consumer_shape_and_parent_resolution(client, seed):
     assert [s["id"] for s in sources] == [PARENT, CHILD]  # ordered by path
 
     # Exactly the contract keys — no chunk contents, no kind/timestamps/counters.
+    # `health` joined the contract with the note-legibility layer; it is null for
+    # un-analyzed sources (these were seeded with legibility off).
     for s in sources:
-        assert set(s) == {"id", "title", "path", "parent_id", "version"}
+        assert set(s) == {"id", "title", "path", "parent_id", "version", "health"}
+        assert s["health"] is None
 
     hub, leaf = sources
     assert hub["parent_id"] is None

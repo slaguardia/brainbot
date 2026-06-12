@@ -15,7 +15,7 @@
 // "current with Notion" or offers one manual re-pull of the changed pages —
 // detection is automatic, re-pulling is always the human's click.
 
-import { recall, map, type Chunk, type Source } from "@brainbot/web-toolkit/brain";
+import { recall, map, type Chunk, type Health, type Source } from "@brainbot/web-toolkit/brain";
 
 import { fetchNotionPages, isStale, type NotionPage } from "./discover";
 
@@ -28,8 +28,23 @@ function esc(s: unknown): string {
     .replace(/'/g, "&#39;");
 }
 
-type MapSource = Pick<Source, "path" | "title">;
+type MapSource = Pick<Source, "id" | "path" | "title" | "health">;
 type RecallChunk = Pick<Chunk, "heading" | "text" | "score" | "path">;
+
+// A note-legibility badge for a source: the 0–100 score, colour-tiered, with its
+// actionable reasons in the tooltip and a link to the per-source legibility view
+// (raw-vs-rewrite diff + actions). Empty string for un-analyzed sources (health
+// null) so the layer is invisible when off.
+function healthBadge(id: string | undefined, health: Health | null | undefined): string {
+  if (!health) return "";
+  const score = Math.round(health.score);
+  const tier = score >= 70 ? "good" : score >= 40 ? "fair" : "poor";
+  const reasons = health.notes.length
+    ? `Legibility ${score}/100 — ${health.notes.join("; ")}`
+    : `Legibility ${score}/100 — already legible to agents.`;
+  const href = id ? `#legibility/${encodeURIComponent(id)}` : "#docs";
+  return `<a class="src-health is-${tier}" href="${href}" title="${esc(reasons)}">${score}</a>`;
+}
 
 const CAPTURE_NOTE = `
   <p class="cap-note">
@@ -176,6 +191,8 @@ async function repull(
 interface TreeNode {
   name: string; // last path segment (the display label for a folder)
   title?: string; // set when a real source lives exactly at this path
+  id?: string; // set alongside title — the source's stable id (for the legibility link)
+  health?: Health | null; // set alongside title — the source's legibility signal
   children: Map<string, TreeNode>;
 }
 
@@ -187,7 +204,7 @@ function buildTree(sources: MapSource[]): TreeNode {
     if (segs.length === 0) {
       // Empty-path source: hang it directly off root, keyed by title.
       const title = s.title || "(untitled)";
-      root.children.set(`~${title}`, { name: title, title, children: new Map() });
+      root.children.set(`~${title}`, { name: title, title, id: s.id, health: s.health, children: new Map() });
       continue;
     }
     let node = root;
@@ -200,8 +217,10 @@ function buildTree(sources: MapSource[]): TreeNode {
       node = next;
     }
     // A source lives exactly here — give it its title (distinguishes it from a
-    // pure structural folder synthesized from a deeper path).
+    // pure structural folder synthesized from a deeper path), id, and health.
     node.title = s.title || node.name;
+    node.id = s.id;
+    node.health = s.health;
   }
   return root;
 }
@@ -219,10 +238,11 @@ function renderChildren(node: TreeNode): string {
 function renderNode(node: TreeNode): string {
   const isSource = node.title !== undefined;
   const label = esc(node.title ?? node.name);
+  const badge = isSource ? healthBadge(node.id, node.health) : "";
   const childHTML = node.children.size ? `<ul class="src-list">${renderChildren(node)}</ul>` : "";
   return `
     <li class="src-node ${isSource ? "is-source" : "is-folder"}">
-      <span class="src-label">${label}</span>
+      <span class="src-label">${label}</span>${badge}
       ${childHTML}
     </li>`;
 }

@@ -6,12 +6,19 @@ requires-python = ">=3.11"
 dependencies = [
     # Document substrate: Postgres + pgvector (asyncpg driver + the pgvector
     # type adapter), Voyage for embeddings, and FastMCP (mcp) for the MCP face
-    # + custom HTTP routes. No graphiti/FalkorDB, no LLM at write time.
+    # + custom HTTP routes. No graphiti/FalkorDB.
     "asyncpg>=0.30,<1",
     "pgvector>=0.3,<1",
     "voyageai>=0.3,<1",
     "mcp>=1.27,<2",
     "uvicorn[standard]>=0.30,<1",
+    # Note-legibility layer (docs/note-legibility.md): the optional write-time LLM
+    # at the edge of ingest. Shipped in the image so the runtime DB toggle can
+    # enable it without a redeploy; only invoked when legibility.enabled is on and
+    # ANTHROPIC_API_KEY is set. brain/legibility.py imports it lazily, so a stripped
+    # install still imports and degrades to pass-through. Needs structured outputs
+    # (output_config.format) + adaptive thinking.
+    "anthropic>=0.69,<1",
 ]
 
 [project.optional-dependencies]

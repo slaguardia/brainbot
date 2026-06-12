@@ -178,7 +178,7 @@ VOYAGE_API_KEY=pa-...
 NOTION_TOKEN=secret_...                             # or set later in the PWA
 GOOGLE_OAUTH_CLIENT_ID=...apps.googleusercontent.com
 GOOGLE_OAUTH_CLIENT_SECRET=GOCSPX-...
-OAUTH2_PROXY_COOKIE_SECRET=<openssl rand -base64 32>   # must decode to 16/24/32 bytes
+OAUTH2_PROXY_COOKIE_SECRET=<openssl rand -hex 16>      # raw 16/24/32-byte string; -hex 16 = 32 bytes. NOT -base64 32 (44 chars, rejected)
 ANTHROPIC_API_KEY=sk-ant-...                        # scout only
 ```
 
@@ -319,19 +319,28 @@ hostname and upstream `service:port`:
 
 ```caddyfile
 appname.{$BRAIN_DOMAIN} {
-    reverse_proxy /oauth2/* oauth2-proxy:4180
-
-    forward_auth oauth2-proxy:4180 {
-        uri /oauth2/auth
-        copy_headers X-Auth-Request-Email X-Auth-Request-User
-
-        @bad status 401
-        handle_response @bad {
-            redir * /oauth2/sign_in?rd={scheme}://{host}{uri}
-        }
+    # /oauth2/* needs its OWN handle block so it bypasses forward_auth —
+    # otherwise the sign-in page is itself auth-gated and the browser loops on
+    # /oauth2/sign_in?rd=... (handle blocks are mutually exclusive, so this wins
+    # for /oauth2/* and forward_auth never runs on it).
+    @oauth path /oauth2/*
+    handle @oauth {
+        reverse_proxy oauth2-proxy:4180
     }
 
-    reverse_proxy appname:<port>
+    handle {
+        forward_auth oauth2-proxy:4180 {
+            uri /oauth2/auth
+            copy_headers X-Auth-Request-Email X-Auth-Request-User
+
+            @bad status 401
+            handle_response @bad {
+                redir * /oauth2/sign_in?rd={scheme}://{host}{uri}
+            }
+        }
+
+        reverse_proxy appname:<port>
+    }
 }
 ```
 

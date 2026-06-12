@@ -380,22 +380,30 @@ Caddy talks to it over the docker network.
 # The app is unauthenticated inside the docker network and only ever sees
 # requests oauth2-proxy has already cleared. No login code lives in the app.
 appname.{$BRAIN_DOMAIN} {
-    # oauth2-proxy's own routes: /oauth2/sign_in, /oauth2/callback, /oauth2/auth.
-    reverse_proxy /oauth2/* oauth2-proxy:4180
+    # oauth2-proxy's own routes (/oauth2/sign_in, /callback, /auth) get their
+    # OWN handle block so they bypass forward_auth. Otherwise the sign-in page
+    # is itself auth-gated, 401s, and the browser loops chaining rd=. handle
+    # blocks are mutually exclusive, so /oauth2/* matches here and nowhere else.
+    @oauth path /oauth2/*
+    handle @oauth {
+        reverse_proxy oauth2-proxy:4180
+    }
 
     # Gate everything else on a valid, whitelisted Google session. On 401,
     # bounce the user into the sign-in flow and back to where they were.
-    forward_auth oauth2-proxy:4180 {
-        uri /oauth2/auth
-        copy_headers X-Auth-Request-Email X-Auth-Request-User
+    handle {
+        forward_auth oauth2-proxy:4180 {
+            uri /oauth2/auth
+            copy_headers X-Auth-Request-Email X-Auth-Request-User
 
-        @bad status 401
-        handle_response @bad {
-            redir * /oauth2/sign_in?rd={scheme}://{host}{uri}
+            @bad status 401
+            handle_response @bad {
+                redir * /oauth2/sign_in?rd={scheme}://{host}{uri}
+            }
         }
-    }
 
-    reverse_proxy appname-pwa:8788
+        reverse_proxy appname-pwa:8788
+    }
 }
 ```
 

@@ -26,22 +26,30 @@ brain.api.{$BRAIN_DOMAIN} {
 # bearer-in-URL hack; revocation is "remove the email from
 # compose/oauth2-proxy-emails.txt".
 brain.{$BRAIN_DOMAIN} {
-    # oauth2-proxy's own routes: /oauth2/sign_in, /oauth2/callback, /oauth2/auth.
-    reverse_proxy /oauth2/* oauth2-proxy:4180
+    # oauth2-proxy's own routes (/oauth2/sign_in, /callback, /auth) get their
+    # OWN handle block so they bypass forward_auth. Otherwise the sign-in page
+    # is itself auth-gated: it 401s, redirects to /oauth2/sign_in?rd=<sign_in>,
+    # and the browser loops forever chaining rd=.
+    @oauth path /oauth2/*
+    handle @oauth {
+        reverse_proxy oauth2-proxy:4180
+    }
 
     # Gate everything else on a valid, whitelisted Google session. On 401,
     # bounce the user into the sign-in flow and back to where they were.
-    forward_auth oauth2-proxy:4180 {
-        uri /oauth2/auth
-        copy_headers X-Auth-Request-Email X-Auth-Request-User
+    handle {
+        forward_auth oauth2-proxy:4180 {
+            uri /oauth2/auth
+            copy_headers X-Auth-Request-Email X-Auth-Request-User
 
-        @bad status 401
-        handle_response @bad {
-            redir * /oauth2/sign_in?rd={scheme}://{host}{uri}
+            @bad status 401
+            handle_response @bad {
+                redir * /oauth2/sign_in?rd={scheme}://{host}{uri}
+            }
         }
-    }
 
-    reverse_proxy pwa:8787
+        reverse_proxy pwa:8787
+    }
 }
 
 # scout — scout.{$BRAIN_DOMAIN}, Google-auth'd at the edge via oauth2-proxy.
@@ -49,17 +57,24 @@ brain.{$BRAIN_DOMAIN} {
 # and only ever sees requests oauth2-proxy has already cleared. No login code in
 # scout. Revocation: remove the email from compose/oauth2-proxy-emails.txt.
 scout.{$BRAIN_DOMAIN} {
-    reverse_proxy /oauth2/* oauth2-proxy:4180
-
-    forward_auth oauth2-proxy:4180 {
-        uri /oauth2/auth
-        copy_headers X-Auth-Request-Email X-Auth-Request-User
-
-        @bad status 401
-        handle_response @bad {
-            redir * /oauth2/sign_in?rd={scheme}://{host}{uri}
-        }
+    # /oauth2/* in its own handle block so it bypasses forward_auth (see the
+    # brain vhost above for why — same sign-in redirect-loop guard).
+    @oauth path /oauth2/*
+    handle @oauth {
+        reverse_proxy oauth2-proxy:4180
     }
 
-    reverse_proxy scout:8765
+    handle {
+        forward_auth oauth2-proxy:4180 {
+            uri /oauth2/auth
+            copy_headers X-Auth-Request-Email X-Auth-Request-User
+
+            @bad status 401
+            handle_response @bad {
+                redir * /oauth2/sign_in?rd={scheme}://{host}{uri}
+            }
+        }
+
+        reverse_proxy scout:8765
+    }
 }

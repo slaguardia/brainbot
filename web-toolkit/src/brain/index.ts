@@ -27,6 +27,24 @@ export type Doc = {
   text: string;
 };
 
+/**
+ * Structured legibility signal for a source (the optional note-legibility layer;
+ * see note-legibility.md). `score` is 0–100 (higher = more legible to agents);
+ * `notes` are short, actionable, per-page reasons. Null on any source the layer
+ * hasn't analyzed (every source when the layer is off).
+ */
+export type Health = {
+  score: number;
+  dimensions: {
+    separability: number;
+    self_containment: number;
+    redundancy: number;
+    signal_density: number;
+  };
+  notes: string[];
+  grounded: boolean;
+};
+
 /** A node in the source tree. `parent_id` null = root OR parent-not-synced. */
 export type Source = {
   id: string;
@@ -34,6 +52,8 @@ export type Source = {
   path: string;
   parent_id: string | null;
   version: string;
+  /** Legibility signal, or null when un-analyzed (the default when the layer is off). */
+  health: Health | null;
 };
 
 /**

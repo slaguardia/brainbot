@@ -17,6 +17,7 @@
 //                        aliases onto the docs view's Evolution page.
 //   discover           → Notion discovery (pull pages into the brain)
 //   integrations       → connect outside sources (Notion token) from the UI
+//   legibility/<id>    → per-source note-legibility view (health + raw-vs-rewrite diff)
 //   apps               → apps-home launcher (cards for every platform app)
 
 import "@brainbot/web-toolkit/base.css";
@@ -30,6 +31,7 @@ import { mountDiscover } from "./discover";
 import { mountDocs } from "./docs";
 import { mountHome } from "./home";
 import { mountIntegrations } from "./integrations";
+import { mountLegibility } from "./legibility";
 
 mountApp(
   {
@@ -38,6 +40,7 @@ mountApp(
     learnings: { view: () => ({ mount: (el) => mountDocs(el) }), chrome: false },
     discover: () => ({ mount: (el) => mountDiscover(el) }),
     integrations: () => ({ mount: (el) => mountIntegrations(el) }),
+    legibility: () => ({ mount: (el) => mountLegibility(el) }),
     apps: () => ({ mount: (el) => mountApps(el) }),
   },
   {

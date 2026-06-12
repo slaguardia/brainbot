@@ -4,7 +4,9 @@
 
 - **title** — the page's title property.
 - **text**  — the page's block children, walked recursively and flattened to
-  markdown / plain text (the canonical content the store chunks + embeds).
+  markdown / plain text (the canonical content the store chunks + embeds). For a
+  database ROW (whose content lives in properties, not page-body blocks), the
+  row's rich_text properties are folded in as `## <Property>` sections too.
 - **path**  — the materialized ancestry, built by walking the parent-page chain
   and joining ancestor titles with '/' (e.g. 'Career/Job Search/Target Role').
   This is the domain tree the brain inherits from Notion's nesting for free.
@@ -177,6 +179,25 @@ def _page_title(page: dict) -> str:
     if isinstance(page.get("title"), list):
         return _rich_text(page["title"])
     return ""
+
+
+def _property_text(page: dict) -> str:
+    """Fold a database ROW's rich_text properties into markdown content.
+
+    A Notion database row keeps its content in PROPERTIES (columns like a "Body"
+    rich_text field), not in page-body blocks — so a row's block tree is usually
+    empty and `_page_text` returns nothing. This renders each rich_text property as
+    a `## <Property name>` section (in the order Notion returns them) so the real
+    content is ingested AND chunks into self-describing units. The `title`-typed
+    property is skipped (it's already the page title, captured separately); non-text
+    property types (select, date, …) are left out as metadata, not content."""
+    sections: list[str] = []
+    for name, prop in (page.get("properties") or {}).items():
+        if prop.get("type") == "rich_text":
+            text = _rich_text(prop.get("rich_text", [])).strip()
+            if text:
+                sections.append(f"## {name}\n{text}")
+    return "\n\n".join(sections)
 
 
 # ---- block tree -> markdown --------------------------------------------------
@@ -415,6 +436,13 @@ def fetch_page(url: str, token: str | None = None) -> dict:
     title = _page_title(page)
     last_edited = page.get("last_edited_time")  # Notion's real edit time (ISO 8601)
     text = _page_text(page_id, cfg)
+    # A database ROW keeps its content in PROPERTIES, not page-body blocks, so its
+    # body is typically empty and only the title would be captured. Fold its
+    # rich_text properties (e.g. a "Body" column) into the content as `## <Property>`
+    # sections. Gated on a database parent so regular pages keep page-body-only
+    # ingest unchanged; properties lead (the row's primary content), then any body.
+    if (page.get("parent") or {}).get("type") == "database_id":
+        text = "\n\n".join(p for p in (_property_text(page), text) if p)
     # Drop blank segments (an untitled page/ancestor) so we never store path=''
     # — which the scope predicate would mishandle — or an 'A//B' double slash that
     # wouldn't match a clean 'A/B' scope. Fall back to the page id if none remain.

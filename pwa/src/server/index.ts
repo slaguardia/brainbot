@@ -131,10 +131,12 @@ async function proxyIngest(req: IncomingMessage, res: ServerResponse): Promise<v
 async function proxyJson(
   req: IncomingMessage,
   res: ServerResponse,
-  method: "PUT" | "DELETE",
+  method: "GET" | "POST" | "PUT" | "DELETE",
   brainPath: string,
   timeoutMs = 15_000,
 ): Promise<void> {
+  // Only PUT carries a body in our surface (connect token, settings, policy). POST
+  // (manual rewrite) and GET (diff read) forward bodiless; DELETE forwards bodiless.
   let body: string | undefined;
   if (method === "PUT") {
     const read = await new Promise<string>((resolve, reject) => {
@@ -273,6 +275,29 @@ const server = createServer((req, res) => {
     void proxyJson(req, res, "DELETE", `/sources/${id}`);
     return;
   }
+  // Note-legibility owner actions on one source: the diff read (GET) + manual
+  // rewrite trigger (POST) at /api/sources/{id}/rewrite, and the per-source policy
+  // pin (PUT) at /api/sources/{id}/rewrite-policy.
+  if (url.pathname.startsWith("/api/sources/")) {
+    const rest = url.pathname.slice("/api/sources/".length); // "<id>/rewrite" etc.
+    const slash = rest.indexOf("/");
+    if (slash > 0) {
+      const id = rest.slice(0, slash);
+      const action = rest.slice(slash + 1);
+      if (!/^[0-9a-fA-F-]{36}$/.test(id)) {
+        json(res, 400, { error: "id must be a uuid" });
+        return;
+      }
+      if (action === "rewrite" && (req.method === "GET" || req.method === "POST")) {
+        void proxyJson(req, res, req.method, `/sources/${id}/rewrite`);
+        return;
+      }
+      if (action === "rewrite-policy" && req.method === "PUT") {
+        void proxyJson(req, res, "PUT", `/sources/${id}/rewrite-policy`);
+        return;
+      }
+    }
+  }
   // Integrations: connection status (GET) + connect/disconnect Notion (PUT/DELETE).
   if (req.method === "GET" && url.pathname === "/api/integrations") {
     void proxyRead(res, url, "/integrations", []);
@@ -291,6 +316,15 @@ const server = createServer((req, res) => {
     (req.method === "PUT" || req.method === "DELETE")
   ) {
     void proxyJson(req, res, req.method, "/integrations/notion/sync");
+    return;
+  }
+  // Note-legibility policy: set fields (PUT) or reset to defaults (DELETE). The
+  // ANTHROPIC_API_KEY secret is never managed here — env-only on the brain side.
+  if (
+    url.pathname === "/api/integrations/legibility" &&
+    (req.method === "PUT" || req.method === "DELETE")
+  ) {
+    void proxyJson(req, res, req.method, "/integrations/legibility");
     return;
   }
   if (req.method === "GET" || req.method === "HEAD") {

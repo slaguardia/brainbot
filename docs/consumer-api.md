@@ -39,6 +39,11 @@ There are **no** `fact`/`name`/`polarity`/`strength`/`valid_at`/`invalid_at`
 fields and **no** episode bodies — currency is guaranteed by construction
 (wipe-replace per source), so there is no bi-temporal machinery to expose.
 
+The shape is unchanged when the optional note-legibility layer is on; the only
+difference is that a chunk's `text` then comes from the source's *rewrite* rather
+than its raw text, so it may not be a substring of `doc(id).text` (see the doc note
+below).
+
 ## Doc — deterministic whole-document fetch
 
 `doc(id)` returns one document by its stable id (the origin's immutable page
@@ -55,6 +60,19 @@ uuid — renames never move it):
 `400` on a missing/malformed id, `404` on an unknown one (`{"error": ...}`
 bodies). No other parameters — a dumb single-row read, no LLM, no knobs.
 
+**doc text vs. recalled chunk text may diverge (by design).** When the optional
+note-legibility layer ([`note-legibility.md`](./note-legibility.md)) has rewritten
+a source, that source's `chunks` derive from the *rewrite*, while `doc.text` stays
+the *verbatim original*. So a recalled chunk's `text` may not be a substring of the
+`doc.text` for the same `id`. This is intended: **the chunk is clean structure for
+retrieval; the doc is exactly what you wrote.** `doc` remains byte-exact ground
+truth — the rewrite is never exposed on it, and re-ingesting restores the original
+(the rewrite is a disposable derived artifact, like chunks, never written back to
+Notion). Because a rewrite changes only the derived chunks and not the served
+`{title, text}`, it does **not** move `doc`/`map`'s `version` (correctly — the
+document you'd fetch is unchanged); it *does* advance the Tier 0 `changes` cursor
+(every ingest bumps it), so a caching consumer still learns to re-check recall.
+
 **Cache rules:** pin pages by `id`; cache `text` keyed by the `version` from the
 *same* `/doc` response (use `/map`'s `version` only as a change hint — the two
 reads are independent point reads, not a snapshot). `version` covers exactly the
@@ -68,16 +86,27 @@ synced set — treat it loudly, not as an empty result.
 `map(scope=None)` returns the source tree, ordered by path:
 
 ```
-{ id:        str         # the stable id to pin
-  title:     str         # display only
-  path:      str         # display only
-  parent_id: str | null  # parent document's id IF that parent is synced, else null
-  version:   str }       # same stamp doc() serves — diff to spot changes cheaply
+{ id:        str           # the stable id to pin
+  title:     str           # display only
+  path:      str           # display only
+  parent_id: str | null    # parent document's id IF that parent is synced, else null
+  version:   str           # same stamp doc() serves — diff to spot changes cheaply
+  health:    object | null # legibility signal (note-legibility.md), null if un-analyzed
+}
 ```
 
 This is where a consumer discovers ids; titles/paths are never lookup keys.
 `parent_id` null is overloaded (true root *or* parent-not-synced) — a linkage
-hint, not an authoritative tree. No chunk contents, no sync metadata.
+hint, not an authoritative tree.
+
+`health` is the source's structured legibility signal when the optional
+note-legibility layer has analyzed it, else `null` (the default for every source
+when the layer is off). Shape: `{ score: 0-100, dimensions: {separability,
+self_containment, redundancy, signal_density} (each 0-1), notes: [str],
+grounded: bool }`. It is the consumer-visible payoff of putting health in the
+brain — a dashboard reads it straight off discovery to surface "your notes are
+healthy / these three are hurting your agents." No chunk contents, no other sync
+metadata.
 
 ## Changes — the Tier 0 change signal
 

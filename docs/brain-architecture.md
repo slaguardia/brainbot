@@ -14,8 +14,9 @@ user; it does not know what any app *does* with that knowledge.
 Concretely, it is a **Postgres + pgvector document store**. Sources (docs,
 captures, Notion pages) are canonical; their text is split into section-chunks,
 embedded with Voyage, and stored. Reads are pure retrieval over those chunks.
-There is **no graph DB, no write-time LLM, no extraction/dedup/bi-temporal
-machinery**.
+There is **no graph DB, no extraction/dedup/bi-temporal machinery**, and **no
+write-time LLM by default** (an opt-in note-legibility layer adds one at the edge
+of ingest — see principle #3 and [`note-legibility.md`](./note-legibility.md)).
 
 Job-fit ("scout") is the first consumer. Others will follow (reading triage,
 calendar prep, etc.). The brain must never learn what a "job" is — that's what
@@ -141,8 +142,14 @@ domain = a new branch in the tree; no schema change.
    [`learnings.md`](./learnings.md) Chapter 6.)
 2. **Postgres + pgvector is the only store.** One engine for relational
    (`sources`/`chunks` + `path`), vectors (HNSW), and full-text (`tsvector`).
-3. **No write-time LLM.** Ingest is split + embed + insert. Embedding is the only
-   external call; the embedder is pluggable.
+3. **No write-time LLM _by default_.** The base brain's ingest is split + embed +
+   insert; embedding is the only external call, and the embedder is pluggable.
+   This was a starting-simplicity choice, not a permanent tenet: the optional
+   note-legibility layer ([`note-legibility.md`](./note-legibility.md)) adds a
+   write-time LLM at the *edge* of ingest, gated by a runtime setting and **off by
+   default**. With it disabled, ingest is byte-for-byte what it is today. (The
+   librarian boundary in #5 still holds — the rewrite is structural restructuring
+   of the user's own words, grounded, never synthesis.)
 4. **Sources are canonical; chunks are derived and disposable.** Currency by
    construction via wipe-replace.
 5. **The brain never synthesizes or reasons — librarian only.** "Ask the brain" =

@@ -31,10 +31,16 @@ from .config import Config
 from .db import apply_schema, close_pool, get_pool
 from .notion import NotionError, fetch_page, list_pages, verify_token
 from .settings import (
+    LEGIBILITY_ENABLED_KEY,
+    LEGIBILITY_MODE_KEY,
+    LEGIBILITY_MODEL_KEY,
+    LEGIBILITY_THRESHOLD_KEY,
     NOTION_TOKEN_KEY,
     POLL_INTERVAL_KEY,
+    _effective_legibility,
     delete_setting,
     get_setting,
+    legibility_status,
     set_setting,
 )
 from .store import (
@@ -45,6 +51,8 @@ from .store import (
     map_,
     profile,
     recall,
+    set_rewrite_policy,
+    source_for_rewrite,
     sources_last_edited,
     upsert_source,
 )
@@ -181,6 +189,134 @@ async def delete_source_route(request: Request) -> JSONResponse:
     return JSONResponse({"deleted": deleted})
 
 
+@mcp.custom_route("/sources/{source_id}/rewrite", methods=["GET", "POST"])
+async def rewrite_source_route(request: Request) -> JSONResponse:
+    """The note-legibility manual surface for one source (docs/note-legibility.md).
+
+    GET /sources/{id}/rewrite — owner READ for the dashboard diff view: the stored
+    {id, raw_text, rewrite_text, health, rewrite_policy} so a diff (raw vs rewrite)
+    renders from the columns without re-running the LLM. 404 if no such source.
+    (raw_text is duplicated from doc() here on purpose — this is owner tooling, not
+    the consumer doc contract.)
+
+    POST /sources/{id}/rewrite — the manual TRIGGER. Re-analyzes the source's
+    ALREADY-STORED raw_text and re-derives its chunks via
+    `upsert_source(force_rewrite=True)` — re-fetching nothing — so it reuses the
+    whole ingest path (analyze -> chunk_source fork -> embed -> wipe-replace).
+    `force_rewrite` bypasses both the auto-threshold check and the analysis-hash
+    cache, so it rewrites even in manual mode and even on unchanged text. Returns
+    {id, health, rewrote, chunk_count}.
+
+    POST precedence (the two real decisions):
+    - The feature globally disabled -> 409 {rewrote: false}. There is no per-page
+      path that runs the analyzer while legibility is off.
+    - The source pinned `rewrite_policy='off'` -> 200 {rewrote: false} with a
+      reason (NOT a 4xx): 'off' is a deliberate human choice an explicit request
+      must not silently override. Clear the pin first (PUT .../rewrite-policy).
+    """
+    source_id = request.path_params["source_id"]
+    try:
+        uuid.UUID(source_id)
+    except (ValueError, AttributeError, TypeError):
+        return JSONResponse({"error": "id must be a uuid"}, status_code=400)
+
+    if request.method == "GET":
+        try:
+            pool = await get_pool()
+            rec = await source_for_rewrite(pool, source_id)
+        except Exception as e:  # noqa: BLE001 — db failure: surface, don't 500
+            logger.exception("sources: rewrite read failed")
+            return JSONResponse({"error": f"read failed: {e}"}, status_code=502)
+        if rec is None:
+            return JSONResponse({"error": f"no source with id {source_id}"}, status_code=404)
+        return JSONResponse(
+            {
+                "id": source_id,
+                "raw_text": rec["raw_text"],
+                "rewrite_text": rec["rewrite_text"],
+                "health": rec["health"],
+                "rewrite_policy": rec["rewrite_policy"],
+            }
+        )
+
+    try:
+        pool = await get_pool()
+        enabled, _mode, _threshold, _model = await _effective_legibility(pool)
+        if not enabled:
+            # Globally off (toggle false, or enabled-but-no-key) — never analyze.
+            return JSONResponse(
+                {"id": source_id, "rewrote": False, "health": None,
+                 "reason": "legibility disabled"},
+                status_code=409,
+            )
+        rec = await source_for_rewrite(pool, source_id)
+        if rec is None:
+            return JSONResponse({"error": f"no source with id {source_id}"}, status_code=404)
+        if rec["rewrite_policy"] == "off":
+            return JSONResponse(
+                {"id": source_id, "rewrote": False, "health": rec["health"],
+                 "reason": "pinned to raw (rewrite_policy=off) — clear the pin first"}
+            )
+        _, chunk_count = await upsert_source(
+            pool,
+            kind=rec["kind"],
+            title=rec["title"],
+            raw_text=rec["raw_text"],
+            path=rec["path"],
+            source_id=source_id,
+            parent_id=rec["parent_id"],
+            last_edited=rec["last_edited"],
+            force_rewrite=True,
+        )
+        after = await source_for_rewrite(pool, source_id)
+    except Exception as e:  # noqa: BLE001 — analyze/embed/db failure: surface, don't 500 silently
+        logger.exception("sources: rewrite failed")
+        return JSONResponse({"error": f"rewrite failed: {e}"}, status_code=502)
+    # `rewrote` reflects whether a rewrite actually landed: false if the analysis
+    # degraded to pass-through (e.g. a transient LLM failure).
+    return JSONResponse(
+        {
+            "id": source_id,
+            "health": after["health"] if after else None,
+            "rewrote": bool(after and after["rewrite_text"] is not None),
+            "chunk_count": chunk_count,
+        }
+    )
+
+
+@mcp.custom_route("/sources/{source_id}/rewrite-policy", methods=["PUT"])
+async def rewrite_policy_route(request: Request) -> JSONResponse:
+    """PUT /sources/{id}/rewrite-policy {policy} — set a source's per-source
+    legibility override: 'auto' (follow the global policy), 'manual' (analyze for
+    health but rewrite only on explicit request), or 'off' (pin to the raw voice —
+    never rewrite, even by the manual endpoint). Returns {id, rewrite_policy}; 404
+    if no such source, 400 on an invalid policy."""
+    source_id = request.path_params["source_id"]
+    try:
+        uuid.UUID(source_id)
+    except (ValueError, AttributeError, TypeError):
+        return JSONResponse({"error": "id must be a uuid"}, status_code=400)
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "body must be JSON {policy}"}, status_code=400)
+    policy = (body or {}).get("policy")
+    if policy not in ("auto", "off", "manual"):
+        return JSONResponse(
+            {"error": "field 'policy' must be one of: auto, off, manual"}, status_code=400
+        )
+
+    try:
+        pool = await get_pool()
+        updated = await set_rewrite_policy(pool, source_id, policy)
+    except Exception as e:  # noqa: BLE001 — db failure: surface, don't 500
+        logger.exception("sources: set rewrite_policy failed")
+        return JSONResponse({"error": f"set policy failed: {e}"}, status_code=502)
+    if not updated:
+        return JSONResponse({"error": f"no source with id {source_id}"}, status_code=404)
+    return JSONResponse({"id": source_id, "rewrite_policy": policy})
+
+
 @mcp.custom_route("/notion/pages", methods=["GET"])
 async def notion_pages(_request: Request) -> JSONResponse:
     """GET /notion/pages — every Notion page shared with the integration (the
@@ -232,10 +368,19 @@ async def integrations(_request: Request) -> JSONResponse:
     except Exception as e:  # noqa: BLE001 — db failure: surface, don't 500
         logger.exception("integrations: poll interval read failed")
         return JSONResponse({"error": f"status failed: {e}"}, status_code=502)
+    try:
+        legibility = await legibility_status(pool)
+    except Exception as e:  # noqa: BLE001 — db failure: surface, don't 500
+        logger.exception("integrations: legibility status read failed")
+        return JSONResponse({"error": f"status failed: {e}"}, status_code=502)
     return JSONResponse(
         {
             "notion": {"connected": bool(token), "source": source},
             "sync": {"interval_seconds": interval, "source": isource},
+            # The note-legibility policy, for the UI's settings card. `active` =
+            # actually running (enabled AND key present); `has_key` lets the UI warn
+            # when the toggle is on but the secret is missing. Never the key itself.
+            "legibility": legibility,
         }
     )
 
@@ -336,6 +481,85 @@ async def notion_sync_setting(request: Request) -> JSONResponse:
         logger.exception("integrations: sync interval read-back failed")
         return JSONResponse({"error": f"read failed: {e}"}, status_code=502)
     return JSONResponse({"interval_seconds": eff, "source": source})
+
+
+@mcp.custom_route("/integrations/legibility", methods=["PUT", "DELETE"])
+async def legibility_setting(request: Request) -> JSONResponse:
+    """Manage the note-legibility policy (the UI's settings card) — the runtime
+    `legibility.*` rows, toggleable without a restart exactly like the Notion poll
+    interval. The SECRET (ANTHROPIC_API_KEY) is NOT managed here; it's env-only.
+
+    PUT {enabled?, mode?, threshold?, model?}: store any provided field (partial
+    updates allowed). DELETE: drop all four rows, reverting to the defaults
+    (disabled = today's behavior). Both return the resulting legibility status
+    (the same shape GET /integrations carries under `legibility`)."""
+    pool = await get_pool()
+
+    if request.method == "DELETE":
+        try:
+            for key in (
+                LEGIBILITY_ENABLED_KEY,
+                LEGIBILITY_MODE_KEY,
+                LEGIBILITY_THRESHOLD_KEY,
+                LEGIBILITY_MODEL_KEY,
+            ):
+                await delete_setting(pool, key)
+        except Exception as e:  # noqa: BLE001 — db failure: surface, don't 500
+            logger.exception("integrations: legibility reset failed")
+            return JSONResponse({"error": f"reset failed: {e}"}, status_code=502)
+        return JSONResponse(await legibility_status(pool))
+
+    # PUT — validate each provided field, then store it.
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse(
+            {"error": "body must be JSON {enabled?, mode?, threshold?, model?}"},
+            status_code=400,
+        )
+    body = body or {}
+    updates: list[tuple[str, str]] = []
+
+    if "enabled" in body:
+        if not isinstance(body["enabled"], bool):
+            return JSONResponse({"error": "field 'enabled' must be a boolean"}, status_code=400)
+        updates.append((LEGIBILITY_ENABLED_KEY, "true" if body["enabled"] else "false"))
+    if "mode" in body:
+        if body["mode"] not in ("auto", "manual"):
+            return JSONResponse(
+                {"error": "field 'mode' must be 'auto' or 'manual'"}, status_code=400
+            )
+        updates.append((LEGIBILITY_MODE_KEY, body["mode"]))
+    if "threshold" in body:
+        try:
+            threshold = int(body["threshold"])
+        except (TypeError, ValueError):
+            return JSONResponse(
+                {"error": "field 'threshold' must be an integer"}, status_code=400
+            )
+        if not 0 <= threshold <= 100:
+            return JSONResponse(
+                {"error": "field 'threshold' must be in 0..100"}, status_code=400
+            )
+        updates.append((LEGIBILITY_THRESHOLD_KEY, str(threshold)))
+    if "model" in body:
+        if not isinstance(body["model"], str) or not body["model"].strip():
+            return JSONResponse({"error": "field 'model' must be a non-empty string"}, status_code=400)
+        updates.append((LEGIBILITY_MODEL_KEY, body["model"].strip()))
+
+    if not updates:
+        return JSONResponse(
+            {"error": "no recognized fields (enabled, mode, threshold, model)"},
+            status_code=400,
+        )
+
+    try:
+        for key, value in updates:
+            await set_setting(pool, key, value)
+    except Exception as e:  # noqa: BLE001 — db failure: surface, don't 500
+        logger.exception("integrations: legibility store failed")
+        return JSONResponse({"error": f"store failed: {e}"}, status_code=502)
+    return JSONResponse(await legibility_status(pool))
 
 
 @mcp.custom_route("/recall", methods=["GET"])

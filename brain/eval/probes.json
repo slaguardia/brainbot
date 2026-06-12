@@ -1,0 +1,42 @@
+[
+  {
+    "query": "how did you handle Chainguard images being patched daily so a bad patch wouldn't break us",
+    "relevant": ["37a7973a-5453-80d0-ae47-c980c71d5cf0"],
+    "note": "Chainguard idea 1 — the daily-patch risk + retag/rehost solution"
+  },
+  {
+    "query": "pulling new base images constantly and rebuilding internal images just as frequently",
+    "relevant": ["37a7973a-5453-80d0-ae47-c980c71d5cf0"],
+    "note": "Chainguard idea 2 — the constant-rebuild constraint"
+  },
+  {
+    "query": "keeping helm charts pointed at the most recent image versions without daily merge requests",
+    "relevant": ["37a7973a-5453-80d0-ae47-c980c71d5cf0"],
+    "note": "Chainguard idea 2b — the helm-chart / merge-request constraint"
+  },
+  {
+    "query": "leading architecture review meetings and drafting stories for the team",
+    "relevant": ["37a7973a-5453-80d0-ae47-c980c71d5cf0"],
+    "note": "Chainguard idea 3 — the leadership/coordination role (the sub-idea a 1-chunk dump buries)"
+  },
+  {
+    "query": "meeting CVE requirements shipping secure software to sensitive networks",
+    "relevant": ["37a7973a-5453-80d0-ae47-c980c71d5cf0"],
+    "note": "Chainguard outcome"
+  },
+  {
+    "query": "cold outreach email hook to a founder",
+    "relevant": ["3777973a-5453-8115-8a56-c577619d08bf"],
+    "note": "structured source (already multi-chunk)"
+  },
+  {
+    "query": "voice and style rules for writing outreach",
+    "relevant": ["3757973a-5453-815a-b13f-c0a078424620"],
+    "note": "structured source"
+  },
+  {
+    "query": "career narrative and interview introduction",
+    "relevant": ["3767973a-5453-818e-8c66-cc811f408abc"],
+    "note": "structured source"
+  }
+]

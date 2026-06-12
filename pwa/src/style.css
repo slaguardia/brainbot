@@ -243,6 +243,38 @@
   letter-spacing: 0.02em;
 }
 
+/* Note-legibility score badge, pinned to the right of a source's row (only
+   present when the optional layer has analyzed it). Colour tiers: good >=70,
+   fair 40-69, poor <40. The tooltip carries the actionable reasons; the badge
+   links to the writing-legible-notes guidance via #docs. */
+.src-node.is-source {
+  position: relative;
+}
+.src-health {
+  position: absolute;
+  top: 6px;
+  right: 2px;
+  min-width: 22px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.5;
+  text-align: center;
+  text-decoration: none;
+  color: #fff;
+}
+.src-health.is-good {
+  background: #2e7d52;
+}
+.src-health.is-fair {
+  background: #b07a1e;
+}
+.src-health.is-poor {
+  background: #b3402f;
+}
+
 /* Capture-paused note: short explainer at the foot of the dashboard while
    free-text capture is paused for the document-substrate cutover. */
 .cap-note {
@@ -1617,4 +1649,206 @@
   font-size: 12.5px;
   color: var(--fg-faint);
   line-height: 1.5;
+}
+
+/* Note-legibility settings card — reuses .intg-card chrome; the form stacks its
+   labelled rows (enable / mode / threshold) then the Save + Reset buttons. */
+.intg-leg-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 12px;
+  margin-top: 12px;
+}
+.intg-leg-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 13px;
+  color: var(--fg);
+}
+.intg-leg-mode,
+.intg-leg-threshold {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
+  padding: 8px 11px;
+  font-size: 13px;
+  color: var(--fg);
+}
+.intg-leg-threshold {
+  width: 72px;
+  font-family: var(--font-mono);
+}
+.intg-leg-mode:focus-visible,
+.intg-leg-threshold:focus-visible {
+  outline: none;
+  border-color: var(--link);
+}
+.intg-leg-save {
+  color: var(--link);
+  background: var(--link-bg);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
+  padding: 8px 14px;
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.intg-leg-save:hover {
+  border-color: var(--link);
+}
+.intg-leg-save:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.intg-leg-reset {
+  margin-left: auto;
+  color: var(--fg-muted);
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  padding: 8px 12px;
+  font-size: 12.5px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.intg-leg-reset:hover {
+  border-color: var(--border-strong);
+}
+.intg-leg-reset:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.intg-leg-msg {
+  margin: 10px 0 0;
+  font-size: 12.5px;
+  color: var(--fg-muted);
+  min-height: 1em;
+}
+
+/* ---- per-source note-legibility view (#legibility/<id>) ------------------- */
+.leg-back {
+  margin-left: auto;
+  font-size: 13px;
+  color: var(--fg-muted);
+}
+.leg-health {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin: 6px 0 4px;
+}
+.leg-score {
+  position: static;
+  font-size: 16px;
+  padding: 3px 11px;
+}
+.leg-dims {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 18px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.leg-dims li {
+  display: inline-flex;
+  gap: 6px;
+  font-size: 12.5px;
+}
+.leg-dim-name {
+  color: var(--fg-muted);
+}
+.leg-dim-val {
+  font-family: var(--font-mono);
+  color: var(--fg);
+}
+.leg-reasons h3,
+.leg-col h3 {
+  margin: 14px 0 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fg);
+}
+.leg-notes {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--fg);
+}
+.leg-help {
+  font-size: 12.5px;
+  color: var(--fg-muted);
+  line-height: 1.5;
+}
+.leg-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin: 16px 0;
+  padding: 12px 0;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+.leg-rewrite {
+  color: var(--link);
+  background: var(--link-bg);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
+  padding: 8px 14px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.leg-rewrite:hover {
+  border-color: var(--link);
+}
+.leg-rewrite:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.leg-policy-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 13px;
+  color: var(--fg);
+}
+.leg-policy {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
+  padding: 8px 11px;
+  font-size: 13px;
+  color: var(--fg);
+}
+.leg-msg {
+  font-size: 12.5px;
+  color: var(--fg-muted);
+}
+.leg-diff {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px;
+}
+@media (max-width: 720px) {
+  .leg-diff {
+    grid-template-columns: 1fr;
+  }
+}
+.leg-text {
+  margin: 0;
+  padding: 12px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--fg);
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-x: auto;
 }

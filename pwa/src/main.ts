@@ -1,5 +1,5 @@
-// App entry: skin + shell + offline plumbing come from @brainbot/web-toolkit;
-// this file wires the brainbot views into the toolkit's hash router.
+// App entry: skin + shell come from @brainbot/web-toolkit; this file wires the
+// brainbot views into the toolkit's hash router.
 //
 // base.css gives the palette + base resets + shared chrome (.cap-head/.cap-nav/
 // .brand); components.css backs the toolkit component factories; style.css holds
@@ -7,8 +7,11 @@
 // renders the shared header/nav once and hash-routes into a content region —
 // re-invoking the matched view's factory on every navigation, which preserves
 // the donor's "re-fetch on return" behaviour (home re-reads /api/brain/map when
-// you come back from #discover). registerSW() registers /sw.js in production and
-// self-heals on localhost.
+// you come back from #discover).
+//
+// This is a plain web dashboard, not an installable PWA — no service worker,
+// manifest, or offline shell. (The toolkit still ships those for apps that want
+// them; this app just doesn't wire them up.)
 //
 // Routes:
 //   ''                 → home hub (stats + embedded recall search + source map)
@@ -24,7 +27,6 @@ import "@brainbot/web-toolkit/base.css";
 import "@brainbot/web-toolkit/components.css";
 import "./style.css";
 import { mountApp } from "@brainbot/web-toolkit/shell";
-import { registerSW } from "@brainbot/web-toolkit/pwa";
 
 import { mountApps } from "./apps";
 import { mountDiscover } from "./discover";
@@ -52,5 +54,3 @@ mountApp(
     ],
   },
 );
-
-registerSW();

@@ -4,11 +4,10 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "gen-pwa": "tsx scripts/gen-pwa.ts",
-    "dev:client": "npm run gen-pwa && vite",
+    "dev:client": "vite",
     "dev:server": "BRAIN_SERVICE_URL=http://localhost:8100 tsx watch src/server/index.ts",
     "dev": "concurrently -k -n client,server -c cyan,magenta \"npm:dev:client\" \"npm:dev:server\"",
-    "build": "npm run gen-pwa && tsc -p tsconfig.server.json && vite build",
+    "build": "tsc -p tsconfig.server.json && vite build",
     "start": "node dist-server/server/index.js",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.server.json"
   },

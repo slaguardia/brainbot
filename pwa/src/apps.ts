@@ -1,15 +1,10 @@
-// The apps-home launcher (`#apps`) — the brainbot PWA's view of every app on the
+// The apps-home launcher (`#apps`) — this dashboard's view of every app on the
 // brain platform. Renders one card per registry entry (apps.json, hand-curated
 // config — NOT brain data), health-pings each app's `health` URL to show
 // connected / offline, and links out to each app's own origin.
 //
-// Why it only LINKS OUT and never installs: a PWA's `beforeinstallprompt` is
-// per-origin, so a launcher cannot install another app's PWA for you — install
-// happens at each app's own page. The card's "Open" link takes you there; you
-// install the PWA at that origin. (See docs/app-platform.md "The launcher".)
-//
 // This is an app-layer feature: the brain SERVICE exposes no launcher/HTML — the
-// launcher lives entirely in this PWA. All registry strings are escaped before
+// launcher lives entirely in this app. All registry strings are escaped before
 // they touch innerHTML (config is text, never markup), matching home/discover.
 
 import { card } from "@brainbot/web-toolkit/components";
@@ -47,14 +42,12 @@ export function mountApps(container: HTMLElement): void {
   // this view renders only its body into the content region.
   container.innerHTML = `
     <section class="home apps">
-      <div class="apps-head">
-        <h2>Apps</h2>
-      </div>
-      <p class="apps-sub">
-        Apps on the brain platform. Each opens at its own origin — where you
-        install its PWA. (A launcher can't install another app's PWA for you:
-        <code>beforeinstallprompt</code> is per-origin.)
-      </p>
+      <header class="page-head">
+        <h1 class="page-title">Apps</h1>
+        <p class="page-sub">
+          Apps on the brain platform. Each opens in its own tab.
+        </p>
+      </header>
       <div class="apps-grid"></div>
     </section>`;
 

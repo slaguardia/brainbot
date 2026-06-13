@@ -1,6 +1,7 @@
 // The home hub (default view, no hash) — the one place you read the brain:
 //
-//   • stat tiles: how many sources, across how many top-level domains
+//   • a header: title + a meta line (how many sources, across how many top-level
+//     domains, plus the Notion sync status)
 //   • a search box: hybrid recall over every source (toolkit recall())
 //   • a source map: the full path tree of ingested sources (toolkit map())
 //
@@ -10,8 +11,8 @@
 // (titles, paths, recall text) are escaped before they touch innerHTML — source
 // data is never markup.
 //
-// The Sources header also carries a Notion sync status: after the map renders,
-// a background check (discover.ts's shared page list + staleness rule) reports
+// The meta line carries a Notion sync status: after the map renders, a
+// background check (discover.ts's shared page list + staleness rule) reports
 // "current with Notion" or offers one manual re-pull of the changed pages —
 // detection is automatic, re-pulling is always the human's click.
 
@@ -69,9 +70,10 @@ async function loadHome(container: HTMLElement): Promise<void> {
 
 function renderUnavailable(container: HTMLElement, detail: string): void {
   container.innerHTML = `
-    <div class="home-hero">
+    <header class="page-head">
+      <h1 class="page-title">Your brain</h1>
       <p class="home-lead">Couldn't reach the brain (${esc(detail)}).</p>
-    </div>
+    </header>
     ${CAPTURE_NOTE}`;
 }
 
@@ -85,9 +87,10 @@ function domainOf(path: string): string {
 function renderHome(container: HTMLElement, sources: MapSource[]): void {
   if (sources.length === 0) {
     container.innerHTML = `
-      <div class="home-hero">
+      <header class="page-head">
+        <h1 class="page-title">Your brain</h1>
         <p class="home-lead">The brain is empty — no sources ingested yet.</p>
-      </div>
+      </header>
       <a class="home-discover" href="#discover">Discover Notion pages →</a>
       ${CAPTURE_NOTE}`;
     return;
@@ -98,28 +101,27 @@ function renderHome(container: HTMLElement, sources: MapSource[]): void {
   const nDom = domains.size;
 
   container.innerHTML = `
+    <header class="page-head">
+      <h1 class="page-title">Your brain</h1>
+      <p class="home-meta">
+        <span>${nSrc} source${nSrc === 1 ? "" : "s"}</span>
+        <span class="home-sep">·</span>
+        <span>${nDom} domain${nDom === 1 ? "" : "s"}</span>
+        <span class="home-sep">·</span>
+        <span class="home-sync">checking Notion…</span>
+      </p>
+    </header>
+
     <form class="home-search" id="home-search-form" role="search">
       <input id="home-q" type="search" placeholder="Search the brain…" autocomplete="off" />
       <button type="submit">Recall</button>
     </form>
-
-    <div class="home-stats">
-      <div class="stat">
-        <span class="stat-num">${nSrc}</span>
-        <span class="stat-label">Source${nSrc === 1 ? "" : "s"}</span>
-      </div>
-      <div class="stat">
-        <span class="stat-num">${nDom}</span>
-        <span class="stat-label">Domain${nDom === 1 ? "" : "s"}</span>
-      </div>
-    </div>
 
     <div class="home-results" hidden></div>
 
     <section class="home-map">
       <div class="home-map-head">
         <h2>Sources</h2>
-        <span class="home-sync">checking Notion…</span>
         <a class="home-discover" href="#discover">Discover Notion pages →</a>
       </div>
       <div class="src-tree">${renderTree(sources)}</div>
@@ -141,6 +143,8 @@ async function checkSync(container: HTMLElement): Promise<void> {
     stale = (await fetchNotionPages()).filter(isStale);
   } catch {
     // The status is an enhancement — a Notion failure never breaks home.
+    // Drop the leading "·" separator with it so the meta line stays clean.
+    el.previousElementSibling?.remove();
     el.remove();
     return;
   }

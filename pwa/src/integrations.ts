@@ -46,11 +46,13 @@ interface IntegrationsStatus {
 export function mountIntegrations(container: HTMLElement): void {
   container.innerHTML = `
     <section class="home integrations">
-      <div class="disc-head"><h2>Integrations</h2></div>
-      <p class="disc-sub">
-        Manage the brain's credentials and ingest settings here — stored by the
-        brain, with no env-file edits or restarts.
-      </p>
+      <header class="page-head">
+        <h1 class="page-title">Integrations</h1>
+        <p class="page-sub">
+          Manage the brain's credentials and ingest settings here — stored by the
+          brain, with no env-file edits or restarts.
+        </p>
+      </header>
       <div class="intg-body"><p class="home-status">Checking…</p></div>
     </section>`;
   const body = container.querySelector<HTMLElement>(".intg-body")!;

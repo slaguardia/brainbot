@@ -30,7 +30,7 @@ here discards reversed decisions instead of accumulating them.
 
 - [consumer-api.md](./consumer-api.md) — the consumer contract, per operation: shapes, cache rules, 404 semantics. The doc you keep open while coding.
 - [consumer-integration.md](./consumer-integration.md) — how an app talks to the brain, in brief. Narrative companion to the reference.
-- [pwa.md](./pwa.md) — the first-party PWA: layout, dev workflow, deploy, the #apps launcher.
+- [dashboard.md](./dashboard.md) — the first-party dashboard: layout, dev workflow, deploy, the #apps launcher.
 
 ## Operations
 

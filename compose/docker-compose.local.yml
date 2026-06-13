@@ -4,16 +4,16 @@
 #   docker compose -f docker-compose.yml -f docker-compose.local.yml up -d
 #
 # Differences vs the VPS path:
-#   - Exposes the brain service (8100) on 127.0.0.1 so the host-run PWA
+#   - Exposes the brain service (8100) on 127.0.0.1 so the host-run dashboard
 #     backend and ad-hoc curl/python tests can reach it.
 #   - Exposes Postgres (5432) on 127.0.0.1 so you can inspect the substrate
 #     with psql / any client: psql postgresql://brain:<pw>@127.0.0.1:5432/brain
 #   - No Caddy / TLS / bearer. The bearer header is enforced by Caddy on
 #     the VPS; locally you talk to the brain directly over plain HTTP.
-#   - The pwa service is intentionally excluded here. Locally you run
-#     the PWA host-native (`cd pwa && npm run dev`) for HMR speed — the
+#   - The dashboard service is intentionally excluded here. Locally you run
+#     the dashboard host-native (`cd dashboard && npm run dev`) for HMR speed — the
 #     Dockerfile is for the VPS path only. The compose override below
-#     disables the pwa service for local use; otherwise `docker compose
+#     disables the dashboard service for local use; otherwise `docker compose
 #     up` would try to build the image even though you don't want it.
 #
 # Do NOT layer this on the VPS — exposing the brain to the host firewall
@@ -24,16 +24,16 @@ services:
     ports:
       - "127.0.0.1:5432:5432"
 
-  # Expose the brain service on the host so the host-run PWA backend (and
+  # Expose the brain service on the host so the host-run dashboard backend (and
   # ad-hoc curl/python tests) can reach it during local dev.
   brain:
     ports:
       - "127.0.0.1:8100:8100"
 
-  # Disable the pwa service locally — `profiles: [vps-only]` keeps it
-  # out of the default `docker compose up` set. Run the PWA on the host
-  # with `cd pwa && npm run dev` instead.
-  pwa:
+  # Disable the dashboard service locally — `profiles: [vps-only]` keeps it
+  # out of the default `docker compose up` set. Run the dashboard on the host
+  # with `cd dashboard && npm run dev` instead.
+  dashboard:
     profiles: ["vps-only"]
 
   # Same treatment for scout: its image is the VPS path. Locally you run

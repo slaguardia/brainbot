@@ -1,4 +1,4 @@
-"""The periodic-sync staleness rule — the backend twin of the PWA's isStale.
+"""The periodic-sync staleness rule — the backend twin of the dashboard's isStale.
 
 Pure logic over (page, ingested-map): no DB, no Notion, so this runs anywhere.
 The rule decides which already-ingested pages the poll loop re-ingests, so its

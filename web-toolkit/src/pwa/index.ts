@@ -1,7 +1,7 @@
 /**
  * pwa — manifest generator + service-worker registration, generalized from
- * brainbot's pwa/public/manifest.webmanifest, pwa/public/sw.js, and the SW
- * logic in pwa/src/main.ts.
+ * brainbot's dashboard/public/manifest.webmanifest, dashboard/public/sw.js, and the SW
+ * logic in dashboard/src/main.ts.
  *
  * The standard service worker ships in this package at src/pwa/sw.js. An app
  * must place a copy at its own origin as `/sw.js` (a service worker can only
@@ -70,7 +70,7 @@ export function manifest(opts: ManifestOptions): WebManifest {
 /**
  * Register the app-shell service worker in production; self-heal in dev.
  *
- * Lifted from pwa/src/main.ts: on localhost the SW cache just masks fresh dev
+ * Lifted from dashboard/src/main.ts: on localhost the SW cache just masks fresh dev
  * builds, so instead of registering we tear down any SW + caches a prior visit
  * left behind. In production we register `/sw.js` on load (a failure is
  * non-fatal). The app must have a `/sw.js` at its origin (see module docs).

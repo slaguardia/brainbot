@@ -67,7 +67,7 @@ different person, a different column.
 ## Where this is realized today vs planned
 
 - **Realized:** the brain's owner config surface already exists for *connections* —
-  the PWA `#integrations` page where the owner sets the Notion token (DB overrides
+  the dashboard `#integrations` page where the owner sets the Notion token (DB overrides
   env). Same surface, same audience.
 - **Planned:** the brain's *retrieval-chain* prompts become configurable when that
   chain is built (Direction B in

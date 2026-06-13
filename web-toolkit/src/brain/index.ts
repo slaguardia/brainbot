@@ -4,7 +4,7 @@
  * CRITICAL BOUNDARY: this client talks to the CONSUMING APP's OWN backend at
  * `/api/brain/recall|doc|map`, NEVER to the brain (`brain.api.{domain}`)
  * directly. The bearer token and the brain URL stay server-side in each app's
- * proxy — no secret and no brain origin ever reach the browser. US-003's PWA
+ * proxy — no secret and no brain origin ever reach the browser. US-003's dashboard
  * backend adds these three read-only proxy routes (see consumer-api.md for the
  * shapes the brain returns; this client returns them verbatim, just unwrapped).
  */

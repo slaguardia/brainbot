@@ -13,7 +13,7 @@ See [`docs/web-toolkit.md`](../docs/web-toolkit.md) (the spec) and
 > (matching how `docs/` were seeded). In production it becomes **its own repo**
 > consumed as a **git-tag dependency** (e.g.
 > `"@brainbot/web-toolkit": "github:you/web-toolkit#v0.1.0"`). The in-repo
-> consumer (the brainbot PWA, US-003) depends on it via a `file:` path — see the
+> consumer (the brainbot dashboard, US-003) depends on it via a `file:` path — see the
 > recipe below.
 
 ## Modules (the public surface)
@@ -45,12 +45,12 @@ hex. The one per-app override allowed is the PWA manifest `theme_color` / icons
 
 ## Scaffold contract — the EXACT recipe US-003 follows
 
-US-003 rebuilds the **brainbot PWA** on this toolkit. Because the toolkit is
+US-003 rebuilds the **brainbot dashboard** on this toolkit. Because the toolkit is
 in-repo, depend on it with a `file:` path.
 
 ### 1. Dependency line
 
-In the brainbot PWA's `pwa/package.json`, add:
+In the brainbot dashboard's `dashboard/package.json`, add:
 
 ```jsonc
 {
@@ -60,16 +60,15 @@ In the brainbot PWA's `pwa/package.json`, add:
 }
 ```
 
-Then `npm install` in `pwa/`. (In production this line becomes a git-tag dep.)
+Then `npm install` in `dashboard/`. (In production this line becomes a git-tag dep.)
 
 ### 2. Import specifiers
 
 ```ts
-// pwa/src/main.ts (the app entry)
+// dashboard/src/main.ts (the app entry)
 import "@brainbot/web-toolkit/base.css";
 import "@brainbot/web-toolkit/components.css";
 import { mountApp } from "@brainbot/web-toolkit/shell";
-import { registerSW } from "@brainbot/web-toolkit/pwa";
 import { HomeView } from "./views/home";
 import { DocsView } from "./views/docs";
 import { DiscoverView } from "./views/discover";
@@ -85,15 +84,13 @@ mountApp(
     nav: [{ label: "docs", href: "#docs", ariaLabel: "How the brain works" }],
   },
 );
-
-registerSW();
 ```
 
 Each view is a factory `() => ({ mount(el) { ... } })`. Inside a view, use the
 brain/session/component imports:
 
 ```ts
-// pwa/src/views/home.ts
+// dashboard/src/views/home.ts
 import { recall, map } from "@brainbot/web-toolkit/brain";
 import { currentUser } from "@brainbot/web-toolkit/session";
 import { setLoading, setEmpty, setError } from "@brainbot/web-toolkit/shell";
@@ -116,7 +113,7 @@ export const HomeView = () => ({
 ### 3. Vite config
 
 ```ts
-// pwa/vite.config.ts
+// dashboard/vite.config.ts
 import { defineConfig, mergeConfig } from "vite";
 import { toolkitVite } from "@brainbot/web-toolkit/vite-preset";
 
@@ -128,13 +125,14 @@ export default mergeConfig(
 );
 ```
 
-### 4. Manifest + service worker
+### 4. Manifest + service worker (optional — only for an installable PWA)
 
+*The brainbot dashboard skips this (it's a plain web app); scout uses it.*
 Generate the manifest at build time and copy the SW into `public/` so Vite emits
 `dist/sw.js` (a service worker only controls the scope it is served from):
 
 ```ts
-// pwa/scripts/gen-pwa.ts  (run as a prebuild step)
+// scripts/gen-pwa.ts  (run as a prebuild step)
 import { writeFileSync, copyFileSync } from "node:fs";
 import { manifest, /* */ } from "@brainbot/web-toolkit/pwa";
 import { swSource } from "@brainbot/web-toolkit/vite-preset";
@@ -150,13 +148,13 @@ writeFileSync(
 copyFileSync(swSource, "public/sw.js");
 ```
 
-`registerSW()` (called in `main.ts`) registers `/sw.js` in production and
+`registerSW()` (call it in your app entry) registers `/sw.js` in production and
 self-heals (tears down stale SW + caches) on localhost.
 
 ### 5. Backend routes the app MUST expose
 
 The `brain` and `session` clients call the app's OWN backend — never the brain
-directly. The brainbot PWA backend (`pwa/src/server/index.ts`) must expose:
+directly. The brainbot dashboard backend (`dashboard/src/server/index.ts`) must expose:
 
 | Route | Proxies to | Returns (shape from `docs/consumer-api.md`) |
 |---|---|---|

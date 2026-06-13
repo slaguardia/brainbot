@@ -208,7 +208,7 @@ criteria**, and a badge that reflects content, not a clock.
   fingerprint; add the cursor at the second caching consumer.~~ **Resolved
   2026-06-09:** built the `/changes` cursor directly — it's `onChange`'s polling
   target, and the fingerprint never shipped.
-- **Poll interval / who drives it.** A live PWA can poll on focus + an interval;
+- **Poll interval / who drives it.** A live dashboard can poll on focus + an interval;
   a long-running backend (scout's `serve`) revalidates lazily on the next read.
   Pick per-consumer; the SDK exposes the primitive, not the schedule.
 - **Push, ever.** Only if a genuinely change-latency-sensitive consumer appears

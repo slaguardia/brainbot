@@ -8,7 +8,7 @@
  * reference a token without stringly-typing it, e.g.
  *   el.style.color = cssVar(tokens.fgMuted);
  *
- * These mirror pwa/src/style.css's :root block. base.css is the source of
+ * These mirror dashboard/src/style.css's :root block. base.css is the source of
  * truth for the VALUES; this file is the source of truth for the NAMES.
  */
 

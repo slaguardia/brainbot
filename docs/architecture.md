@@ -17,7 +17,7 @@ The brain is a document store: **sources are canonical**, and their text is spli
 These are example consumers built as part of the project to prove the contract. They are not the point of the project — the brain is.
 
 - **Claude Code MCP** — terminal harness in any project repo. `UserPromptSubmit` hook injects relevant brain context into every prompt.
-- **PWA** — a one-screen phone surface, Google-auth'd at the edge: a dashboard of what the brain holds, recall search, the source map, Notion discovery + selective ingest, and the in-app "how the brain works" docs. Free-text capture is disabled pending a source-editing surface (the write path is source ingest).
+- **Dashboard** — a one-screen phone surface, Google-auth'd at the edge: a dashboard of what the brain holds, recall search, the source map, Notion discovery + selective ingest, and the in-app "how the brain works" docs. Free-text capture is disabled pending a source-editing surface (the write path is source ingest).
 
 ### Third-party consumers (the actual vision)
 
@@ -50,7 +50,7 @@ The reason to build instead of adopt is **what holds the truth**: Hermes-style m
 | **Postgres + pgvector as the substrate** | One engine for relational (`sources`/`chunks` + a materialized `path`), vectors (HNSW), and full-text (`tsvector`). A document/vector RAG store — which is what the brain's reads actually are (chosen over a graph; [`learnings.md`](./learnings.md) Chapter 6). |
 | **Sources canonical, chunks derived** | A source (doc/capture/Notion page) owns its chunks; ingest/edit does wipe-replace (`DELETE` chunks → re-embed → re-`INSERT`). Currency is guaranteed by construction — no bi-temporal invalidation, no write-time entity resolution. |
 | **No write-time LLM** | Ingest is split + embed + insert. Embedding (Voyage) is the only external call and the embedder is pluggable. No extraction, no decomposition, no schema-tagging. |
-| **A smart `brain` service, thin consumers** | The brain (FastMCP + asyncpg in-process) owns the substrate: ingest, hybrid recall, and profile assembly. Consumers (the PWA, Claude Code, your apps) stay dumb and read-only. |
+| **A smart `brain` service, thin consumers** | The brain (FastMCP + asyncpg in-process) owns the substrate: ingest, hybrid recall, and profile assembly. Consumers (the dashboard, Claude Code, your apps) stay dumb and read-only. |
 | **Narrow contract: recall / doc / map** | The brain exposes three consumer reads plus `ingest`, not a full DB-introspection toolset. The human edits the legible *source* (a doc/Notion page), never the machine-derived chunks. |
 | **Two front doors** | Plain HTTP/JSON for typed consumers (the default); MCP at `/mcp` for Claude Code and other LLM-tool-discovery harnesses. Same reads behind both. |
 | **One store** | Postgres + pgvector is the only persistent store. Logs go to stderr. If observability or queueing later genuinely demand a second store, it gets added then — not preemptively. |
@@ -59,7 +59,7 @@ The reason to build instead of adopt is **what holds the truth**: Hermes-style m
 
 | Surface | What it's for | Primary use |
 |---|---|---|
-| **PWA** | Owner views: dashboard, recall search, source map, Notion discovery + selective ingest, in-app docs. Free-text capture is disabled (the write path is source ingest; a source-editing surface is the planned re-enable). | browsing and feeding the brain from a phone |
+| **Dashboard** | Owner views: dashboard, recall search, source map, Notion discovery + selective ingest, in-app docs. Free-text capture is disabled (the write path is source ingest; a source-editing surface is the planned re-enable). | browsing and feeding the brain from a phone |
 | **Claude Code** | Ambient memory in any project repo. `UserPromptSubmit` hook `recall`s relevant context and prepends it to every prompt. | terminal work that should remember across sessions |
 | **Your consumers** | Any app calling `recall`/`doc`/`map` over HTTP (job-fit scorer, calendar prep, …). | app-specific intelligence backed by the shared brain |
 
@@ -68,7 +68,7 @@ The reason to build instead of adopt is **what holds the truth**: Hermes-style m
 ```mermaid
 flowchart TB
   subgraph Surfaces["Surfaces / consumers"]
-    PWA_UI["PWA — phone surface<br/>dashboard · search · map · discover"]
+    DASH_UI["Dashboard — phone surface<br/>dashboard · search · map · discover"]
     CC["Claude Code — any project repo<br/>MCP recall hook"]
     APP["Other consumers<br/>(job-fit scorer, hooks, …)"]
   end
@@ -78,7 +78,7 @@ flowchart TB
     OAUTH["oauth2-proxy<br/>Google OIDC + email whitelist"]
 
     subgraph DockerNet["docker compose internal network (no public ports)"]
-      PWA_BE["PWA backend (Node)<br/>static assets + read-only /api proxy"]
+      DASH_BE["Dashboard backend (Node)<br/>static assets + read-only /api proxy"]
       BRAIN["brain service (FastMCP + asyncpg)<br/>HTTP: /ingest /recall /doc /profile /map<br/>MCP: /mcp (recall·doc·profile·map)"]
       PG[("Postgres + pgvector<br/>sources (canonical) + chunks<br/>HNSW · tsvector · path scope")]
     end
@@ -87,13 +87,13 @@ flowchart TB
   NOTION["Notion API<br/>page fetch (ingest)"]
   VOY["Voyage API<br/>embeddings"]
 
-  PWA_UI -->|"HTTPS brain.{domain}"| CADDY
+  DASH_UI -->|"HTTPS brain.{domain}"| CADDY
   CC -->|"HTTPS MCP brain.api.{domain}"| CADDY
   APP -->|"HTTPS brain.api.{domain}"| CADDY
-  CADDY -->|"forward_auth (PWA host)"| OAUTH
-  OAUTH -->|authenticated| PWA_BE
+  CADDY -->|"forward_auth (dashboard host)"| OAUTH
+  OAUTH -->|authenticated| DASH_BE
   CADDY -->|"bearer (API host)"| BRAIN
-  PWA_BE -->|"read-only /api"| BRAIN
+  DASH_BE -->|"read-only /api"| BRAIN
   BRAIN --> PG
   BRAIN -->|"/ingest"| NOTION
   BRAIN --> VOY
@@ -143,12 +143,12 @@ diff-and-re-embed is a later optimization, not before it's needed.
 | **Data model** | `sources` (canonical) + `chunks` (derived, embedded sections) | `sources.path` is the materialized ancestry (domain tree); `chunks.embedding` is `vector(512)` with a generated `fts tsvector`; `ON DELETE CASCADE` = wipe-replace for free. |
 | **Brain service** | Python + asyncpg + FastMCP (`brain/`) | One asyncpg pool; serves `ingest`/`recall`/`doc`/`profile`/`map` over HTTP + an MCP face at `/mcp`. Run by `uvicorn brain.api:app` on :8100. |
 | **MCP** | The brain's own MCP face (`/mcp`) | Tools `recall`/`doc`/`profile`/`map` for Claude Code. |
-| **PWA frontend** | Vanilla TS + Vite (`pwa/`) | Dashboard, search, map, discover, docs views. Capture send is disabled (the write path is source ingest). |
-| **PWA backend** | TypeScript, raw `node:http` | Static-asset server + read-only GET proxy to the brain. No brain logic. |
+| **Dashboard frontend** | Vanilla TS + Vite (`dashboard/`) | Dashboard, search, map, discover, docs views. Capture send is disabled (the write path is source ingest). |
+| **Dashboard backend** | TypeScript, raw `node:http` | Static-asset server + read-only GET proxy to the brain. No brain logic. |
 | **Ingest** | Notion fetch (`brain/brain/notion.py`) | `fetch_page(url) → {title, text, path}`: blocks flattened to markdown + the materialized `path` from the parent chain. |
 | **Embedder** | Voyage (`voyage-3-lite`, `BRAIN_EMBED_MODEL`) | 512-dim vectors for hybrid recall. Pluggable; the column dim must match the model. See [`embedder.md`](./embedder.md). |
 | **Write-time LLM** | none | Ingest is split + embed + insert. No extraction/decomposition/schema-tagging. |
-| **Auth** | Bearer token at Caddy for the brain API; Google sign-in + email whitelist (oauth2-proxy at the edge) for the PWA | Per-identity access + easy revocation on phones; internal services (brain, postgres) never publish ports. |
+| **Auth** | Bearer token at Caddy for the brain API; Google sign-in + email whitelist (oauth2-proxy at the edge) for the dashboard | Per-identity access + easy revocation on phones; internal services (brain, postgres) never publish ports. |
 | **Deployment** | Single docker-compose on a small VPS | All services on one box. Iteration: `git pull && docker compose up -d --build`. |
 | **TLS / domain** | Caddy + Let's Encrypt | UFW restricts to 80/443; fail2ban handles abuse |
 
@@ -159,7 +159,7 @@ Design history — what was believed, what broke, what changed, chapter by chapt
 ## Honest tradeoffs (signed off)
 
 - **You own the brain service.** No "Claude Code update will fix that" — when ingest or recall misbehaves, you debug the brain (`brain/`). That's also what makes the retrieval pipeline yours to tune.
-- **The PWA is yours forever.** Polish, mobile UX, install flow — all your problem. Counterpoint: it's also what makes the experience yours.
+- **The dashboard is yours forever.** Polish, mobile UX, install flow — all your problem. Counterpoint: it's also what makes the experience yours.
 - **Editing the brain means editing the source.** There's no in-app editor; you edit the Notion page and re-sync. Low-friction free-text capture is a real gap until a source-editing surface ships.
 - **Notion is the only ingest path today.** The migrator contract is generic (other sources are sibling-file work), but until a second one exists, feeding the brain means going through Notion.
 

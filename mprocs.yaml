@@ -3,16 +3,16 @@
 #
 # Brings up the local stack the way docs/quickstart.md describes:
 #   - "stack": postgres (pgvector) + brain via the local compose overlay
-#     (brain on 127.0.0.1:8100, no pwa/scout/caddy containers).
-#   - "pwa": the PWA host-native for HMR (client + server via concurrently).
+#     (brain on 127.0.0.1:8100, no dashboard/scout/caddy containers).
+#   - "dashboard": the dashboard host-native for HMR (client + server via concurrently).
 #
-# The PWA server expects the brain at http://localhost:8100, which "stack"
+# The dashboard server expects the brain at http://localhost:8100, which "stack"
 # provides. Requires compose/.env (see compose/.env.example).
 procs:
   stack:
     shell: docker compose -f docker-compose.yml -f docker-compose.local.yml up
     cwd: compose
 
-  pwa:
+  dashboard:
     shell: npm run dev
-    cwd: pwa
+    cwd: dashboard

@@ -1,6 +1,6 @@
 # Edge access whitelist for oauth2-proxy.
 #
-# ONE whitelist covers EVERY app at the edge (brain.${BRAIN_DOMAIN} PWA,
+# ONE whitelist covers EVERY app at the edge (brain.${BRAIN_DOMAIN} dashboard,
 # scout.${BRAIN_DOMAIN}, and any future *.${BRAIN_DOMAIN} app). oauth2-proxy
 # gates all vhosts against this single file, so listing an address here grants
 # it access to all of them.

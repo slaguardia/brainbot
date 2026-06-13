@@ -3,7 +3,7 @@
 
    The single source of truth for the platform's design tokens + base resets.
    The :root palette and resets below are lifted VERBATIM from brainbot's
-   pwa/src/style.css (lines 1–105), which itself ported scout's palette. Every
+   dashboard/src/style.css (lines 1–105), which itself ported scout's palette. Every
    app consuming the toolkit imports this once and themes ONLY via these CSS
    variables — never hard-coded hex. The one per-app override allowed is the PWA
    manifest theme_color / icons (app identity), not the palette.
@@ -121,7 +121,7 @@ body {
 
 /* ===========================================================================
    App chrome — shared shell rendered by shell.mountApp(). Lifted from the
-   donor pwa/src/style.css (.cap-head / .cap-nav / .brand). The content <main>
+   donor dashboard/src/style.css (.cap-head / .cap-nav / .brand). The content <main>
    layout below mirrors the donor's `main` rule so an app gets the same gutters.
    =========================================================================== */
 main {

@@ -345,7 +345,7 @@ Phased so each step is independently verifiable. Earlier phases de-risk later on
 
 > **Implementation status** (2026-06-11). Phases 1, 2, and 4 are implemented and
 > tested (`brain/tests/test_legibility.py`, 28 tests; the brain suite is green at
-> 64). The PWA surfaces (home health badge, integrations settings card, per-source
+> 64). The dashboard surfaces (home health badge, integrations settings card, per-source
 > diff view) typecheck. Phase 0 and Phase 3 are the eval phases: they need the live
 > brain + `ANTHROPIC_API_KEY` + the real messy dumps, so they're left unchecked —
 > the methodology stands in [Eval / A/B plan](#eval--ab-plan), and `threshold`
@@ -372,7 +372,7 @@ Phased so each step is independently verifiable. Earlier phases de-risk later on
 - [ ] Set `legibility.threshold` from the curve; tune the prompt against failures. → verify: chosen threshold lifts recall on held-out probes.
 
 ### Phase 4 — Surfacing, override, guidance
-- [x] Dashboard health view: score + actionable `notes`; rewrite diff (raw vs rewrite). → built: home score badge (reasons in tooltip) + the `#legibility/<id>` view (health + reasons + raw-vs-rewrite diff). Typecheck-verified; UI behavior needs the live PWA.
+- [x] Dashboard health view: score + actionable `notes`; rewrite diff (raw vs rewrite). → built: home score badge (reasons in tooltip) + the `#legibility/<id>` view (health + reasons + raw-vs-rewrite diff). Typecheck-verified; UI behavior needs the live dashboard.
 - [x] `POST /sources/{id}/rewrite` manual-trigger endpoint (`force_rewrite=True`; respects the `'off'` pin and global disable). → verified: rewrites an unchanged page on demand; `{rewrote: false}` for an `'off'` page and a 409 when globally disabled.
 - [x] Per-source `rewrite_policy` override (incl. 'off' = pin to raw voice). → verified: an 'off' page is never rewritten, even by the manual endpoint; set via `PUT /sources/{id}/rewrite-policy`.
 - [x] Guidance doc: how to write notes that power the rewrite well — framed as help, not a requirement. → [`writing-legible-notes.md`](./writing-legible-notes.md); linked from the badge tooltip's destination and the legibility view.

@@ -1,6 +1,6 @@
 // @brainbot/web-toolkit — standard app-shell service worker.
 //
-// Generalized from brainbot's pwa/public/sw.js. Pre-caches the index page +
+// Generalized from brainbot's dashboard/public/sw.js. Pre-caches the index page +
 // built static assets so the icon launches fast and works briefly offline.
 // /api/* and /oauth2/* are NEVER cached — always hit the network (the brain
 // proxy and auth must stay live). Navigations are network-first (a new deploy

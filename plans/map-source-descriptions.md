@@ -59,10 +59,10 @@ routing, derived from content the human already writes.
      line and truncates. Map result sets are small; the 1KB head slice keeps
      the query light.
    - `api.py`: pass `description` through on `/map` and the MCP `map` tool.
-     The PWA proxy is already pass-through — no change.
+     The dashboard proxy is already pass-through — no change.
 
 4. **Consumers** (separate, optional, not required by this plan): scout's
-   `/map` discovery can read descriptions before pinning; the PWA source map
+   `/map` discovery can read descriptions before pinning; the dashboard source map
    can render them as subtitles.
 
 5. **curate-notion synergy** (after shipping): one line added to the skill's
@@ -85,7 +85,7 @@ routing, derived from content the human already writes.
 ## Non-goals
 
 - LLM-generated summaries, or embedding the description separately.
-- A dedicated description property in Notion or a PWA editing field.
+- A dedicated description property in Notion or a dashboard editing field.
 - Per-consumer description formats or length knobs.
 - Changes to `/doc`, `/recall`, or `/profile` contracts.
 

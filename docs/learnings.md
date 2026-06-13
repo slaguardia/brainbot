@@ -9,7 +9,7 @@ the principle it distilled.
 The point isn't nostalgia. The brain's value lives in its extraction and
 modeling layers, and those layers were *learned*, not designed up front. This is
 the story of that learning — and a candidate to surface as the brain's own
-"how it got smart" narrative (e.g. in the PWA `#docs` view, alongside release
+"how it got smart" narrative (e.g. in the dashboard `#docs` view, alongside release
 notes).
 
 > Dates are approximate where the git history doesn't pin them. Chapters are
@@ -20,7 +20,7 @@ notes).
 ## Chapter 0 — The off-the-shelf MCP server (and why it couldn't hold)
 
 **Believed:** run the published Graphiti MCP server, point clients (Claude Code,
-the PWA) at it, done. A standard component, wired up.
+the dashboard) at it, done. A standard component, wired up.
 
 **Broke:** the MCP wrapper hid exactly the controls a *personal* brain needs —
 extraction overrides, search recipes, entity/edge type definitions. On top of

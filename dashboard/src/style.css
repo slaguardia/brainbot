@@ -1,5 +1,5 @@
 /* ===========================================================================
-   App-view CSS for the brainbot PWA. The :root palette, base resets, and the
+   App-view CSS for the brainbot dashboard. The :root palette, base resets, and the
    shared app chrome (.cap-head / .cap-nav / .brand + main layout) now live in
    @brainbot/web-toolkit/base.css (imported in main.ts) — this file holds ONLY
    the app-view styles the toolkit does not provide: the home hub, the #docs

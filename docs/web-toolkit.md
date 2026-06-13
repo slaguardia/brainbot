@@ -13,8 +13,8 @@
 A small, **framework-free** (vanilla TS + Vite) package that gives every app's
 PWA the same skin, shell, offline plumbing, sign-in handling, and brain access —
 so an app author writes only app-specific views and `/api` calls. The donor is
-brainbot's existing `pwa/` (already a working PWA); the toolkit is that,
-generalized and extracted.
+brainbot's existing frontend (`dashboard/`); the toolkit is that, generalized
+and extracted.
 
 **Non-goal:** it is not a component framework, not a CSS utility library, not a
 state-management library. It's the *platform-specific* glue (design tokens, app
@@ -23,7 +23,7 @@ shell, brain client, PWA bits) — app logic stays in the app.
 ## Design system is already reconciled — scout's palette wins
 
 The reconciliation worry from `app-platform.md` is largely **already settled**.
-brainbot's `pwa/src/style.css` opens with:
+brainbot's `dashboard/src/style.css` opens with:
 
 > *"Cool-dark palette ported from the scout consumer … The whole UI (chrome,
 > buttons, docs, dashboard) speaks scout."*
@@ -31,7 +31,7 @@ brainbot's `pwa/src/style.css` opens with:
 So scout's design language is the canonical one, and brainbot already adopted it.
 The toolkit's job is to **lift that `:root` token block into the shared package**
 as the single source of truth, and have both apps consume it instead of each
-holding a copy. The canonical tokens (from `pwa/src/style.css`):
+holding a copy. The canonical tokens (from `dashboard/src/style.css`):
 
 ```
 Surfaces   --bg #0b0d12  --bg-2 #0f1218  --bg-elevated #14171f
@@ -59,10 +59,10 @@ internal.
 | Module | Exports | Replaces today's |
 |---|---|---|
 | **`tokens` / `base.css`** | the `:root` palette above + base resets (box-sizing, themed scrollbars, typography) | the duplicated `style.css` blocks in brainbot + scout |
-| **`shell`** | the app chrome: header/nav, a hash-router mount (`mountApp(routes)`), and standard `loading` / `empty` / `error` states | brainbot `pwa/src/main.ts` hash router |
+| **`shell`** | the app chrome: header/nav, a hash-router mount (`mountApp(routes)`), and standard `loading` / `empty` / `error` states | brainbot `dashboard/src/main.ts` hash router |
 | **`components`** | the reusable UI elements — buttons, cards, tables, modals, the SSE progress view — **harvested from scout's existing UI**, not a third-party library | scout's `internal/web/index.html` elements |
-| **`pwa`** | `manifest(opts)` generator (per-app name/short_name/icons/theme_color) + a standard `registerSW()` (offline app-shell + asset cache) | brainbot `pwa/public/manifest.webmanifest` + `sw.js` |
-| **`brain`** | typed client: `recall(q, k?)`, `doc(id)`, `map()`, `changes(since?)`, `onChange(cb)` over the app backend's `/api` proxy; returns the brain's chunk/doc/map/change shapes from [`consumer-api.md`](./consumer-api.md) | brainbot `pwa/src/server` proxy + ad-hoc fetches |
+| **`pwa`** | `manifest(opts)` generator (per-app name/short_name/icons/theme_color) + a standard `registerSW()` (offline app-shell + asset cache) | brainbot `dashboard/public/manifest.webmanifest` + `sw.js` |
+| **`brain`** | typed client: `recall(q, k?)`, `doc(id)`, `map()`, `changes(since?)`, `onChange(cb)` over the app backend's `/api` proxy; returns the brain's chunk/doc/map/change shapes from [`consumer-api.md`](./consumer-api.md) | brainbot `dashboard/src/server` proxy + ad-hoc fetches |
 | **`session`** | `currentUser()` — reads the identity the edge injects (`X-Auth-Request-Email`, surfaced by the app backend); no login UI, no token handling | nothing (no app does this yet) |
 
 ### Module contracts (sketch — finalize in the toolkit repo)
@@ -92,7 +92,7 @@ currentUser(): Promise<{ email: string } | null>    // from app's /api/me, fed b
 
 The toolkit's `brain` client talks to the **app's own backend** (`/api/brain/recall`
 etc.), not to `brain.api.{domain}` directly. Reason: the bearer token and the
-brain URL stay server-side in each app, exactly as brainbot's PWA already proxies
+brain URL stay server-side in each app, exactly as brainbot's dashboard already proxies
 `/api/recall` and `/api/map`. The toolkit standardizes the *client* call; each app
 backend keeps a tiny read-only proxy (`recall`/`doc`/`map`/`changes`). This preserves
 [`consumer-integration.md`](./consumer-integration.md)'s read-only, no-secrets-in-
@@ -135,18 +135,17 @@ layout (see [`app-platform.md`](./app-platform.md)).
 
 ## Build order (matches the migration path)
 
-1. **Extract** this package from brainbot's `pwa/`: lift the token block, the
+1. **Extract** this package from brainbot's `dashboard/`: lift the token block, the
    hash-router shell, the manifest+SW, and the proxy-client into `web-toolkit/`.
-2. **Rebuild brainbot's PWA on it** — lowest risk (it's the donor), validates the
+2. **Rebuild brainbot's dashboard on it** — lowest risk (it's the donor), validates the
    toolkit against a real app before scout depends on it.
 3. Scout's re-home (out of `go:embed`) then consumes the *validated* toolkit.
 
 ## Open decisions (settle in the toolkit repo)
 
 - **Final module/export names** — the sketch above, firmed up against real usage.
-- **Icon set** — brainbot's `manifest` still references uncommitted
-  `icon-192/512.png` (see [`pwa.md`](./pwa.md) known gaps); the toolkit should
-  ship a default + per-app override.
+- **Icon set** — the toolkit's `manifest` references conventional
+  `icon-192/512.png`; it should ship a default + per-app override.
 - **Offline depth** — v1 SW caches the app *shell* + assets only; per-app offline
   *data* is deferred until an app needs it.
 - **Nav model** — whether the shell's nav is per-app config or pulls from the

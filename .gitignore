@@ -4,7 +4,7 @@
 .env.*.local
 *.pem
 *.key
-# PWA access whitelist (live allow-list; only the .example is tracked)
+# Edge SSO access whitelist (live allow-list; only the .example is tracked)
 compose/oauth2-proxy-emails.txt
 
 # Node / SvelteKit (Phase 2+)

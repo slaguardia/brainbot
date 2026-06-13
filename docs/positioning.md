@@ -162,7 +162,7 @@ The differences above cut both ways. Choosing brainbot's cell costs:
 
 - **You do the curating.** Nothing is remembered that you didn't write down.
   No effortless accumulation from chats — sessions don't remember themselves.
-- **No polished destination UI.** The PWA is a small owner console, not
+- **No polished destination UI.** The dashboard is a small owner console, not
   NotebookLM. The product is the API.
 - **You run a server.** The "file over app" crowd avoids exactly this.
 - **Single-user.** No sharing, no teams.

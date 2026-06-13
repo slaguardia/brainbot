@@ -1,6 +1,6 @@
 // Tiny Node server: serves the built static assets (in prod).
 //
-// The PWA is a thin consumer of the Python brain service. Free-text capture is
+// The dashboard backend is a thin consumer of the Python brain service. Free-text capture is
 // currently DISABLED: with the document-substrate cutover the brain's write path
 // is source ingest (Notion pages / docs), not a /capture endpoint — so this
 // backend no longer proxies anything. POST /api/capture returns 410 Gone rather
@@ -18,7 +18,7 @@ import { fileURLToPath } from "node:url";
 const PORT = Number(process.env.PORT ?? 8787);
 
 // Brain service base. Reads are proxied here (GET /api/brain/recall|doc|map|changes)
-// so the owner PWA can surface the brain's recall/doc/map without the browser
+// so the owner dashboard can surface the brain's recall/doc/map without the browser
 // talking to the brain directly. The one proxied write is POST /api/ingest — the
 // discovery view's "pull this page into the brain" action, forwarding to the
 // brain's existing /ingest. Free-text capture stays disabled.
@@ -344,5 +344,5 @@ const server = createServer((req, res) => {
 });
 
 server.listen(PORT, () => {
-  console.error(`[pwa] listening on :${PORT} (capture disabled; reads + ingest proxied to ${BRAIN})`);
+  console.error(`[dashboard] listening on :${PORT} (capture disabled; reads + ingest proxied to ${BRAIN})`);
 });

@@ -59,7 +59,7 @@ no `invalid_at` logic, no write-time entity resolution. (How the design arrived
 here: [`learnings.md`](./learnings.md) Chapter 6.)
 
 This is the project's thesis made real: **one smart brain, many thin
-consumers.** The PWA backend is a dumb proxy; consumers are read-only.
+consumers.** The dashboard backend is a dumb proxy; consumers are read-only.
 
 ## The ingest pipeline
 

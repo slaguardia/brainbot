@@ -31,7 +31,7 @@ semantics, what `version` covers — lives in
 
 `profile(scope)` exists but is **brain-side machinery + an owner tool**: it
 powers self-enrichment (assemble a domain → distill a digest that `recall`
-surfaces) and backs the authed PWA where the owner browses their own folders.
+surfaces) and backs the authed dashboard where the owner browses their own folders.
 Consumers get faithful content, never an assembled view — don't build a dumb
 consumer against it.
 
@@ -52,14 +52,14 @@ One service (`brain/api.py`) serves both: plain HTTP (`/ingest`, `/recall`,
 
 Same contract, two addresses depending on where your consumer runs:
 
-- **On the VPS, on `brainnet`** (scout, the PWA backend, the Claude Code hook):
+- **On the VPS, on `brainnet`** (scout, the dashboard backend, the Claude Code hook):
   call `http://brain:8100` directly — **no token**. The brain's port is never
   published, so being on `brainnet` *is* the authorization; only put services
   you trust on it (there's no per-app auth inside).
 - **Off the box** (your laptop, another server): `https://brain.api.{domain}` +
   the bearer token.
 
-This is the same split the PWA backend uses — it proxies `/api/brain/*` to the
+This is the same split the dashboard backend uses — it proxies `/api/brain/*` to the
 brain so the bearer stays server-side, never in the browser. Full topology +
 firewall in [`architecture.md`](./architecture.md).
 

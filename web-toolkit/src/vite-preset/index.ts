@@ -1,6 +1,6 @@
 /**
  * vite-preset — the shared Vite config base every app extends, generalized from
- * brainbot's pwa/vite.config.ts.
+ * brainbot's dashboard/vite.config.ts.
  *
  * An app's vite.config.ts merges this:
  *

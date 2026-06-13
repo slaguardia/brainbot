@@ -115,7 +115,7 @@ These frameworks are *not* the AI. They're the wiring that connects the AI servi
 - **The brain service** (`brain/`) is the chef — a small hand-written Python pipeline: split sources into section chunks, embed, store; retrieve with hybrid cosine + full-text fused by RRF.
 - **Voyage** is the embedding service that makes the "vibe stickers" for vector search. There is **no write-time LLM** — ingest is split + embed + insert.
 - **Caddy + Docker** are kitchen plumbing — hosting, networking, TLS.
-- **The PWA and Claude Code hook** are the customers who walk up and order.
+- **The dashboard and Claude Code hook** are the customers who walk up and order.
 
 No LangChain, no Pinecone. Smaller stack on purpose — the whole retrieval pipeline is owned code you can tune.
 
@@ -149,7 +149,7 @@ This is **a notebook designed to be read by programs, not humans**. The differen
 | Who structures the data? | You, by hand (folders, tags, wikilinks, table columns) | You write normal pages with headings; the system splits, embeds, and indexes them automatically |
 | What happens when info changes? | You edit the page; old version may stay in version history | You edit the source page; its chunks are wiped and re-derived, so only current text is ever indexed |
 | Can you find "the founder of OpenClaw" if your note only says "Steve runs OpenClaw"? | Only if you wrote those exact words or made a wikilink | Usually — semantic search matches on meaning ("founder" ≈ "runs") |
-| Is it pretty to look at? | Yes, that's a primary feature | Not the point — you edit your sources in Notion; the PWA gives small read views |
+| Is it pretty to look at? | Yes, that's a primary feature | Not the point — you edit your sources in Notion; the dashboard gives small read views |
 
 **The simplest way to think about it:** Obsidian is for *you*. Brainbot is for *programs that act on your behalf*. They solve different problems. You could conceivably use both — Obsidian as your daily note-taking app, brainbot ingesting your notes nightly to make them queryable by your other apps.
 

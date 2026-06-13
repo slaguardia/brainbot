@@ -1,5 +1,5 @@
 # Brain API. Headless consumers (Claude Code MCP, the inject hook, the
-# migrator) authenticate with the bearer. The human-facing PWA lives on the
+# migrator) authenticate with the bearer. The human-facing dashboard lives on the
 # bare brain.{$BRAIN_DOMAIN} host below.
 brain.api.{$BRAIN_DOMAIN} {
     @authorized header Authorization "Bearer {$BRAIN_BEARER_TOKEN}"
@@ -19,7 +19,7 @@ brain.api.{$BRAIN_DOMAIN} {
     }
 }
 
-# Phase 2 PWA — the human capture surface, on the bare brain.{$BRAIN_DOMAIN}
+# The dashboard — the human surface, on the bare brain.{$BRAIN_DOMAIN}
 # host. Google-auth'd at the edge via oauth2-proxy (Google OIDC + email
 # whitelist). The app itself is unauthenticated inside the docker network and
 # only sees requests oauth2-proxy has already cleared. Replaces the old
@@ -48,12 +48,12 @@ brain.{$BRAIN_DOMAIN} {
             }
         }
 
-        reverse_proxy pwa:8787
+        reverse_proxy dashboard:8787
     }
 }
 
 # scout — scout.{$BRAIN_DOMAIN}, Google-auth'd at the edge via oauth2-proxy.
-# Same pattern as the brain PWA host: the app is unauthenticated inside brainnet
+# Same pattern as the brain dashboard host: the app is unauthenticated inside brainnet
 # and only ever sees requests oauth2-proxy has already cleared. No login code in
 # scout. Revocation: remove the email from compose/oauth2-proxy-emails.txt.
 scout.{$BRAIN_DOMAIN} {

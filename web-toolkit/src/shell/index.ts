@@ -1,6 +1,6 @@
 /**
  * shell — the app chrome + hash router, generalized from brainbot's
- * pwa/src/main.ts.
+ * dashboard/src/main.ts.
  *
  * `mountApp(routes, opts)` renders the shared chrome (a `.cap-head` with a brand
  * wordmark + `.cap-nav` pills, and a `.tk-content` <main> region) once, then

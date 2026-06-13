@@ -27,7 +27,7 @@ services:
     # (asyncpg in-process; no graph DB) serving TWO faces on port 8100:
     #   - MCP at /mcp        → Claude Code (.mcp.json points here)
     #   - plain HTTP         → /health, POST /ingest, GET /recall, /profile, /map
-    # Consumers (PWA, Claude Code, future apps) all talk to this one service.
+    # Consumers (dashboard, Claude Code, future apps) all talk to this one service.
     build:
       context: ../brain
     image: brainbot/brain:0.1
@@ -42,31 +42,31 @@ services:
       PG_DSN: postgresql://brain:${POSTGRES_PASSWORD}@postgres:5432/brain
       # How often (seconds) the brain re-ingests pages changed in Notion, so it
       # stays current with no dashboard open. Default 300 (5m); 0 disables.
-      # Override per-deployment here or, at runtime, from the PWA's #integrations.
+      # Override per-deployment here or, at runtime, from the dashboard's #integrations.
       BRAIN_POLL_INTERVAL_SECONDS: ${BRAIN_POLL_INTERVAL_SECONDS:-300}
     depends_on:
       postgres:
         condition: service_healthy
 
-  pwa:
-    # One-screen PWA. Free-text capture is currently DISABLED (the brain's write
+  dashboard:
+    # One-screen dashboard. Free-text capture is currently DISABLED (the brain's write
     # path is source ingest, not /capture). The backend serves static assets and
     # proxies GET-only owner reads (/api/brain/recall, /api/brain/doc,
     # /api/brain/map → BRAIN_SERVICE_URL, default http://brain:8100) — so a
     # whitelisted user has brain read access
-    # with no bearer. The in-PWA docs/evolution views still serve.
+    # with no bearer. The in-app docs/evolution views still serve.
     #
     # Auth lives at the edge: Caddy forward_auth → oauth2-proxy (Google OIDC +
-    # email whitelist). The PWA itself is unauthenticated inside brainnet and
+    # email whitelist). The dashboard itself is unauthenticated inside brainnet and
     # never receives a request that oauth2-proxy hasn't already cleared.
     build:
-      # Context is the repo root: the PWA depends on ../web-toolkit (a file: dep)
-      # and docs.ts imports ../../docs/*.md?raw — both outside pwa/. The Dockerfile
-      # COPYs web-toolkit/, the rendered docs, and pwa/ from this wider context.
+      # Context is the repo root: the dashboard depends on ../web-toolkit (a file: dep)
+      # and docs.ts imports ../../docs/*.md?raw — both outside dashboard/. The Dockerfile
+      # COPYs web-toolkit/, the rendered docs, and dashboard/ from this wider context.
       context: ..
-      dockerfile: pwa/Dockerfile
-    image: brainbot/pwa:0.1
-    container_name: pwa
+      dockerfile: dashboard/Dockerfile
+    image: brainbot/dashboard:0.1
+    container_name: dashboard
     restart: unless-stopped
     networks:
       - brainnet
@@ -105,7 +105,7 @@ services:
         condition: service_healthy
 
   oauth2-proxy:
-    # Edge auth for EVERY app at the edge (brain PWA + scout + future apps).
+    # Edge auth for EVERY app at the edge (brain dashboard + scout + future apps).
     # Caddy's forward_auth asks this for /oauth2/auth; only a valid, whitelisted
     # Google session gets a 202 and is proxied through to the app. The whitelist
     # is the mounted emails file — with --authenticated-emails-file set and
@@ -149,7 +149,7 @@ services:
   caddy:
     # The public edge — the ONLY service that publishes host ports (80/443).
     # Terminates TLS (Let's Encrypt, automatic) and reverse-proxies each vhost
-    # to its app over brainnet by service name (brain:8100, pwa:8787,
+    # to its app over brainnet by service name (brain:8100, dashboard:8787,
     # oauth2-proxy:4180, scout:8765), so it MUST sit on brainnet. The vhosts
     # live in ./Caddyfile; it reads {$BRAIN_DOMAIN}/{$BRAIN_BEARER_TOKEN} from
     # .env. VPS-only: the local overlay disables it (laptops use no TLS).
@@ -172,7 +172,7 @@ services:
       - caddy-config:/config
     depends_on:
       - brain
-      - pwa
+      - dashboard
       - oauth2-proxy
 
 networks:

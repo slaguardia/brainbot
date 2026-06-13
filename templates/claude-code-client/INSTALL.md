@@ -33,7 +33,7 @@ prompts.
 > MCP face at `/mcp` (read-only tools: `recall`, `profile`, `map`) plus
 > plain-HTTP routes. Writes happen out-of-band via `POST /ingest {url}`, not
 > over MCP. The API also moved host: it's now `brain.api.{domain}/mcp` (the
-> bare `brain.{domain}` host is the human-facing PWA, Google-auth'd).
+> bare `brain.{domain}` host is the human-facing dashboard, Google-auth'd).
 
 Current Claude Code expects MCP servers in `.mcp.json`, not
 `settings.json`. Create `<client-repo>/.mcp.json`:

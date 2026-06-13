@@ -22,7 +22,7 @@ Concrete example: keep your work history + the kind of roles you'd consider in N
 Two first-party apps ship with the project, both as worked examples:
 
 - **Claude Code MCP** — terminal harness in any project repo. A `UserPromptSubmit` hook injects relevant brain context into every prompt. (A pure consumer — no PWA.)
-- **PWA** — a phone surface, Google-auth'd at the edge: dashboard, recall search, source map, Notion discovery + selective ingest, in-app docs, and an **#apps launcher** that lists your apps with a per-card health ping. It is itself the first app built on the web-toolkit.
+- **Dashboard** — a web surface, Google-auth'd at the edge: the home overview, recall search, source map, Notion discovery + selective ingest, in-app docs, and an **#apps launcher** that lists your apps with a per-card health ping. It is itself the first app built on the web-toolkit.
 
 ## What it's for
 
@@ -99,14 +99,14 @@ The full landscape — what each neighbor is, where the bets genuinely overlap, 
 | L1 brain: sources + chunks on pgvector, `recall`/`doc`/`profile`/`map` | ✅ live |
 | L1 brain: section-level chunking + complete-mode recall | ✅ live |
 | L3 web-toolkit: shared tokens, shell, components, SW + manifest, brain client | ✅ live |
-| PWA rebuilt on the web-toolkit + #apps launcher (registry + health ping) | ✅ live (free-text capture disabled pending a source-editing surface) |
+| Dashboard rebuilt on the web-toolkit + #apps launcher (registry + health ping) | ✅ live (free-text capture disabled pending a source-editing surface) |
 | VPS deployment of the full stack | 🟡 pending |
 
 Pending feature plans live in [`plans/`](./plans/).
 
 ## Repo layout
 
-This repo holds L1 (brain), L2 (edge config), L3 (web-toolkit), and the brainbot PWA. Other apps (e.g. scout) live in their own repos and depend on the web-toolkit as a package — see [`docs/app-platform.md`](./docs/app-platform.md) for the multi-repo layout.
+This repo holds L1 (brain), L2 (edge config), L3 (web-toolkit), and the brainbot dashboard. Other apps (e.g. scout) live in their own repos and depend on the web-toolkit as a package — see [`docs/app-platform.md`](./docs/app-platform.md) for the multi-repo layout.
 
 ```
 brainbot/
@@ -114,7 +114,7 @@ brainbot/
 ├── plans/                       — open feature plans
 ├── brain/                       — L1: the brain service (FastMCP + asyncpg; ingest + reads + MCP face)
 ├── web-toolkit/                 — L3: shared frontend package (tokens, shell, components, pwa, brain client, session)
-├── pwa/                         — the first-party PWA (vanilla TS + Vite on the toolkit; #apps launcher; read-only proxy backend)
+├── dashboard/                   — the first-party dashboard (vanilla TS + Vite on the toolkit; #apps launcher; read-only proxy backend)
 ├── compose/                     — L2: docker-compose, Caddyfile, oauth2-proxy whitelist
 ├── scripts/
 │   └── smoke_substrate.py       — live end-to-end smoke (ingest → recall/profile/map)
@@ -134,7 +134,7 @@ curl -X POST http://127.0.0.1:8100/ingest -H 'Content-Type: application/json' \
 ```
 
 The brain is at `http://127.0.0.1:8100`. The full local walkthrough — smoke
-test, running the PWA, and the Voyage/`.env` gotchas — is in
+test, running the dashboard, and the Voyage/`.env` gotchas — is in
 [`docs/quickstart.md`](./docs/quickstart.md); the production VPS deploy (the
 Caddy/SSO edge, day-2 ops) is [`docs/deployment.md`](./docs/deployment.md).
 
@@ -142,7 +142,7 @@ Caddy/SSO edge, day-2 ops) is [`docs/deployment.md`](./docs/deployment.md).
 
 The README is the landing page; the manual lives in [`docs/`](./docs) (indexed at
 [`docs/README.md`](./docs/README.md)) and renders natively on GitHub. Three of the
-narrative docs also render inside the brain PWA itself, behind sign-in. Start by
+narrative docs also render inside the brain dashboard itself, behind sign-in. Start by
 what you're trying to do:
 
 - **Understand it** — [`architecture.md`](./docs/architecture.md) (the brain + edge, the security model) · [`brain-architecture.md`](./docs/brain-architecture.md) (the living design doc) · [`rag-primer.md`](./docs/rag-primer.md) (plain-English RAG) · [`positioning.md`](./docs/positioning.md) (the landscape).
@@ -150,7 +150,7 @@ what you're trying to do:
 - **Run it** — [`quickstart.md`](./docs/quickstart.md) (local) · [`deployment.md`](./docs/deployment.md) (VPS + day-2 ops) · [`embedder.md`](./docs/embedder.md) (swap the embedder).
 
 **Security posture:** from the internet there's exactly one door — Caddy (443) —
-with the PWA behind Google SSO and the brain API behind a bearer token; every
+with the dashboard behind Google SSO and the brain API behind a bearer token; every
 other service sits on a private Docker network with no public port. Full model in
 [`architecture.md`](./docs/architecture.md); which URL + auth *your* app uses
 (off-box bearer vs. on-network direct) in [`consumer-integration.md`](./docs/consumer-integration.md).

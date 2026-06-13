@@ -9,7 +9,7 @@
 // the donor's "re-fetch on return" behaviour (home re-reads /api/brain/map when
 // you come back from #discover).
 //
-// This is a plain web dashboard, not an installable PWA — no service worker,
+// This is a plain web dashboard — no service worker,
 // manifest, or offline shell. (The toolkit still ships those for apps that want
 // them; this app just doesn't wire them up.)
 //

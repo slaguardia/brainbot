@@ -259,7 +259,7 @@ async def upsert_source(
 ) -> tuple[str, int]:
     """Create or replace a source, then re-derive its chunks (wipe-replace).
 
-    New capture, a human edit in the PWA, and a Notion re-sync are the same call.
+    New capture, a human edit in the dashboard, and a Notion re-sync are the same call.
     The source row is upserted; then every chunk it owns is DELETEd and one chunk
     per SECTION (`_split_sections`) is re-inserted, each with its own embedding.
     Re-posting the same `source_id` is idempotent and always current.

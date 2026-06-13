@@ -1,4 +1,4 @@
-# Build context for the pwa image is the repo root (compose: context: ..).
+# Build context for the dashboard image is the repo root (compose: context: ..).
 # Keep host build output / deps out so the image builds clean and small.
 **/node_modules
 **/dist

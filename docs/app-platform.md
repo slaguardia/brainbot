@@ -15,12 +15,12 @@ consumer doesn't touch the brain.
 
 What does **not** scale yet is everything *around* each consumer's UI:
 
-| | brainbot PWA | scout |
+| | brainbot dashboard | scout |
 |---|---|---|
-| Frontend delivery | separate Vite PWA, real assets | one 3,920-line `index.html` via `go:embed` |
+| Frontend delivery | separate Vite app, real assets | one 3,920-line `index.html` via `go:embed` |
 | Shares design/shell/auth with… | nothing | nothing |
 | Edge / auth | Caddy + oauth2-proxy, HTTPS | none, localhost only |
-| Installable (PWA) | yes (manifest + `sw.js`) | no |
+| Installable (PWA) | no (plain web app; the toolkit can add it) | no |
 
 Two apps, two unrelated frontend stacks, two deployment postures. At app three
 this becomes the bottleneck. **"Make them all PWAs" is the symptom; the cure is
@@ -167,7 +167,7 @@ accepted tradeoff of multi-repo (see below).
 ```
 brainbot/
   web-toolkit/   L3 the shared package every PWA depends on (lives here)
-  pwa/           the brainbot PWA (toolkit consumer)
+  dashboard/           the brainbot dashboard (toolkit consumer)
   + L1 brain + L2 edge config
 scout/           L4 app: Go backend + PWA (toolkit consumer)
 <app-3>/         L4 app: any backend + PWA (toolkit consumer)
@@ -188,18 +188,18 @@ scout/           L4 app: Go backend + PWA (toolkit consumer)
 
 ## L3 — what's in the web toolkit
 
-Harvest it from what brainbot's PWA already does — it's the natural donor
+Harvest it from what brainbot's dashboard already does — it's the natural donor
 (vanilla TS + Vite + manifest + service worker already exist). The toolkit is
 that, generalized:
 
 | Piece | What it is | Donor |
 |---|---|---|
-| **Design system** | CSS variables (the dark theme, the verdict colors, spacing/typography scale), base components | brainbot `pwa/src/style.css` + scout's inline CSS, reconciled |
-| **App shell** | the page chrome, nav/header, view-routing convention, loading/empty/error states | brainbot `pwa/src/main.ts` hash router |
-| **PWA plumbing** | `manifest.webmanifest` generator (per-app name/icon/theme) + a standard `sw.js` (offline shell + asset cache) | brainbot `pwa/public/` |
-| **Brain client** | typed `recall()` / `doc()` / `map()` over HTTP, with the auth header handled | brainbot `pwa/src/server` proxy logic |
+| **Design system** | CSS variables (the dark theme, the verdict colors, spacing/typography scale), base components | brainbot `dashboard/src/style.css` + scout's inline CSS, reconciled |
+| **App shell** | the page chrome, nav/header, view-routing convention, loading/empty/error states | brainbot `dashboard/src/main.ts` hash router |
+| **PWA plumbing** | `manifest.webmanifest` generator (per-app name/icon/theme) + a standard `sw.js` (offline shell + asset cache) | brainbot `dashboard/public/` |
+| **Brain client** | typed `recall()` / `doc()` / `map()` over HTTP, with the auth header handled | brainbot `dashboard/src/server` proxy logic |
 | **Session/auth helper** | reads the identity oauth2-proxy injects at the edge; no per-app login code | brainbot edge contract |
-| **Build preset** | a shared Vite config so every app builds the same way | brainbot `pwa/vite.config.ts` |
+| **Build preset** | a shared Vite config so every app builds the same way | brainbot `dashboard/vite.config.ts` |
 
 Stay vanilla TS + Vite (no React/Vue). It's what both apps already are, it keeps
 the toolkit tiny, and it's a defensible "no framework tax" story. Revisit only if
@@ -269,9 +269,9 @@ You wanted "the brain shows what apps are connected and available to install."
 That's the right product instinct — with one correction: it's an **app-layer
 feature, fully portable across any host** (nothing about it needs a server vs
 Railway). It is *not* a feature of the brain *service* — L1 stays a pure read API
-(invariant 1 below). Its home is the **brainbot PWA**, which is already your
+(invariant 1 below). Its home is the **brainbot dashboard**, which is already your
 owner dashboard: add an "apps home" view to it. ("The brain is the central app"
-is right if it means the brainbot *PWA*, not the brain *service*.)
+is right if it means the brainbot *dashboard*, not the brain *service*.)
 
 The launcher is two small pieces:
 
@@ -294,10 +294,10 @@ install happens at each app's origin.
 Scout is the proving ground because it's the app furthest from the contract. The
 order matters (each step stands alone and is independently shippable):
 
-1. **Extract the toolkit (L3).** Stand up `web-toolkit/` from brainbot's PWA.
+1. **Extract the toolkit (L3).** Stand up `web-toolkit/` from brainbot's dashboard.
    Reconcile the two design systems into one set of tokens. This is the biggest
    single piece and gates everything after it.
-2. **Rebuild brainbot's PWA on the toolkit.** Lowest risk (it's the donor) and
+2. **Rebuild brainbot's dashboard on the toolkit.** Lowest risk (it's the donor) and
    it validates the toolkit against a real app before scout depends on it.
 3. **Pull scout's frontend out of `go:embed`.** The 3,920-line `index.html`
    becomes a toolkit-built PWA. Scout's Go server keeps serving its existing
@@ -355,7 +355,7 @@ order matters (each step stands alone and is independently shippable):
   (L2). This doc builds L3 + L4 on top.
 - [`consumer-integration.md`](./consumer-integration.md) / [`consumer-api.md`](./consumer-api.md)
   — the exact brain-read contract every app's brain client wraps.
-- [`pwa.md`](./pwa.md) — the existing brainbot PWA, i.e. the toolkit's donor.
+- [`dashboard.md`](./dashboard.md) — the existing brainbot dashboard, i.e. the toolkit's donor.
 - scout's `docs/north-star.md` — scout's own architecture; this doc governs how
   scout's *shell and delivery* align with siblings, not its pipeline.
 
@@ -369,7 +369,7 @@ and the launcher registry schema. The launcher itself is story **US-004**.
 
 ### Caddy vhost template (a new app at the edge)
 
-Modeled 1:1 on the existing PWA host block in
+Modeled 1:1 on the existing dashboard host block in
 [`../compose/Caddyfile`](../compose/Caddyfile) (the `brain.{$BRAIN_DOMAIN}`
 block). Replace `appname` with your app's subdomain and `appname-pwa:8788` with
 its internal service name and port. The app **publishes no public port** — only
@@ -435,7 +435,7 @@ No tokens, no login UI, no per-app auth code.
 
 ### Launcher app-registry schema
 
-The launcher (the brainbot PWA's "apps home" view) renders one card per app from
+The launcher (the brainbot dashboard's "apps home" view) renders one card per app from
 a curated JSON array. This **extends** the `{name, icon, url, health}` shape
 mentioned [earlier](#the-launcher-the-apps-home) by adding `short_name` (the
 PWA-manifest short name, for the card label):

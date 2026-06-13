@@ -1,7 +1,7 @@
 # Deployment runbook — VPS, the brain, and additional apps
 
 End-to-end deploy of the full stack on a single VPS: provision the box, bring up
-the brain core (Postgres + brain + PWA), stand up the Caddy/SSO edge, then add
+the brain core (Postgres + brain + dashboard), stand up the Caddy/SSO edge, then add
 auxiliary apps (scout and beyond) one vhost at a time.
 
 This is the concrete companion to the design docs: the *what* and *why* live in
@@ -10,9 +10,9 @@ This is the concrete companion to the design docs: the *what* and *why* live in
 mechanical" recipe). This doc is the *do-it-in-order* version.
 
 The stack is fully expressed in `compose/docker-compose.yml` — `postgres`,
-`brain`, `pwa`, `scout`, `oauth2-proxy`, and `caddy` (the public edge). On the
+`brain`, `dashboard`, `scout`, `oauth2-proxy`, and `caddy` (the public edge). On the
 VPS, `docker compose up -d --build` brings up everything; the local overlay
-(`docker-compose.local.yml`) excludes the VPS-only services (`caddy`, `pwa`,
+(`docker-compose.local.yml`) excludes the VPS-only services (`caddy`, `dashboard`,
 `scout`).
 
 ---
@@ -22,7 +22,7 @@ VPS, `docker compose up -d --build` brings up everything; the local overlay
 Before touching the server, have these in hand:
 
 - **A domain** you control DNS for. Everything lives under one apex, `${BRAIN_DOMAIN}`.
-- **A Google OAuth client** (for PWA/SSO). Google Cloud Console → APIs & Services
+- **A Google OAuth client** (for dashboard/SSO). Google Cloud Console → APIs & Services
   → Credentials → *Create credentials* → *OAuth client ID* → *Web application*.
   - Authorized redirect URI: `https://brain.${BRAIN_DOMAIN}/oauth2/callback`
     (this one callback covers **every** app — the shared cookie domain means
@@ -33,7 +33,7 @@ Before touching the server, have these in hand:
   lifts the 3 RPM free-tier throttle that otherwise chokes ingest; tokens stay
   free at personal scale.
 - **A Notion integration token** (for ingest) — or plan to set it later from the
-  PWA's `#integrations` page (DB-stored token overrides the env var).
+  dashboard's `#integrations` page (DB-stored token overrides the env var).
 - **An Anthropic API key** if you're deploying scout.
 
 ---
@@ -146,7 +146,7 @@ Let's Encrypt, which needs these resolving **before** you bring the edge up.
 
 | Record | Type | Value | Serves |
 |---|---|---|---|
-| `brain.${BRAIN_DOMAIN}` | A | VPS IP | PWA (Google SSO) |
+| `brain.${BRAIN_DOMAIN}` | A | VPS IP | dashboard (Google SSO) |
 | `brain.api.${BRAIN_DOMAIN}` | A | VPS IP | brain API (bearer) |
 | `scout.${BRAIN_DOMAIN}` | A | VPS IP | scout (if deploying it) |
 | `<app>.${BRAIN_DOMAIN}` | A | VPS IP | one per future app |
@@ -175,7 +175,7 @@ BRAIN_DOMAIN=your-domain.com
 BRAIN_BEARER_TOKEN=<openssl rand -hex 32>          # headless API auth
 POSTGRES_PASSWORD=<a strong password>
 VOYAGE_API_KEY=pa-...
-NOTION_TOKEN=secret_...                             # or set later in the PWA
+NOTION_TOKEN=secret_...                             # or set later in the dashboard
 GOOGLE_OAUTH_CLIENT_ID=...apps.googleusercontent.com
 GOOGLE_OAUTH_CLIENT_SECRET=GOCSPX-...
 OAUTH2_PROXY_COOKIE_SECRET=<openssl rand -hex 16>      # raw 16/24/32-byte string; -hex 16 = 32 bytes. NOT -base64 32 (44 chars, rejected)
@@ -207,7 +207,7 @@ volume (kept across redeploys so you don't re-request certs — and risk Let's
 Encrypt rate limits — on every `up`). It reads `{$BRAIN_DOMAIN}` /
 `{$BRAIN_BEARER_TOKEN}` from `.env`.
 
-The `Caddyfile` already defines the `brain.api`, `brain` (PWA), and `scout`
+The `Caddyfile` already defines the `brain.api`, `brain` (dashboard), and `scout`
 vhosts. You don't edit it now — you'll add a vhost per new app in
 [Step 7](#7-add-an-auxiliary-app-end-to-end).
 
@@ -219,7 +219,7 @@ From `compose/` (no local overlay on the VPS):
 
 ```sh
 docker compose up -d --build
-docker compose ps          # postgres + brain healthy; pwa, oauth2-proxy, caddy up
+docker compose ps          # postgres + brain healthy; dashboard, oauth2-proxy, caddy up
 docker compose logs -f caddy   # watch it obtain Let's Encrypt certs
 ```
 
@@ -247,12 +247,12 @@ python scripts/smoke_substrate.py
 
 Then check the surfaces by hand:
 
-- `https://brain.${BRAIN_DOMAIN}` → bounces through Google sign-in, then the PWA
-  dashboard (only whitelisted emails get in).
+- `https://brain.${BRAIN_DOMAIN}` → bounces through Google sign-in, then the dashboard
+  (only whitelisted emails get in).
 - `https://brain.api.${BRAIN_DOMAIN}/health` with `Authorization: Bearer <token>`
   → 200; without the header → 401.
 
-First ingest (or do it from the PWA's discover view):
+First ingest (or do it from the dashboard's discover view):
 
 ```sh
 curl -X POST https://brain.api.${BRAIN_DOMAIN}/ingest \
@@ -278,7 +278,7 @@ worked example baked into the repo.
 **Ground rules for the service:**
 
 - **No public port.** Only Caddy reaches it over `brainnet`. (scout listens on
-  `:8765`, the PWA on `:8787` — internal only.)
+  `:8765`, the dashboard on `:8787` — internal only.)
 - **No login code.** Auth is at the edge; the app reads the
   `X-Auth-Request-Email` header oauth2-proxy injects and exposes it as `/api/me`.
 - **Reads the brain at `http://brain:8100`** over `brainnet` — no bearer needed
@@ -350,7 +350,7 @@ host. Just add an A record for `appname.${BRAIN_DOMAIN}` ([Step 2](#2-dns)).
 
 ### 7.3 Launcher registry entry
 
-Add the app to the PWA's `#apps` launcher registry (a curated JSON list:
+Add the app to the dashboard's `#apps` launcher registry (a curated JSON list:
 `{name, short_name, icon, url, health}`) so it shows up with a health ping. Schema
 and a worked example are in
 [`app-platform.md`](./app-platform.md#appendix-copy-paste-contracts).
@@ -403,7 +403,7 @@ that's the acknowledged VPS tradeoff (see
 
 ```sh
 docker compose ps
-docker compose logs -f brain          # or pwa / caddy / oauth2-proxy / scout
+docker compose logs -f brain          # or dashboard / caddy / oauth2-proxy / scout
 ```
 
 ### Revoke a user

@@ -6,7 +6,7 @@
 > [`deployment.md`](./deployment.md). This is the local/fresh-install path.
 
 The stack is two compose services: `postgres` (pgvector) and `brain` (FastMCP +
-asyncpg). Locally there's no Caddy, no TLS, and no `pwa` container — the brain
+asyncpg). Locally there's no Caddy, no TLS, and no `dashboard` container — the brain
 and Postgres bind to `127.0.0.1` and you run the dashboard host-native.
 
 ## 1. Configure env
@@ -28,7 +28,7 @@ concern, not needed locally.)
 
 ## 2. Bring the stack up
 
-No Caddy, no TLS; brain + postgres exposed on `127.0.0.1`; no `pwa` container.
+No Caddy, no TLS; brain + postgres exposed on `127.0.0.1`; no `dashboard` container.
 
 ```sh
 docker compose -f docker-compose.yml -f docker-compose.local.yml up -d
@@ -36,8 +36,8 @@ docker compose ps                       # both healthy?
 ```
 
 The `brain` service is at `http://127.0.0.1:8100`; Postgres is inspectable at
-`127.0.0.1:5432`. For the PWA locally, `cd pwa && npm run dev` (see
-[`pwa.md`](./pwa.md)). Do **not** layer the local overlay on the VPS.
+`127.0.0.1:5432`. For the dashboard locally, `cd dashboard && npm run dev` (see
+[`dashboard.md`](./dashboard.md)). Do **not** layer the local overlay on the VPS.
 
 ## 3. Smoke test
 
@@ -65,7 +65,7 @@ curl -X POST http://127.0.0.1:8100/ingest \
 ```
 
 Re-ingesting the same page wipes-and-replaces its chunks, so the page stays the
-source of truth. The PWA's discover view does the same thing from a phone, with
+source of truth. The dashboard's discover view does the same thing from a phone, with
 selective ingest.
 
 ## 5. Wire Claude Code (optional)

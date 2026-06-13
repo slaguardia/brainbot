@@ -1502,6 +1502,13 @@ main {
 .app-open:hover {
   background: var(--link-bg);
 }
+/* The host app's own card: a muted, non-interactive stand-in for the Open link. */
+.app-here {
+  color: var(--fg-faint);
+  font-size: 13px;
+  font-weight: 500;
+  padding: 4px 8px;
+}
 
 /* ===========================================================================
    Integrations view (#integrations) — one card per source. Reuses the home

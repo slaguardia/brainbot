@@ -73,7 +73,13 @@ export function mountApps(container: HTMLElement): void {
 
 // One card's inner markup: monogram/icon, name + short_name, a health pill that
 // starts in a neutral "checking" state, and the Open link out to the app's url.
+// The host app itself (registry url "/" — this launcher's own origin) gets a
+// muted "this app" marker instead of an Open link: there's nowhere to open to.
 function appCardBody(app: AppEntry): HTMLElement {
+  const isSelf = app.url === "/";
+  const action = isSelf
+    ? `<span class="app-here">this app</span>`
+    : `<a class="app-open" href="${esc(app.url)}" rel="noopener">Open ↗</a>`;
   const el = document.createElement("div");
   el.innerHTML = `
     <div class="app-card-top">
@@ -85,7 +91,7 @@ function appCardBody(app: AppEntry): HTMLElement {
     </div>
     <div class="app-card-foot">
       <span class="app-health is-checking" role="status">checking…</span>
-      <a class="app-open" href="${esc(app.url)}" rel="noopener">Open ↗</a>
+      ${action}
     </div>`;
   // Swap the monogram for the real icon if it loads; on error the monogram
   // stays — no dependency on uncommitted PNG assets.

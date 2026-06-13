@@ -1514,16 +1514,41 @@ main {
    Integrations view (#integrations) — one card per source. Reuses the home
    shell (.home section) + the .disc-head/.disc-sub header from discover.
    =========================================================================== */
-/* The cards sit in a width-aware grid: auto-fit measures the real content width,
-   so the cards stay a single, properly-gapped column in a narrow layout and flow
-   into two side-by-side columns once the page is wide enough to give each card
-   room (~380px min) — filling a wide page's margins without ever cramping the
-   forms. The min(100%, …) floor keeps a single column (no overflow) on mobile. */
+/* The page is two labelled groups (API keys · Brain settings), stacked. */
 .intg-body {
+  display: flex;
+  flex-direction: column;
+  gap: 30px;
+}
+.intg-group-head {
+  margin-bottom: 14px;
+}
+.intg-group-head h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--fg);
+}
+.intg-group-head p {
+  margin: 4px 0 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--fg-muted);
+  max-width: 68ch;
+}
+/* Each group's cards sit in a width-aware grid: auto-fit measures the real content
+   width, so they stay a single, properly-gapped column when narrow and flow into
+   two side-by-side columns once there's room (~300px min) — filling a wide page's
+   margins without cramping. The min(100%, …) floor avoids overflow on mobile. */
+.intg-grid {
   display: grid;
   gap: 18px;
   align-items: start;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 380px), 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
+}
+/* Faint "(default)" hint after a status line. */
+.intg-src {
+  color: var(--fg-faint);
 }
 .intg-card {
   border: 1px solid var(--border);
@@ -1627,19 +1652,6 @@ main {
   color: var(--fg-muted);
   min-height: 1em;
 }
-.intg-sync {
-  margin-top: 16px;
-  padding-top: 14px;
-  border-top: 1px solid var(--border);
-}
-.intg-sync-name {
-  display: block;
-  font-size: 11px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--fg-faint);
-}
 .intg-sync-form {
   display: flex;
   align-items: center;
@@ -1705,30 +1717,8 @@ main {
   color: var(--fg-muted);
   min-height: 1em;
 }
-.intg-roadmap {
-  margin: 16px 0 0;
-  padding-top: 14px;
-  border-top: 1px solid var(--border);
-  font-size: 12.5px;
-  color: var(--fg-faint);
-  line-height: 1.5;
-}
-
-/* Anthropic API key sub-block inside the legibility card — a divider'd section
-   mirroring the Notion card's .intg-sync, with a token-style input + buttons. */
-.intg-key {
-  margin-top: 16px;
-  padding-top: 14px;
-  border-top: 1px solid var(--border);
-}
-.intg-key-name {
-  display: block;
-  font-size: 11px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--fg-faint);
-}
+/* Anthropic API key card form — a token-style input + buttons (its own card in
+   the API keys group). */
 .intg-key-form {
   display: flex;
   gap: 8px;
@@ -1786,24 +1776,26 @@ main {
   min-height: 1em;
 }
 
-/* Note-legibility settings card — reuses .intg-card chrome; the form stacks its
-   labelled rows (enable / mode / threshold) then the Save + Reset buttons. A top
-   divider sets the policy controls apart from the key block above them. */
+/* Note-legibility card — the policy form stacks its labelled rows (enable / mode /
+   threshold), each on its own line, then a Save + Reset button row. */
 .intg-leg-form {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 10px 12px;
-  margin-top: 16px;
-  padding-top: 14px;
-  border-top: 1px solid var(--border);
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 11px;
+  margin-top: 14px;
 }
 .intg-leg-row {
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  gap: 7px;
+  gap: 8px;
   font-size: 13px;
   color: var(--fg);
+}
+.intg-leg-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 3px;
 }
 .intg-leg-mode,
 .intg-leg-threshold {
@@ -1841,7 +1833,6 @@ main {
   cursor: default;
 }
 .intg-leg-reset {
-  margin-left: auto;
   color: var(--fg-muted);
   background: none;
   border: 1px solid var(--border);

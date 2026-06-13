@@ -13,6 +13,7 @@ import type { Health } from "@brainbot/web-toolkit/brain";
 
 interface RewriteRecord {
   id: string;
+  title: string | null;
   raw_text: string;
   rewrite_text: string | null;
   health: Health | null;
@@ -87,7 +88,7 @@ function render(container: HTMLElement, rec: RewriteRecord): void {
 
   container.innerHTML = `
     <section class="home leg-view">
-      <div class="disc-head"><h2>Note legibility</h2><a class="leg-back" href="#">← all sources</a></div>
+      <div class="disc-head"><h2>${esc(rec.title || "Untitled note")}</h2><a class="leg-back" href="#">← all sources</a></div>
       <p class="disc-sub">
         How legible this note is to your agents, and how the brain restructures it
         for retrieval. <strong>Your original is never changed and Notion is never

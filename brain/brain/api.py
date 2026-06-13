@@ -235,6 +235,7 @@ async def rewrite_source_route(request: Request) -> JSONResponse:
         return JSONResponse(
             {
                 "id": source_id,
+                "title": rec["title"],
                 "raw_text": rec["raw_text"],
                 "rewrite_text": rec["rewrite_text"],
                 "health": rec["health"],

@@ -229,6 +229,17 @@ function buildTree(sources: MapSource[]): TreeNode {
   return root;
 }
 
+// How many real sources (nodes with a title) live anywhere under this node —
+// shown on a folder so a collapsed branch still says how much it holds.
+function countSources(node: TreeNode): number {
+  let n = 0;
+  for (const child of node.children.values()) {
+    if (child.title !== undefined) n++;
+    n += countSources(child);
+  }
+  return n;
+}
+
 function renderTree(sources: MapSource[]): string {
   const root = buildTree(sources);
   return `<ul class="src-list">${renderChildren(root)}</ul>`;
@@ -243,11 +254,29 @@ function renderNode(node: TreeNode): string {
   const isSource = node.title !== undefined;
   const label = esc(node.title ?? node.name);
   const badge = isSource ? healthBadge(node.id, node.health) : "";
-  const childHTML = node.children.size ? `<ul class="src-list">${renderChildren(node)}</ul>` : "";
+
+  // A branch (anything with children — a database, a structural folder, or a
+  // source that itself parents others) folds open/closed via native <details>;
+  // the count says how many sources hide inside when it's collapsed. A leaf
+  // source is a plain row.
+  if (node.children.size) {
+    return `
+      <li class="src-node ${isSource ? "is-source" : "is-folder"}">
+        <details class="src-branch" open>
+          <summary class="src-row src-summary">
+            <span class="src-label">${label}</span>
+            ${badge}
+            <span class="src-count">${countSources(node)}</span>
+          </summary>
+          <ul class="src-list">${renderChildren(node)}</ul>
+        </details>
+      </li>`;
+  }
   return `
-    <li class="src-node ${isSource ? "is-source" : "is-folder"}">
-      <span class="src-label">${label}</span>${badge}
-      ${childHTML}
+    <li class="src-node is-source is-leaf">
+      <div class="src-row">
+        <span class="src-label">${label}</span>${badge}
+      </div>
     </li>`;
 }
 

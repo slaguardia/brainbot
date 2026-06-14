@@ -243,33 +243,85 @@ main {
 .src-node {
   padding: 0;
 }
-.src-label {
-  display: block;
+/* A row — a leaf source's wrapper or a folder's <summary>. Flex so the label
+   takes the line, with the optional health badge + count pinned right. */
+.src-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   padding: 7px 2px;
   font-size: 14.5px;
 }
-.src-node.is-source > .src-label {
+.src-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.src-node.is-leaf > .src-row > .src-label {
   color: var(--fg);
 }
-/* A structural folder (synthesized from a deeper path, no source of its own). */
-.src-node.is-folder > .src-label {
+
+/* A folder branch: native <details>; our own triangle replaces the default
+   marker and rotates open. Folder labels read in muted mono so structure is
+   visibly distinct from the sources inside it. */
+.src-branch > .src-summary {
+  cursor: pointer;
+  list-style: none;
+}
+.src-summary::-webkit-details-marker {
+  display: none;
+}
+.src-summary::before {
+  content: "▸";
+  flex: 0 0 auto;
+  width: 9px;
+  color: var(--fg-faint);
+  font-size: 10px;
+  transition: transform 0.12s ease;
+}
+.src-branch[open] > .src-summary::before {
+  transform: rotate(90deg);
+}
+.src-summary > .src-label {
   color: var(--fg-muted);
   font-family: var(--font-mono);
   font-size: 13px;
   letter-spacing: 0.02em;
 }
-
-/* Note-legibility score badge, pinned to the right of a source's row (only
-   present when the optional layer has analyzed it). Colour tiers: good >=70,
-   fair 40-69, poor <40. The tooltip carries the actionable reasons; the badge
-   links to the writing-legible-notes guidance via #docs. */
-.src-node.is-source {
-  position: relative;
+/* A source that also parents others keeps the readable source colour. */
+.src-node.is-source > .src-branch > .src-summary > .src-label {
+  color: var(--fg);
+  font-family: inherit;
+  font-size: 14.5px;
+  letter-spacing: normal;
 }
+.src-summary:hover > .src-label {
+  color: var(--fg);
+}
+
+/* Source count on a folder — how many sources sit under it (visible even when
+   the branch is collapsed). */
+.src-count {
+  flex: 0 0 auto;
+  min-width: 20px;
+  padding: 0 7px;
+  border-radius: 999px;
+  background: var(--panel-2);
+  color: var(--fg-faint);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.7;
+  text-align: center;
+}
+
+/* Note-legibility score badge on a source row (only present when the optional
+   layer has analyzed it). Colour tiers: good >=70, fair 40-69, poor <40. The
+   tooltip carries the actionable reasons; the badge links to the
+   writing-legible-notes guidance via #docs. */
 .src-health {
-  position: absolute;
-  top: 6px;
-  right: 2px;
+  flex: 0 0 auto;
   min-width: 22px;
   padding: 1px 6px;
   border-radius: 999px;

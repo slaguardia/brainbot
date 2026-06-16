@@ -1,5 +1,11 @@
 // @brainbot/web-toolkit — standard app-shell service worker.
 //
+// This file is plain JavaScript on purpose: a service worker is served
+// byte-for-byte to the browser, so it ships as-is (copied to an app's origin as
+// /sw.js) and is never bundled or transpiled — there is no build artifact to
+// author it in TypeScript against. It is the toolkit's one .js file by design,
+// the same way the Caddyfile and Dockerfiles are not TypeScript either.
+//
 // Generalized from brainbot's dashboard/public/sw.js. Pre-caches the index page +
 // built static assets so the icon launches fast and works briefly offline.
 // /api/* and /oauth2/* are NEVER cached — always hit the network (the brain

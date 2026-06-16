@@ -1,6 +1,17 @@
-#!/bin/sh
+#!/usr/bin/env python3
 # Pre-commit: if any markdown file is staged, verify every relative doc link
 # in the repo still resolves (scripts/check_doc_links.py exits 1 on breakage).
 # Wired via: git config core.hooksPath scripts/hooks
-git diff --cached --name-only --diff-filter=ACMRD | grep -q '\.md$' || exit 0
-exec python3 scripts/check_doc_links.py
+import subprocess
+import sys
+
+staged = subprocess.run(
+    ["git", "diff", "--cached", "--name-only", "--diff-filter=ACMRD"],
+    capture_output=True,
+    text=True,
+).stdout.split()
+
+if not any(path.endswith(".md") for path in staged):
+    sys.exit(0)
+
+sys.exit(subprocess.run([sys.executable, "scripts/check_doc_links.py"]).returncode)

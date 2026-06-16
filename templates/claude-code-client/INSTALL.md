@@ -162,7 +162,7 @@ hits. From inside the client repo:
 
 ```sh
 BRAIN_URL=http://127.0.0.1:8100 \
-  bash <path-to-brainbot>/templates/claude-code-client/smoke.sh "your test query"
+  python3 <path-to-brainbot>/templates/claude-code-client/smoke.py "your test query"
 ```
 
 It feeds a synthesized `UserPromptSubmit` payload to

@@ -184,13 +184,3 @@ npm install
 npm run typecheck   # tsc --noEmit — proves the package type-checks
 npm run build       # tsc -p tsconfig.build.json — emits dist/ JS + .d.ts (proves it compiles standalone)
 ```
-
-A throwaway consumer in [`examples/smoke/`](./examples/smoke/) imports **every**
-module and `vite build`s cleanly — the end-to-end proof that the package is
-consumable:
-
-```sh
-cd examples/smoke
-npm install
-npm run build
-```

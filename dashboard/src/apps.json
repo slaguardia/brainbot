@@ -1,5 +1,5 @@
 {
-  "_comment": "Launcher app registry — HAND-CURATED CONFIG, NOT ingested into the brain (system config is not knowledge-about-you; it never enters the brain's sources/chunks — see docs/app-platform.md 'Launcher app-registry schema'). One entry per app: {name, short_name, icon, url, health}. The launcher (#apps view) renders a card per entry, health-pings each entry's `health` URL (connected/offline), and links out to `url`. Edit by hand to add an app.",
+  "_comment": "Launcher app registry \u2014 HAND-CURATED CONFIG, NOT ingested into the brain (system config is not knowledge-about-you; it never enters the brain's sources/chunks \u2014 see docs/app-platform.md 'Launcher app-registry schema'). One entry per app: {name, short_name, icon, url, health}. The launcher (#apps view) renders a card per entry, health-pings each entry's `health` URL (connected/offline), and links out to `url`. Edit by hand to add an app.",
   "apps": [
     {
       "name": "brainbot",
@@ -14,6 +14,13 @@
       "icon": "/icons/scout-192.png",
       "url": "https://scout.example.com",
       "health": "https://scout.example.com/healthz"
+    },
+    {
+      "name": "scribe",
+      "short_name": "scribe",
+      "icon": "/icons/scribe-192.png",
+      "url": "https://scribe.example.com",
+      "health": "https://scribe.example.com/healthz"
     }
   ]
 }

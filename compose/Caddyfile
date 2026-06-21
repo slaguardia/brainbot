@@ -78,3 +78,29 @@ scout.{$BRAIN_DOMAIN} {
         reverse_proxy scout:8765
     }
 }
+
+# scribe — scribe.{$BRAIN_DOMAIN}, Google-auth'd at the edge via oauth2-proxy.
+# Same two-handle pattern as scout/brain: /oauth2/* bypasses forward_auth so the
+# sign-in page isn't itself auth-gated (the redirect-loop guard). scribe is
+# unauthenticated inside brainnet and only sees requests oauth2-proxy has cleared.
+# Revocation: remove the email from compose/oauth2-proxy-emails.txt.
+scribe.{$BRAIN_DOMAIN} {
+    @oauth path /oauth2/*
+    handle @oauth {
+        reverse_proxy oauth2-proxy:4180
+    }
+
+    handle {
+        forward_auth oauth2-proxy:4180 {
+            uri /oauth2/auth
+            copy_headers X-Auth-Request-Email X-Auth-Request-User
+
+            @bad status 401
+            handle_response @bad {
+                redir * /oauth2/sign_in?rd={scheme}://{host}{uri}
+            }
+        }
+
+        reverse_proxy scribe:8788
+    }
+}

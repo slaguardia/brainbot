@@ -104,6 +104,34 @@ services:
       brain:
         condition: service_healthy
 
+  scribe:
+    # scribe — brain-native Twitter content pipeline ("Claude Code for tweets").
+    # Node/TS backend serving the toolkit PWA + /api on :8788. Owns its working set
+    # in local SQLite on the scribe-data volume — NOT in the brain/Postgres (per
+    # docs/app-platform.md "App data: two kinds"). Reads the brain read-only at
+    # http://brain:8100 on brainnet. No public port: only Caddy reaches it.
+    # Auth lives at the edge (oauth2-proxy); scribe holds no login code — it reads
+    # the injected X-Auth-Request-Email and exposes it as /api/me.
+    build:
+      # Sibling scribe repo; the committed web/dist (built against
+      # @brainbot/web-toolkit) is baked into the image scout-style — no node stage.
+      context: ../../scribe
+      dockerfile: backend/Dockerfile
+    image: scribe/scribe:0.1
+    container_name: scribe
+    restart: unless-stopped
+    networks:
+      - brainnet
+    environment:
+      # scribe needs the Anthropic key for the pipeline (set in .env).
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      BRAIN_URL: http://brain:8100
+    volumes:
+      - scribe-data:/data
+    depends_on:
+      brain:
+        condition: service_healthy
+
   oauth2-proxy:
     # Edge auth for EVERY app at the edge (brain dashboard + scout + future apps).
     # Caddy's forward_auth asks this for /oauth2/auth; only a valid, whitelisted
@@ -185,6 +213,9 @@ volumes:
   # rebuilds from a CSV — and deliberately NOT in the brain's Postgres (per
   # docs/app-platform.md "App data: two kinds": blast-radius isolation).
   scout-data:
+  # scribe's local SQLite working set (runs/generations/drafts/queue/exemplars).
+  # Disposable — rebuildable from the Notion substrate — and NOT in the brain.
+  scribe-data:
   # Caddy's Let's Encrypt certs (caddy-data) + autosaved config (caddy-config).
   caddy-data:
   caddy-config:

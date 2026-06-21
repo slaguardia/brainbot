@@ -125,7 +125,7 @@ draws.
                     │                             │
                     └──────────────┬──────────────┘
                                    │
-                        scribe DB (own database on the brain's Postgres server)
+                        scribe DB (own SQLite database — a file, like scout)
                         runs · generations · drafts · queue · feedback · exemplars
 ```
 
@@ -137,15 +137,23 @@ Anthropic SDK, trivial SSE for live pipeline progress (scout already
 establishes an SSE progress view in the toolkit), and it shares TypeScript with
 the toolkit. (Polyglot is allowed; this is a recommendation, not a mandate.)
 
-### Store — a dedicated database on the brain's Postgres server
+### Store — SQLite, like scout
 
-Per the two-kinds rule's engine guidance: scribe's working set is **durable**
-(learned voice exemplars and edit history must survive — they *are* the
-"learning over time"), so it earns a **dedicated database on the already-deployed
-Postgres server** — *same server, separate database*, never a table in the
-brain's schema. (Unlike scout, whose verdicts are disposable and live in
-SQLite.) Blast-radius rule still holds: scribe cannot touch the brain's
-database.
+scribe's working set lives in its own **SQLite database** (a file on the app's
+volume), exactly as scout does. It must persist — learned voice exemplars and
+edit history *are* the "learning over time" — but durability is not the engine's
+job: SQLite persists to disk as durably as Postgres. The factors that would push
+toward Postgres don't apply here: scribe is single-user (no concurrent writers),
+its working set is small (one owner's drafts), and v1 selects exemplars by
+recency/strength score, not semantic similarity (no pgvector). Matching scout
+keeps the platform consistent — no separate database to provision. The two-kinds
+boundary holds untouched: SQLite is scribe's own store, never the brain's schema,
+so scribe still cannot touch the brain's data.
+
+> *Future:* if exemplar selection ever wants *semantic* retrieval ("find drafts
+> like this one"), that needs embeddings — at which point a dedicated Postgres
+> database with pgvector (same server, separate database) becomes the natural
+> home. Out of v1 scope; the schema is small enough to port if it earns it.
 
 ### LLM — Claude API
 
@@ -345,7 +353,7 @@ All from the web-toolkit shell; vanilla TS; toolkit components only.
    confirm `recall`/`doc`/`map` return the voice substrate and inbox usefully.
    No app yet — validates the substrate.
 2. **M1 — Backend skeleton on the contract.** `/api/me`, `/api/brain/*` proxy,
-   the dedicated Postgres DB, and a one-shot pipeline endpoint that runs Stages
+   the SQLite store, and a one-shot pipeline endpoint that runs Stages
    0–5 for a single tweet and persists a generation. No learning, no queue.
 3. **M2 — PWA: Inbox → Run (SSE) → Review.** The core loop end to end behind the
    edge; keep/edit/reject captured.

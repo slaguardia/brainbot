@@ -859,45 +859,103 @@ def _is_stale(page: dict, ingested: dict[str, str | None]) -> bool:
     return _parse_iso(page["last_edited_time"]) > _parse_iso(captured)
 
 
-async def _sync_stale_pages(pool) -> tuple[int, int]:
-    """Re-ingest every ingested page whose Notion copy moved past the brain's.
-    Returns (synced, failed). Reuses the same fetch + wipe-replace upsert as
-    /ingest, so a re-sync is idempotent. No-ops when Notion isn't connected."""
+def _new_children(pages: list[dict], ingested: dict[str, str | None]) -> list[dict]:
+    """New pages under already-pulled content — the auto-discover half of the sweep.
+    Pure over the world list (`list_pages`) + the ingested-id set the sweep already
+    has, so no extra Notion calls. A page qualifies when it isn't pulled yet but its
+    parent chain bottoms out at a pulled page OR a database we already have a row
+    from — the two cases: a child page of a pulled page, a new row of a pulled
+    database.
+
+    BFS outward from those seeds so a page several levels under a pulled root is
+    caught in one sweep: a newly-reached page — or a database nested under pulled
+    content — becomes a parent for the next level. Databases join the frontier (so
+    their rows surface) but are never returned (no url to /ingest)."""
+    ingested_ids = set(ingested)
+    children: dict[str | None, list[dict]] = {}
+    for p in pages:
+        children.setdefault(p.get("parent_id"), []).append(p)
+    db_ids = {p["id"] for p in pages if p.get("kind") == "database"}
+    # Seeds: every pulled page, plus databases we already have a row from (their id
+    # is the parent of an ingested page) — that seeds discovery of new rows added to
+    # a pulled database, whose own database node may sit at a workspace root.
+    known: set[str | None] = set(ingested_ids)
+    known |= {
+        p.get("parent_id") for p in pages
+        if p["id"] in ingested_ids and p.get("parent_id") in db_ids
+    }
+    frontier = list(known)
+    while frontier:
+        for child in children.get(frontier.pop(), ()):
+            cid = child["id"]
+            if cid not in known:
+                known.add(cid)
+                frontier.append(cid)
+    # Ingestible discoveries: a real page (has a url), not already pulled, now reached.
+    return [
+        p for p in pages
+        if p["id"] not in ingested_ids and p.get("url") and p["id"] in known
+    ]
+
+
+async def _reingest_page(pool, token: str, p: dict) -> bool:
+    """Fetch one Notion page and wipe-replace its source row — the shared body of
+    both sweep halves (re-ingest a stale page, first-ingest a discovered child).
+    Best-effort: a single failure is logged and reported false, never aborts the
+    sweep. `p` is a `list_pages` item (needs `url`)."""
+    try:
+        page = await asyncio.to_thread(fetch_page, p["url"], token)
+        await upsert_source(
+            pool,
+            kind="notion_page",
+            title=page["title"],
+            raw_text=page["text"],
+            path=page["path"],
+            source_id=page["id"],
+            parent_id=page.get("parent_id"),
+            last_edited=page.get("last_edited_time"),
+        )
+        return True
+    except Exception:  # noqa: BLE001 — one bad page must not abort the sweep
+        logger.exception("sync: ingest failed for %s", p.get("url"))
+        return False
+
+
+async def _sync_notion(pool) -> tuple[int, int, int]:
+    """One sync sweep: re-ingest every pulled page whose Notion copy moved past the
+    brain's, AND first-ingest new pages under already-pulled content (child pages of
+    a pulled page, new rows of a pulled database). Returns (synced, discovered,
+    failed). Reuses the same fetch + wipe-replace upsert as /ingest, so it stays
+    idempotent. No-ops when Notion isn't connected."""
     token, _ = await _active_notion_token(pool)
     if token is None:
-        return (0, 0)
+        return (0, 0, 0)
     pages = await asyncio.to_thread(list_pages, token)
     ingested = await sources_last_edited(pool)
     stale = [p for p in pages if _is_stale(p, ingested)]
+    new = _new_children(pages, ingested)  # disjoint from stale (not-yet-ingested)
 
-    synced = failed = 0
+    synced = discovered = failed = 0
     for p in stale:
-        try:
-            page = await asyncio.to_thread(fetch_page, p["url"], token)
-            await upsert_source(
-                pool,
-                kind="notion_page",
-                title=page["title"],
-                raw_text=page["text"],
-                path=page["path"],
-                source_id=page["id"],
-                parent_id=page.get("parent_id"),
-                last_edited=page.get("last_edited_time"),
-            )
+        if await _reingest_page(pool, token, p):
             synced += 1
-        except Exception:  # noqa: BLE001 — one bad page must not abort the sweep
-            logger.exception("sync: re-ingest failed for %s", p.get("url"))
+        else:
             failed += 1
-    return (synced, failed)
+    for p in new:
+        if await _reingest_page(pool, token, p):
+            discovered += 1
+        else:
+            failed += 1
+    return (synced, discovered, failed)
 
 
 async def _poll_loop(pool) -> None:
-    """Re-ingest stale pages on the effective interval until cancelled at shutdown.
-    The interval is re-read each cycle (so a UI change takes effect without a
-    restart) and the sleep wakes early on a reconfig. An interval of 0 idles the
-    loop until it's re-enabled. Sleeps before the first sync (don't hammer Notion
-    at boot), and each tick is best-effort: a failure is logged and the loop
-    sleeps on rather than dying."""
+    """Sync Notion on the effective interval until cancelled at shutdown — re-ingest
+    stale pages and pick up new pages under already-pulled content. The interval is
+    re-read each cycle (so a UI change takes effect without a restart) and the sleep
+    wakes early on a reconfig. An interval of 0 idles the loop until it's re-enabled.
+    Sleeps before the first sync (don't hammer Notion at boot), and each tick is
+    best-effort: a failure is logged and the loop sleeps on rather than dying."""
     logger.info("brain: notion poll loop started")
     while True:
         interval, _ = await _effective_poll_interval(pool)
@@ -913,9 +971,12 @@ async def _poll_loop(pool) -> None:
         except asyncio.TimeoutError:
             pass  # the interval elapsed → run a sweep
         try:
-            synced, failed = await _sync_stale_pages(pool)
-            if synced or failed:
-                logger.info("brain: notion sync — %d re-ingested, %d failed", synced, failed)
+            synced, discovered, failed = await _sync_notion(pool)
+            if synced or discovered or failed:
+                logger.info(
+                    "brain: notion sync — %d re-ingested, %d new, %d failed",
+                    synced, discovered, failed,
+                )
         except asyncio.CancelledError:
             raise
         except Exception:  # noqa: BLE001 — keep the loop alive across tick failures

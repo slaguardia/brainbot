@@ -227,7 +227,8 @@ function syncCard(sync: SyncStatus): string {
       <div class="intg-card-head"><span class="intg-name">Notion auto-sync</span></div>
       <p class="intg-status">${status}${src}</p>
       <p class="intg-help">
-        The brain re-pulls changed Notion pages on a timer. Interval in minutes —
+        The brain re-pulls changed Notion pages on a timer and picks up new pages
+        added under anything you've already pulled. Interval in minutes —
         <strong>0 turns it off</strong>.
       </p>
       <form class="intg-sync-form">

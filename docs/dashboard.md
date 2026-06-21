@@ -14,7 +14,7 @@ The toolkit's `mountApp()` wires these routes (`dashboard/src/main.ts`):
 
 - `#` (home) — the dashboard: source/domain counts, an inline **recall search** box, the **source map** (path tree), and the Notion **sync status** with a manual re-pull. Search and the map used to be separate routes; they now live on home.
 - `#discover` — Notion discovery + selective ingest/revoke.
-- `#integrations` — connect Notion (paste a token; a DB-stored token overrides the `NOTION_TOKEN` env) and set the **auto-sync interval** — how often the brain re-pulls changed Notion pages (`0` = off; overrides `BRAIN_POLL_INTERVAL_SECONDS`). Both take effect without a restart.
+- `#integrations` — connect Notion (paste a token; a DB-stored token overrides the `NOTION_TOKEN` env) and set the **auto-sync interval** — how often the brain re-pulls changed Notion pages and picks up new pages added under anything already pulled (child pages of a pulled page, new rows of a pulled database) (`0` = off; overrides `BRAIN_POLL_INTERVAL_SECONDS`). Both take effect without a restart.
 - `#apps` — the **launcher**: a card per app from the registry, each health-pinged (connected/offline) and linking out. See below.
 - `#docs` / `#learnings` — the in-app explainer + evolution timeline, rendered from the repo docs (`chrome:false` full-bleed views).
 

@@ -16,7 +16,7 @@ captures, Notion pages) are canonical; their text is split into section-chunks,
 embedded with Voyage, and stored. Reads are pure retrieval over those chunks.
 There is **no graph DB, no extraction/dedup/bi-temporal machinery**, and **no
 write-time LLM by default** (an opt-in note-legibility layer adds one at the edge
-of ingest — see principle #3 and [`note-legibility.md`](./note-legibility.md)).
+of ingest — see principle #3 and [`note-legibility.md`](./design/note-legibility.md)).
 
 Job-fit ("scout") is the first consumer. Others will follow (reading triage,
 calendar prep, etc.). The brain must never learn what a "job" is — that's what
@@ -88,17 +88,11 @@ Context { text:      str   # assembled, structured markdown
 
 ## How the brain works internally
 
-- **Ingest:** `fetch_page(url)` returns `{title, text, path}` — page blocks
-  flattened to markdown, plus the materialized ancestry from the parent chain.
-  `upsert_source` UPSERTs the source row (recomputing `path`, bumping `version`),
-  then **wipe-replaces** its chunks: `DELETE`, split at the page's markdown
-  headings (one chunk per section; a heading-less page stays one chunk), then
-  re-`INSERT` with fresh Voyage embeddings.
-- **Storage:** Postgres + pgvector, the only persistent store. `sources` holds
-  canonical text + `path`; `chunks` holds section text + `embedding vector(512)`
-  + a generated `fts tsvector`. `ON DELETE CASCADE` makes wipe-replace a one-liner.
-- **Recall:** cosine select + full-text select, path-prefix scoped, fused by RRF.
-- **Profile:** gather chunks under a scope, assemble into structured markdown.
+The mechanics — the ingest pipeline, the storage layout, and how each read is
+built — are documented in [`brain.md`](./brain.md). In short: ingest fetches a
+page, splits it at its own headings, embeds each section, and wipe-replaces the
+source's chunks; recall fuses a semantic and a lexical search; profile gathers a
+scope's chunks and assembles them into structured markdown.
 
 ## Currency by construction (why no bi-temporal logic)
 
@@ -145,7 +139,7 @@ domain = a new branch in the tree; no schema change.
 3. **No write-time LLM _by default_.** The base brain's ingest is split + embed +
    insert; embedding is the only external call, and the embedder is pluggable.
    This was a starting-simplicity choice, not a permanent tenet: the optional
-   note-legibility layer ([`note-legibility.md`](./note-legibility.md)) adds a
+   note-legibility layer ([`note-legibility.md`](./design/note-legibility.md)) adds a
    write-time LLM at the *edge* of ingest, gated by a runtime setting and **off by
    default**. With it disabled, ingest is byte-for-byte what it is today. (The
    librarian boundary in #5 still holds — the rewrite is structural restructuring

@@ -346,7 +346,7 @@ order matters (each step stands alone and is independently shippable):
 - **Change-aware reads.** How a caching consumer knows its cached brain view is
   stale *without a dumb TTL* — a cost cascade gated on the brain's `version`
   stamp, surfaced through a transport-agnostic `onChange` on L3's brain client.
-  See the proposal in [`change-propagation.md`](./change-propagation.md); first
+  See the proposal in [`change-propagation.md`](./design/change-propagation.md); first
   consumer is scout's company-fit brief.
 
 ## How this relates to the other docs
@@ -365,7 +365,7 @@ The prose recipe above (["Adding an app to the box is
 mechanical"](#deployment--single-vps-decided)) and the
 [launcher](#the-launcher-the-apps-home) describe what to do. This appendix is the
 concrete, copy-paste version: the Caddy vhost, the identity header an app reads,
-and the launcher registry schema. The launcher itself is story **US-004**.
+and the launcher registry schema.
 
 ### Caddy vhost template (a new app at the edge)
 

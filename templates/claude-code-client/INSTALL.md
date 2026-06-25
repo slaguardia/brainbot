@@ -1,6 +1,6 @@
 # Wiring the brain into Claude Code
 
-These steps install the Phase 1 client surface into a project repo where
+These steps install the brain client surface into a project repo where
 you want Claude Code to read from the brain.
 
 The "client repo" here is whatever repo you cd into and run `claude` from.
@@ -28,7 +28,7 @@ prompts.
 
 ## 1. Add the brain MCP server
 
-> **Note (Phase 2):** This used to point at the standalone Graphiti MCP
+> **Note:** This used to point at the standalone Graphiti MCP
 > server. That's been retired — the **brain service** now exposes its own
 > MCP face at `/mcp` (read-only tools: `recall`, `profile`, `map`) plus
 > plain-HTTP routes. Writes happen out-of-band via `POST /ingest {url}`, not
@@ -105,7 +105,7 @@ Append the following section to `<client-repo>/CLAUDE.md`:
   authenticate and the brain tools will not appear in this session.
 ```
 
-## 3. Install the memory injection hook (US-013)
+## 3. Install the memory injection hook
 
 Copy `inject_memory.py` from this directory into the client repo and
 make it executable:

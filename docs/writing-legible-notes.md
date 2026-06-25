@@ -3,7 +3,7 @@
 > Optional help, **not a rule.** Capture is meant to be frictionless — open voice
 > mode, ramble, dump it in Notion. You should never have to format your notes for
 > a machine; that's exactly what the note-legibility layer
-> ([`note-legibility.md`](./note-legibility.md)) is for: it restructures your dump
+> ([`note-legibility.md`](./design/note-legibility.md)) is for: it restructures your dump
 > so the brain can use it, without touching what you wrote. This page just explains
 > what "legible to an agent" means, so the `health` score and its `notes` make
 > sense — and so you can nudge a note if you ever want to.

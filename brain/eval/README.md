@@ -1,8 +1,8 @@
-# Note-legibility eval (Phase 0/3) — runbook
+# Note-legibility eval — runbook
 
 Decide `legibility.threshold` from **evidence**: "rewrite when health < X *and* it
 measurably lifts recall," with X read off a recall@k curve — not guessed. Full
-feature + methodology: [`../../docs/note-legibility.md`](../../docs/note-legibility.md).
+feature + methodology: [`../../docs/design/note-legibility.md`](../../docs/design/note-legibility.md).
 
 ## Status — can't set X yet (corpus too small)
 

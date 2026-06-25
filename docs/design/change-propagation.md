@@ -1,7 +1,7 @@
 # Change-aware brain reads — a propagation SDK (proposal)
 
-> Companion to [`app-platform.md`](./app-platform.md) and
-> [`consumer-integration.md`](./consumer-integration.md). Those docs answer "how
+> Companion to [`app-platform.md`](../app-platform.md) and
+> [`consumer-integration.md`](../consumer-integration.md). Those docs answer "how
 > do apps read the brain." This one answers the question that shows up once an app
 > *caches* what it read: *how does a consumer know when its cached view of the
 > brain is actually out of date — without polling on a dumb timer?* Status:
@@ -37,7 +37,7 @@ into one timer.** Separate them and both bugs disappear.
 The brain already publishes the signal we need. Every page in `/map` and `/doc`
 carries a **`version`** — a content stamp that "moves iff `{title, text}`
 change; never on a mere re-sync or a path change" (see
-[`consumer-api.md`](./consumer-api.md)). That is exactly a per-page change hint,
+[`consumer-api.md`](../consumer-api.md)). That is exactly a per-page change hint,
 already built, already trustworthy. No app is using it for *invalidation* yet —
 only for `/doc` body caching.
 
@@ -90,7 +90,7 @@ query — far cheaper than `/map`, and it's the natural substrate for the SDK's
 push upgrade later (a cursor is already the right shape for a replayable feed).
 
 **Built 2026-06-09** (the `/changes?since=` shape; see
-[`consumer-api.md`](./consumer-api.md#changes--the-tier-0-change-signal)). One
+[`consumer-api.md`](../consumer-api.md#changes--the-tier-0-change-signal)). One
 refinement on the literal "stamp over `max(updated_at)`": the cursor stamps
 `count(*)` **and** `max(updated_at)` over `sources`. `max(updated_at)` alone
 catches inserts and re-syncs (`upsert_source` sets `updated_at=now()`) but
@@ -217,9 +217,9 @@ criteria**, and a badge that reflects content, not a clock.
 
 ## How this relates to the other docs
 
-- [`app-platform.md`](./app-platform.md) — the four-layer model; this proposal
+- [`app-platform.md`](../app-platform.md) — the four-layer model; this proposal
   adds `onChange` to L3's brain client and (optionally) one read endpoint to L1.
-- [`consumer-api.md`](./consumer-api.md) / [`consumer-integration.md`](./consumer-integration.md)
+- [`consumer-api.md`](../consumer-api.md) / [`consumer-integration.md`](../consumer-integration.md)
   — the `version` stamp this whole design leans on, and the cache rules it
   extends from *body caching* to *invalidation*.
 - scout's `docs/north-star.md` + `CLAUDE.md` — the `brain_profile_cache` / TTL /

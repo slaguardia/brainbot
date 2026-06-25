@@ -1,10 +1,10 @@
-# Brainbot — Architecture
+# Architecture
 
-A self-hosted **control plane for personal apps**. The brain is the only thing that holds structured truth about you; everything else — terminal harnesses, mobile apps, narrow scoring agents — is a thin consumer that calls in. One brain, N consumers.
+brainbot is a private memory service shared by a handful of small personal apps. The brain is the one place that holds what's true about you; everything else — a terminal assistant, a job-fit scorer, a reading-triage app — is a thin client that reads from it. One brain, many consumers.
 
-This doc covers the **brain (L1)** and the **edge (L2)** — what the brain is and how consumers read it. Once you have *more than one* app, the question becomes how to build app N+1 without inventing a stack each time; that's the four-layer platform (brain → edge → web-toolkit → apps), and it has its own companion doc: [`app-platform.md`](./app-platform.md).
+This doc covers the two foundational pieces: the **brain** (the memory itself) and the **edge** (the gateway that gives every app HTTPS and sign-in). Once you have more than one app, the question becomes how to add the next one cheaply — that's the shared-layers story, in its companion doc [`app-platform.md`](./app-platform.md).
 
-**Dual purpose:** this is a daily-driver tool *and* a portfolio piece. Every architectural decision should be defensible to a senior-eng interviewer. The writeup is half the deliverable. Per-component working docs (current state, tradeoffs, alternatives considered) live in this folder — start at [`README.md`](./README.md). How the design *got* here, including the graph era and why it was dropped, is the append-only [`learnings.md`](./learnings.md).
+Per-component working docs — current state, trade-offs, alternatives considered — live in this folder; start at [`README.md`](./README.md). How the design *got* here, including the knowledge-graph era and why it was dropped, is the append-only [`learnings.md`](./learnings.md).
 
 ## Goal
 
@@ -35,11 +35,11 @@ The brain doesn't care which consumer is asking. There's no schema migration, no
 - Multi-user / sharing / collab — single-user system
 - Realtime collaboration features
 - A general-purpose Notion competitor
-- Feature breadth for its own sake — portfolio value comes from *daily use*, not surface area
+- Feature breadth for its own sake — the value is in *daily use*, not surface area
 
 ## Why not just use Hermes (or similar)?
 
-[Hermes Agent](https://github.com/nousresearch/hermes-agent) ships a self-hosted, multi-surface personal assistant with turn-shaped memory (chat turns + vector recall) in an afternoon. Worth naming explicitly because the question will come up in interviews.
+[Hermes Agent](https://github.com/nousresearch/hermes-agent) ships a self-hosted, multi-surface personal assistant with turn-shaped memory (chat turns + vector recall) in an afternoon. Worth addressing head-on: why build instead of adopt something like it?
 
 The reason to build instead of adopt is **what holds the truth**: Hermes-style memory accretes from chat turns, so the knowledge base is whatever the conversation happened to contain, fragmented across turns and never human-curated. Brainbot inverts that — **human-edited documents are canonical**, the index is derived, and the brain is a service *many* apps share rather than one assistant's memory. (The project's first answer to this question was "a knowledge graph beats turn-shaped memory"; the graph didn't survive contact with its own read path — that story is [`learnings.md`](./learnings.md).)
 

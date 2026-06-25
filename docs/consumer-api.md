@@ -61,7 +61,7 @@ uuid — renames never move it):
 bodies). No other parameters — a dumb single-row read, no LLM, no knobs.
 
 **doc text vs. recalled chunk text may diverge (by design).** When the optional
-note-legibility layer ([`note-legibility.md`](./note-legibility.md)) has rewritten
+note-legibility layer ([`note-legibility.md`](./design/note-legibility.md)) has rewritten
 a source, that source's `chunks` derive from the *rewrite*, while `doc.text` stays
 the *verbatim original*. So a recalled chunk's `text` may not be a substring of the
 `doc.text` for the same `id`. This is intended: **the chunk is clean structure for
@@ -91,7 +91,7 @@ synced set — treat it loudly, not as an empty result.
   path:      str           # display only
   parent_id: str | null    # parent document's id IF that parent is synced, else null
   version:   str           # same stamp doc() serves — diff to spot changes cheaply
-  health:    object | null # legibility signal (note-legibility.md), null if un-analyzed
+  health:    object | null # legibility signal (design/note-legibility.md), null if un-analyzed
 }
 ```
 
@@ -133,7 +133,7 @@ document's content changed, so it is a "re-check now" trigger, not proof your
 specific view changed — gate the actual recompute on whatever basis your view
 derives from (e.g. the recalled chunk text), not on the cursor alone. The L3
 toolkit brain client wraps this as `onChange(cb)` (polling today, push-ready
-later); see [`change-propagation.md`](./change-propagation.md) for the full
+later); see [`change-propagation.md`](./design/change-propagation.md) for the full
 cost-cascade rationale.
 
 ## Profile — not a consumer endpoint

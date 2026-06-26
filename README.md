@@ -35,7 +35,9 @@ so they're searchable by meaning AND by exact keyword
 Any app asks a question  ──►  gets back the closest passages, in your words
 ```
 
-Under the hood it's a Postgres database with vector search (pgvector). Apps reach it over plain web requests, or — for AI tools like Claude Code — over MCP. No AI writes your memory anywhere in the pipeline; the only model involved is the one that turns text into searchable vectors.
+Under the hood it's a Postgres database with vector search (pgvector). Apps reach it over plain web requests, or — for AI tools like Claude Code — over MCP. By default the only AI in the pipeline is the one that turns your text into searchable vectors — nothing rewrites or invents your memory.
+
+**One optional exception — tidying up messy notes.** A wall of text with no structure is hard to search well, so there's an opt-in step (off by default) where the brain uses an AI to *restructure* a note into cleaner sections before indexing it. It only reorganizes your own words — it restructures, it never summarizes, synthesizes, or adds facts. Your original page is always kept untouched and is exactly what you get back when you open it whole; the tidied version only changes how the note is searched.
 
 ## Why it's built this way
 

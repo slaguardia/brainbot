@@ -101,7 +101,7 @@ function render(container: HTMLElement, rec: RewriteRecord): void {
         <button class="leg-rewrite" type="button">Rewrite now</button>
         <label class="leg-policy-row">
           Policy
-          <select class="leg-policy">
+          <select class="leg-policy tk-input">
             ${opt("auto", "auto — follow the global policy")}
             ${opt("manual", "manual — health only; rewrite on request")}
             ${opt("off", "off — pin to the raw voice (never rewrite)")}

@@ -10,6 +10,8 @@
 //
 // All Notion-returned strings (titles) are escaped before they touch innerHTML.
 
+import { button, modal, toast } from "@brainbot/web-toolkit/components";
+
 function esc(s: unknown): string {
   return String(s ?? "")
     .replace(/&/g, "&amp;")
@@ -369,32 +371,45 @@ function showPullModal(
 ): void {
   const title = node.page.title || "(untitled)";
   const n = kids.length;
-  const overlay = document.createElement("div");
-  overlay.className = "disc-modal-overlay";
-  overlay.innerHTML = `
-    <div class="disc-modal" role="dialog" aria-modal="true" aria-label="Pull options">
-      <p class="disc-modal-text">
-        <strong>${esc(title)}</strong> has ${n} child page${n === 1 ? "" : "s"} not yet
-        in the brain. Pull them too?
-      </p>
-      <div class="disc-modal-actions">
-        <button type="button" class="disc-pull" data-act="one">Just this page</button>
-        <button type="button" class="disc-pull" data-act="all">Page + ${n} child${n === 1 ? "" : "ren"}</button>
-        <button type="button" class="disc-modal-cancel" data-act="cancel">Cancel</button>
-      </div>
-    </div>`;
-  overlay.addEventListener("click", (e) => {
-    const t = e.target as HTMLElement;
-    const act = t === overlay ? "cancel" : t.getAttribute("data-act");
-    if (!act) return;
-    overlay.remove();
-    if (act === "one") void pullPage(btn, node.page.url ?? "");
-    if (act === "all") {
-      const urls = [node.page.url, ...kids.map((k) => k.url)].filter(Boolean) as string[];
-      void pullBatch(body, btn, urls);
-    }
+
+  // The title is the one untrusted string here; everything else is static.
+  const text = document.createElement("div");
+  text.innerHTML = `<strong>${esc(title)}</strong> has ${n} child page${
+    n === 1 ? "" : "s"
+  } not yet in the brain. Pull them too?`;
+
+  const handle = modal({
+    title: "Pull options",
+    body: text,
+    actions: [
+      button({
+        label: "Just this page",
+        onClick: () => {
+          handle.close();
+          void pullPage(btn, node.page.url ?? "");
+        },
+      }),
+      button({
+        label: `Page + ${n} child${n === 1 ? "" : "ren"}`,
+        variant: "primary",
+        onClick: () => {
+          handle.close();
+          const urls = [node.page.url, ...kids.map((k) => k.url)].filter(Boolean) as string[];
+          void pullBatch(body, btn, urls);
+        },
+      }),
+    ],
   });
-  document.body.appendChild(overlay);
+  // A fresh modal is built per click (its content is page-specific), so drop it
+  // from the DOM once it finishes fading out — no matter which close path ran
+  // (×, ESC, scrim, or an action) — so repeated opens don't pile up hidden
+  // scrims. close() always clears tk-open, which drives the opacity transition.
+  handle.el.classList.add("disc-pull-modal");
+  handle.el.addEventListener("transitionend", (e) => {
+    if (e.target === handle.el && e.propertyName === "opacity" && !handle.el.classList.contains("tk-open"))
+      handle.el.remove();
+  });
+  handle.open();
 }
 
 // Sequential batch pull: ingest each page in turn (the brain embeds per page —
@@ -418,12 +433,7 @@ async function pullBatch(body: HTMLElement, btn: HTMLButtonElement, urls: string
     }
   }
   await loadPages(body);
-  if (failed > 0) {
-    body.insertAdjacentHTML(
-      "afterbegin",
-      `<p class="home-status">${failed} of ${urls.length} pulls failed — retry from the tree.</p>`,
-    );
-  }
+  if (failed > 0) toast(`${failed} of ${urls.length} pulls failed — retry from the tree.`);
 }
 
 // Sequential batch remove — the inverse of pullBatch: DELETE each source in
@@ -446,12 +456,7 @@ async function removeBatch(
     }
   }
   await loadPages(body);
-  if (failed > 0) {
-    body.insertAdjacentHTML(
-      "afterbegin",
-      `<p class="home-status">${failed} of ${pages.length} removals failed — retry from the tree.</p>`,
-    );
-  }
+  if (failed > 0) toast(`${failed} of ${pages.length} removals failed — retry from the tree.`);
 }
 
 // Un-ingest one page: DELETE its source from the brain, then swap the "in brain"

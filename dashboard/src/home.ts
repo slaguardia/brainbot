@@ -113,7 +113,7 @@ function renderHome(container: HTMLElement, sources: MapSource[]): void {
     </header>
 
     <form class="home-search" id="home-search-form" role="search">
-      <input id="home-q" type="search" placeholder="Search the brain…" autocomplete="off" />
+      <input id="home-q" class="tk-input" type="search" placeholder="Search the brain…" autocomplete="off" />
       <button type="submit">Recall</button>
     </form>
 

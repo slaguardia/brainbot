@@ -120,10 +120,10 @@ function notionTokenCard(st: NotionStatus): string {
   const viaDb = connected && st.source === "db";
 
   const status = !connected
-    ? `<span class="intg-dot is-off"></span> Not set`
+    ? `<span class="tk-badge">Not set</span>`
     : viaEnv
-      ? `<span class="intg-dot is-on"></span> Set from environment`
-      : `<span class="intg-dot is-on"></span> Set here`;
+      ? `<span class="tk-badge tk-badge-yes">Set from environment</span>`
+      : `<span class="tk-badge tk-badge-yes">Set here</span>`;
   // Remove only makes sense for a token stored here; an env token is the deployment's.
   const action = viaDb ? `<button class="intg-disconnect" type="button">Remove</button>` : "";
 
@@ -137,7 +137,7 @@ function notionTokenCard(st: NotionStatus): string {
         share your pages with it, then paste its token.
       </p>
       <form class="intg-form">
-        <input class="intg-token" type="password" autocomplete="off"
+        <input class="intg-token tk-input" type="password" autocomplete="off"
           placeholder="ntn_… or secret_…" aria-label="Notion integration token" />
         <button class="intg-save" type="submit">${connected ? "Replace" : "Save"}</button>
       </form>
@@ -169,10 +169,10 @@ function anthropicKeyCard(leg: LegibilityStatus): string {
   const viaDb = hasKey && leg.key_source === "db";
 
   const status = !hasKey
-    ? `<span class="intg-dot is-off"></span> Not set`
+    ? `<span class="tk-badge">Not set</span>`
     : viaEnv
-      ? `<span class="intg-dot is-on"></span> Set from environment`
-      : `<span class="intg-dot is-on"></span> Set here`;
+      ? `<span class="tk-badge tk-badge-yes">Set from environment</span>`
+      : `<span class="tk-badge tk-badge-yes">Set here</span>`;
   const action = viaDb ? `<button class="intg-key-remove" type="button">Remove</button>` : "";
 
   return `
@@ -184,7 +184,7 @@ function anthropicKeyCard(leg: LegibilityStatus): string {
         <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">console.anthropic.com</a>.
       </p>
       <form class="intg-key-form">
-        <input class="intg-key-input" type="password" autocomplete="off"
+        <input class="intg-key-input tk-input" type="password" autocomplete="off"
           placeholder="sk-ant-…" aria-label="Anthropic API key" />
         <button class="intg-key-save" type="submit">${hasKey ? "Replace" : "Save"}</button>
       </form>
@@ -218,8 +218,8 @@ function syncCard(sync: SyncStatus): string {
   const reset = viaDb ? `<button class="intg-sync-reset" type="button">Reset</button>` : "";
   const status =
     mins === 0
-      ? `<span class="intg-dot is-off"></span> Off`
-      : `<span class="intg-dot is-on"></span> Every ${mins} min`;
+      ? `<span class="tk-badge">Off</span>`
+      : `<span class="tk-badge tk-badge-yes">Every ${mins} min</span>`;
   const src = viaDb ? "" : ` <span class="intg-src">(default)</span>`;
 
   return `
@@ -232,7 +232,7 @@ function syncCard(sync: SyncStatus): string {
         <strong>0 turns it off</strong>.
       </p>
       <form class="intg-sync-form">
-        <input class="intg-sync-mins" type="number" min="0" step="1" inputmode="numeric"
+        <input class="intg-sync-mins tk-input" type="number" min="0" step="1" inputmode="numeric"
           value="${mins}" aria-label="Auto-sync interval in minutes" />
         <span class="intg-sync-unit">min</span>
         <button class="intg-sync-save" type="submit">Save</button>
@@ -268,10 +268,10 @@ function legibilityCard(leg: LegibilityStatus): string {
   const hasKey = !!leg.has_key;
 
   const status = !enabled
-    ? `<span class="intg-dot is-off"></span> Off`
+    ? `<span class="tk-badge">Off</span>`
     : active
-      ? `<span class="intg-dot is-on"></span> On (${esc(mode)})`
-      : `<span class="intg-dot is-off"></span> On — needs an Anthropic key`;
+      ? `<span class="tk-badge tk-badge-yes">On (${esc(mode)})</span>`
+      : `<span class="tk-badge tk-badge-maybe">On — needs an Anthropic key</span>`;
   // When enabled without a key, point at the API keys section above instead of
   // the generic blurb — that's the one thing the user needs to do.
   const help =
@@ -291,14 +291,14 @@ function legibilityCard(leg: LegibilityStatus): string {
         </label>
         <label class="intg-leg-row">
           Mode
-          <select class="intg-leg-mode">
+          <select class="intg-leg-mode tk-input">
             <option value="auto" ${mode === "auto" ? "selected" : ""}>auto — rewrite low-health pages</option>
             <option value="manual" ${mode === "manual" ? "selected" : ""}>manual — health only</option>
           </select>
         </label>
         <label class="intg-leg-row">
           Threshold
-          <input class="intg-leg-threshold" type="number" min="0" max="100" step="1"
+          <input class="intg-leg-threshold tk-input" type="number" min="0" max="100" step="1"
             inputmode="numeric" value="${threshold}" aria-label="Auto-rewrite health threshold" />
         </label>
         <div class="intg-leg-actions">

@@ -147,7 +147,7 @@ from the graph and retire the body-dump. This **returns to the original Item-2
 design** — now viable because the graph is finally faithful enough to honor it.
 (That Path-A plan has since been retired — see **Chapter 6**.)
 
-Kept deliberately **generic** (per [`genericity-rule.md`](./genericity-rule.md)):
+Kept deliberately **generic** (domain-agnostic, never shaped around one person's workflow):
 `polarity` and `strength` are domain-agnostic dimensions, not career verbs like
 "targets/avoids." And we record *how strongly* the user holds something — never
 what an app should *do* about it.

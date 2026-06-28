@@ -1,7 +1,7 @@
 # Note Legibility & Optional Rewrite
 
 > Feature plan. The *why*, the *shape*, and a build checklist. Lands next to
-> [`brain-architecture.md`](./brain-architecture.md) (the brain's settled design)
+> [`brain-architecture.md`](../brain-architecture.md) (the brain's settled design)
 > and amends one of its settled principles — see [Principle amendment](#principle-amendment).
 > Status: **built + deployed to the live brain, enabled.** Phases 1, 2, and 4 are
 > implemented and tested (schema + analyzer + ingest fork + config seam; `map`
@@ -11,7 +11,7 @@
 > MRR). The recall@k curve still can't set `legibility.threshold` (recall saturates
 > on this corpus), so it's set to **`65`** from the health-score distribution
 > (borderline content clusters at 62–63). Owner-writing guidance:
-> [`writing-legible-notes.md`](./writing-legible-notes.md).
+> [`writing-legible-notes.md`](../writing-legible-notes.md).
 > **Not yet landed in git** — the change lives on the `note-legibility` worktree
 > branch; the live brain image was rebuilt directly from it.
 
@@ -54,7 +54,7 @@ already-legible pages), so cost tracks need.
 ## Principle amendment
 
 This amends **Settled Principle #3 — "No write-time LLM"** in
-[`brain-architecture.md`](./brain-architecture.md). That was a starting-simplicity
+[`brain-architecture.md`](../brain-architecture.md). That was a starting-simplicity
 choice, not a permanent tenet. The amended principle:
 
 > **No write-time LLM *by default*.** The base brain remains split + embed + insert.
@@ -93,7 +93,7 @@ questions.
 - **Opt-in; manual or automatic.** Global enable + mode. Auto fires when health is
   below a threshold. A per-source override can pin a page to "never rewrite."
 - **Generic for any notebook.** Nothing here is Twitter- or Notion-specific. Legibility
-  is about agent-consumption of *any* source (see [`genericity-rule.md`](./genericity-rule.md)).
+  is about agent-consumption of *any* source.
   The provider is pluggable, like the embedder.
 
 ## Deliberate non-goals (v1)
@@ -300,7 +300,7 @@ over `/recall`, baseline-vs-treatment diff) and `brain/eval/run_ab.py` (the full
 in-process A/B against an isolated copy of the corpus — real Voyage + Anthropic,
 never touches the live brain). **How to re-run when the corpus grows — including how
 to find the "real dumps" and what counts as enough data — is the runbook at
-[`../brain/eval/README.md`](../brain/eval/README.md).**
+[`../../brain/eval/README.md`](../../brain/eval/README.md).**
 
 ### Eval run — 2026-06-11 (deployed live; mechanism works, but corpus too small to set the threshold)
 
@@ -375,7 +375,7 @@ Phased so each step is independently verifiable. Earlier phases de-risk later on
 - [x] Dashboard health view: score + actionable `notes`; rewrite diff (raw vs rewrite). → built: home score badge (reasons in tooltip) + the `#legibility/<id>` view (health + reasons + raw-vs-rewrite diff). Typecheck-verified; UI behavior needs the live dashboard.
 - [x] `POST /sources/{id}/rewrite` manual-trigger endpoint (`force_rewrite=True`; respects the `'off'` pin and global disable). → verified: rewrites an unchanged page on demand; `{rewrote: false}` for an `'off'` page and a 409 when globally disabled.
 - [x] Per-source `rewrite_policy` override (incl. 'off' = pin to raw voice). → verified: an 'off' page is never rewritten, even by the manual endpoint; set via `PUT /sources/{id}/rewrite-policy`.
-- [x] Guidance doc: how to write notes that power the rewrite well — framed as help, not a requirement. → [`writing-legible-notes.md`](./writing-legible-notes.md); linked from the badge tooltip's destination and the legibility view.
+- [x] Guidance doc: how to write notes that power the rewrite well — framed as help, not a requirement. → [`writing-legible-notes.md`](../writing-legible-notes.md); linked from the badge tooltip's destination and the legibility view.
 
 ### Also built (completing the UI-toggle seam the config section calls for)
 - [x] `legibility.*` status on `GET /integrations` + `PUT/DELETE /integrations/legibility` (set/reset the runtime policy from the UI, exactly like the poll interval).

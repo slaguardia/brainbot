@@ -13,7 +13,7 @@ See [`docs/web-toolkit.md`](../docs/web-toolkit.md) (the spec) and
 > (matching how `docs/` were seeded). In production it becomes **its own repo**
 > consumed as a **git-tag dependency** (e.g.
 > `"@brainbot/web-toolkit": "github:you/web-toolkit#v0.1.0"`). The in-repo
-> consumer (the brainbot dashboard, US-003) depends on it via a `file:` path — see the
+> consumer (the brainbot dashboard) depends on it via a `file:` path — see the
 > recipe below.
 
 ## Modules (the public surface)
@@ -43,9 +43,9 @@ hex. The one per-app override allowed is the PWA manifest `theme_color` / icons
 
 ---
 
-## Scaffold contract — the EXACT recipe US-003 follows
+## Scaffold contract — the exact recipe the dashboard follows
 
-US-003 rebuilds the **brainbot dashboard** on this toolkit. Because the toolkit is
+The **brainbot dashboard** is built on this toolkit. Because the toolkit is
 in-repo, depend on it with a `file:` path.
 
 ### 1. Dependency line

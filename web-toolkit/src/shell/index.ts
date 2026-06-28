@@ -39,6 +39,13 @@ export type MountAppOptions = {
   brandHref?: string;
   /** Element to render the shell into. Defaults to document.body. */
   root?: HTMLElement;
+  /**
+   * Chrome layout. `"header"` (default) is the centered column with a top
+   * `.cap-head`. `"sidebar"` is a full-width 2-column grid with a vertical nav
+   * rail (`.cap-side`) — handy for app-like, data-dense surfaces. Opt-in only;
+   * the default is unchanged, so existing apps keep the header.
+   */
+  layout?: "header" | "sidebar";
 };
 
 /**
@@ -73,19 +80,17 @@ export function mountApp(
   const title = opts.title ?? document.title ?? "";
   const brandHref = opts.brandHref ?? "#";
 
-  const main = document.createElement("main");
+  const layout = opts.layout ?? "header";
 
-  const head = document.createElement("header");
-  head.className = "cap-head";
+  // Brand wordmark + nav are built once; the layout decides how they're framed.
   const brand = document.createElement("a");
   brand.className = "brand";
   brand.href = brandHref;
   brand.textContent = title;
   brand.setAttribute("aria-label", `${title} — home`);
-  head.appendChild(brand);
 
   const navEl = document.createElement("nav");
-  navEl.className = "cap-nav";
+  navEl.className = layout === "sidebar" ? "cap-nav cap-nav-vert" : "cap-nav";
   navEl.setAttribute("aria-label", "Views");
   for (const item of opts.nav ?? []) {
     const a = document.createElement("a");
@@ -94,16 +99,33 @@ export function mountApp(
     if (item.ariaLabel) a.setAttribute("aria-label", item.ariaLabel);
     navEl.appendChild(a);
   }
-  head.appendChild(navEl);
 
-  const content = document.createElement("section");
-  content.className = "tk-content";
-
-  main.appendChild(head);
-  main.appendChild(content);
+  // The chrome container (swapped out for chrome:false routes) plus the content
+  // region views mount into, assembled per layout. Header: a centered <main>
+  // with a top .cap-head. Sidebar: a 2-column grid with a vertical nav rail.
+  let chromeRoot: HTMLElement;
+  let content: HTMLElement;
+  if (layout === "sidebar") {
+    chromeRoot = document.createElement("div");
+    chromeRoot.className = "cap-layout";
+    const side = document.createElement("aside");
+    side.className = "cap-side";
+    side.append(brand, navEl);
+    content = document.createElement("main");
+    content.className = "tk-content cap-main";
+    chromeRoot.append(side, content);
+  } else {
+    chromeRoot = document.createElement("main");
+    const head = document.createElement("header");
+    head.className = "cap-head";
+    head.append(brand, navEl);
+    content = document.createElement("section");
+    content.className = "tk-content";
+    chromeRoot.append(head, content);
+  }
 
   // A separate mount target for chrome:false routes — they render full-bleed,
-  // outside the guttered <main>/header, owning the viewport themselves.
+  // outside the chrome, owning the viewport themselves.
   const bleed = document.createElement("div");
   bleed.className = "tk-bleed";
 
@@ -122,19 +144,19 @@ export function mountApp(
     markActive(matched);
     if (matched === null) {
       if (bleed.isConnected) bleed.remove();
-      if (!main.isConnected) root.appendChild(main);
+      if (!chromeRoot.isConnected) root.appendChild(chromeRoot);
       setEmpty(content, "Not found.");
       return;
     }
     const { view, chrome } = resolveEntry(routes[matched]);
     // Swap which container is in the document so a chrome:false route is never
-    // boxed by the chrome's <main> gutters, and vice-versa.
+    // boxed by the chrome, and vice-versa.
     const target = chrome ? content : bleed;
     if (chrome) {
       if (bleed.isConnected) bleed.remove();
-      if (!main.isConnected) root.appendChild(main);
+      if (!chromeRoot.isConnected) root.appendChild(chromeRoot);
     } else {
-      if (main.isConnected) main.remove();
+      if (chromeRoot.isConnected) chromeRoot.remove();
       if (!bleed.isConnected) root.appendChild(bleed);
     }
     target.replaceChildren();

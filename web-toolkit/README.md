@@ -27,8 +27,8 @@ coupling** (you do not have to build the toolkit before the app builds).
 | `@brainbot/web-toolkit/base.css` | the `:root` palette + base resets + shared app-chrome CSS. Import once. |
 | `@brainbot/web-toolkit/components.css` | CSS for the component factories. Import if you use `components`. |
 | `@brainbot/web-toolkit/tokens` | `tokens` (typed record of token names) + `cssVar()` |
-| `@brainbot/web-toolkit/shell` | `mountApp(routes, opts)` hash router + `setLoading/setEmpty/setError` |
-| `@brainbot/web-toolkit/components` | `button`, `card`, `table`, `modal`, `progress` + `streamInto` (SSE) |
+| `@brainbot/web-toolkit/shell` | `mountApp(routes, opts)` hash router (`header` or `sidebar` layout) + `setLoading/setEmpty/setError` |
+| `@brainbot/web-toolkit/components` | `button`, `badge`, `card`, `table` (opt-in `sortable`), `modal`, `progress`, `toast` + `streamInto` (SSE); plus the `tk-input` form-control class (CSS-only, no factory) |
 | `@brainbot/web-toolkit/pwa` | `manifest(opts)` + `registerSW()` |
 | `@brainbot/web-toolkit/pwa/sw.js` | the standard service worker (copy to your origin as `/sw.js`) |
 | `@brainbot/web-toolkit/brain` | `recall(q,k?)`, `doc(id)`, `map()` — typed, via your `/api/brain/*` proxy |

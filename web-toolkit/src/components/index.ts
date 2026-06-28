@@ -1,7 +1,7 @@
 /**
  * components — vanilla factories returning HTMLElement, harvested from scout's
- * internal/web/index.html primitives (button, card, table, modal, the SSE
- * progress drawer). NO third-party component library. Their CSS ships in the
+ * internal/web/index.html primitives (button, badge, card, table, modal, the
+ * SSE progress drawer). NO third-party component library. Their CSS ships in the
  * toolkit's components.css — an app must
  *   import "@brainbot/web-toolkit/components.css";
  * for these to look right (base.css supplies the tokens they reference).
@@ -9,7 +9,7 @@
 
 /* ---- button (scout .btn) ------------------------------------------------- */
 
-export type ButtonVariant = "default" | "primary" | "accent";
+export type ButtonVariant = "default" | "primary" | "accent" | "danger";
 export type ButtonOptions = {
   label: string;
   variant?: ButtonVariant;
@@ -22,9 +22,22 @@ export function button(opts: ButtonOptions): HTMLButtonElement {
   el.className = "tk-btn";
   if (opts.variant === "primary") el.classList.add("tk-btn-primary");
   else if (opts.variant === "accent") el.classList.add("tk-btn-accent");
+  else if (opts.variant === "danger") el.classList.add("tk-btn-danger");
   el.textContent = opts.label;
   if (opts.disabled) el.disabled = true;
   if (opts.onClick) el.addEventListener("click", opts.onClick);
+  return el;
+}
+
+/* ---- badge (scout .pill — semantic status chip) -------------------------- */
+
+export type BadgeVariant = "neutral" | "yes" | "maybe" | "no" | "info";
+
+export function badge(label: string, variant: BadgeVariant = "neutral"): HTMLElement {
+  const el = document.createElement("span");
+  el.className = "tk-badge";
+  if (variant !== "neutral") el.classList.add(`tk-badge-${variant}`);
+  el.textContent = label;
   return el;
 }
 
@@ -63,6 +76,8 @@ export type TableOptions = {
   rows: Array<Array<string | Node>>;
   /** Optional per-row click handler (whole row is clickable, scout-style). */
   onRowClick?: (rowIndex: number) => void;
+  /** Make headers click-to-sort (by cell text, numeric-aware). Opt-in. */
+  sortable?: boolean;
 };
 
 export function table(opts: TableOptions): HTMLElement {
@@ -98,8 +113,47 @@ export function table(opts: TableOptions): HTMLElement {
   });
   tbl.appendChild(tbody);
 
+  if (opts.sortable) wireSort(thead, tbody, opts.rows);
+
   wrap.appendChild(tbl);
   return wrap;
+}
+
+/**
+ * Wire click-to-sort on a table's headers. Sorts by each cell's text content
+ * (numeric-aware), toggling asc/desc, and reflects state via `aria-sort` + a
+ * caret on the active header. Reorders the existing <tr> nodes, so any per-row
+ * click handler keeps reporting its ORIGINAL index (the caller's data array is
+ * untouched).
+ */
+function wireSort(
+  thead: HTMLElement,
+  tbody: HTMLElement,
+  rows: Array<Array<string | Node>>,
+): void {
+  const ths = Array.from(thead.querySelectorAll("th"));
+  const trs = Array.from(tbody.children); // snapshot in original order
+  const keyOf = (cell: string | Node) =>
+    (typeof cell === "string" ? cell : (cell.textContent ?? "")).trim();
+  let activeCol = -1;
+  let dir: 1 | -1 = 1;
+  ths.forEach((th, col) => {
+    th.classList.add("tk-th-sortable");
+    th.addEventListener("click", () => {
+      dir = activeCol === col && dir === 1 ? -1 : 1;
+      activeCol = col;
+      const order = rows
+        .map((row, i) => ({ i, key: keyOf(row[col]) }))
+        .sort((a, b) => a.key.localeCompare(b.key, undefined, { numeric: true }) * dir);
+      for (const { i } of order) tbody.appendChild(trs[i]);
+      ths.forEach((h, c) => {
+        const on = c === col;
+        h.setAttribute("aria-sort", on ? (dir === 1 ? "ascending" : "descending") : "none");
+        h.classList.toggle("tk-th-asc", on && dir === 1);
+        h.classList.toggle("tk-th-desc", on && dir === -1);
+      });
+    });
+  });
 }
 
 /* ---- modal (scout .modal-scrim / .modal) --------------------------------- */
@@ -155,17 +209,38 @@ export function modal(opts: ModalOptions): ModalHandle {
 
   scrim.appendChild(box);
 
-  const close = () => scrim.classList.remove("tk-open");
-  const open = () => scrim.classList.add("tk-open");
+  // Announce the overlay as a modal dialog labelled by its title.
+  box.setAttribute("role", "dialog");
+  box.setAttribute("aria-modal", "true");
+  box.setAttribute("aria-label", opts.title);
+  box.tabIndex = -1;
+
+  // Track what had focus so close() can restore it — keyboard users land back
+  // where they were, not at the top of the document.
+  let restoreFocus: HTMLElement | null = null;
+
+  // Declared as hoisted functions so open/close/onKey can reference each other.
+  function onKey(e: KeyboardEvent): void {
+    if (e.key === "Escape") close();
+  }
+  function open(): void {
+    restoreFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    scrim.classList.add("tk-open");
+    // ESC is wired ONLY while open and torn down on close — so a modal never
+    // leaks a permanent window listener (and ESC won't close a closed modal).
+    document.addEventListener("keydown", onKey);
+    box.focus();
+  }
+  function close(): void {
+    scrim.classList.remove("tk-open");
+    document.removeEventListener("keydown", onKey);
+    restoreFocus?.focus();
+  }
 
   closeBtn.addEventListener("click", close);
   scrim.addEventListener("click", (e) => {
     if (e.target === scrim) close();
   });
-  const onKey = (e: KeyboardEvent) => {
-    if (e.key === "Escape") close();
-  };
-  window.addEventListener("keydown", onKey);
 
   if (opts.attach !== false) document.body.appendChild(scrim);
 
@@ -268,4 +343,58 @@ export function streamInto(p: ProgressHandle, url: string, title?: string): Even
   });
   es.onerror = () => es.close();
   return es;
+}
+
+/* ---- toast (transient notification — scout's toast()) -------------------- */
+
+export type ToastKind = "info" | "success" | "error";
+export type ToastOptions = {
+  /** Override the auto-classified severity. */
+  kind?: ToastKind;
+  /** Auto-dismiss delay in ms (default 4000). Pass 0 to keep it until clicked. */
+  durationMs?: number;
+};
+
+/**
+ * Show a transient toast in a bottom-right stack (lazily created). Severity is
+ * auto-classified from the text — anything matching
+ * /fail|error|denied|invalid|unable|cannot/i tints red — unless `kind`
+ * overrides it. Click to dismiss; returns a dismiss function. Mirrors scout's
+ * toast() severity heuristic.
+ */
+export function toast(message: string, opts: ToastOptions = {}): () => void {
+  const host = toastHost();
+  const kind: ToastKind =
+    opts.kind ?? (/fail|error|denied|invalid|unable|cannot/i.test(message) ? "error" : "info");
+  const el = document.createElement("div");
+  el.className = `tk-toast tk-toast-${kind}`;
+  el.setAttribute("role", kind === "error" ? "alert" : "status");
+  el.textContent = message;
+  host.appendChild(el);
+  // Animate in on the next frame so the off-state is painted first.
+  requestAnimationFrame(() => el.classList.add("tk-toast-in"));
+
+  let dismissed = false;
+  const dismiss = () => {
+    if (dismissed) return;
+    dismissed = true;
+    el.classList.remove("tk-toast-in");
+    el.addEventListener("transitionend", () => el.remove(), { once: true });
+    setTimeout(() => el.remove(), 300); // fallback if no transition fires
+  };
+  el.addEventListener("click", dismiss);
+  const dur = opts.durationMs ?? 4000;
+  if (dur > 0) setTimeout(dismiss, dur);
+  return dismiss;
+}
+
+/** The lazily-created singleton stack toasts append into. */
+function toastHost(): HTMLElement {
+  let host = document.querySelector<HTMLElement>(".tk-toast-host");
+  if (!host) {
+    host = document.createElement("div");
+    host.className = "tk-toast-host";
+    document.body.appendChild(host);
+  }
+  return host;
 }

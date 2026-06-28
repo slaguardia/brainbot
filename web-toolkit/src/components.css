@@ -38,7 +38,7 @@
 }
 .tk-btn:disabled {
   opacity: 0.5;
-  cursor: default;
+  cursor: not-allowed;
 }
 .tk-btn-primary {
   background: var(--link-bg);
@@ -56,6 +56,123 @@
 }
 .tk-btn-accent:hover {
   background: rgba(139, 109, 255, 0.22);
+}
+/* destructive variant — coral, for delete/remove actions (scout's .btn-danger) */
+.tk-btn-danger {
+  background: var(--no-bg);
+  border-color: var(--no);
+  color: var(--no);
+}
+.tk-btn-danger:hover {
+  background: rgba(239, 100, 100, 0.2);
+}
+/* generic tinted variant — set --tk-tint to ANY token/color and the button
+   derives its fill/border/text from it via color-mix(). Lets an app spin up a
+   button in any semantic color without a bespoke class (e.g.
+   `el.style.setProperty("--tk-tint", "var(--maybe)")`). */
+.tk-btn-tinted {
+  --tk-tint: var(--accent);
+  background: color-mix(in srgb, var(--tk-tint) 12%, var(--bg-elevated));
+  border-color: color-mix(in srgb, var(--tk-tint) 45%, var(--border));
+  color: var(--tk-tint);
+}
+.tk-btn-tinted:hover {
+  background: color-mix(in srgb, var(--tk-tint) 20%, var(--bg-elevated));
+  border-color: color-mix(in srgb, var(--tk-tint) 62%, var(--border));
+}
+
+/* ---- form controls (scout .input — inputs, selects, textareas) -----------
+   Apply `tk-input` to a native <input>, <select>, or <textarea>. No factory:
+   form elements are too stateful/varied to wrap usefully, so the class IS the
+   primitive. base.css's `color-scheme: dark` already themes native date/time
+   pickers, so no per-type override is needed. */
+.tk-input {
+  width: 100%;
+  background: var(--bg-elevated);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  padding: 7px 10px;
+  font: inherit;
+  outline: none;
+  transition: border-color var(--dur-fast) var(--ease),
+    box-shadow var(--dur-fast) var(--ease),
+    background-color var(--dur-fast) var(--ease);
+}
+.tk-input:hover {
+  border-color: var(--border-strong);
+}
+.tk-input:focus {
+  border-color: var(--link);
+  box-shadow: 0 0 0 3px var(--link-bg);
+  background: var(--panel-2);
+}
+.tk-input::placeholder {
+  color: var(--fg-faint);
+}
+.tk-input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+textarea.tk-input {
+  resize: vertical;
+  line-height: 1.5;
+}
+/* select: swap the native chevron for a themed caret (the SVG fill is the
+   --fg-muted hex; SVG data-URIs can't read CSS custom properties). */
+select.tk-input {
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path fill='%239099a8' d='M0 0l5 6 5-6z'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  padding-right: 28px;
+}
+
+/* ---- badge / status pill (scout .pill — semantic chip + status dot) -------
+   `tk-badge` alone is the neutral chip; add a semantic modifier to color it. */
+.tk-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  line-height: 1.5;
+  background: var(--panel-3);
+  color: var(--fg-muted);
+}
+.tk-badge::before {
+  content: "";
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.85;
+}
+.tk-badge-yes {
+  background: var(--yes-bg);
+  color: var(--yes);
+}
+.tk-badge-maybe {
+  background: var(--maybe-bg);
+  color: var(--maybe);
+}
+.tk-badge-no {
+  background: var(--no-bg);
+  color: var(--no);
+}
+.tk-badge-info {
+  background: var(--link-bg);
+  color: var(--link);
+}
+/* generic tinted badge — set --tk-tint to any color (see .tk-btn-tinted). */
+.tk-badge-tinted {
+  --tk-tint: var(--accent);
+  background: color-mix(in srgb, var(--tk-tint) 14%, transparent);
+  color: var(--tk-tint);
 }
 
 /* ---- card (scout's bordered raised surface — .table-wrap / .rv-hit) ------- */
@@ -111,6 +228,35 @@
 }
 .tk-table tbody tr:hover {
   background: var(--bg-elevated);
+}
+/* sortable headers (opt-in via table({ sortable: true })) — the caret reserves
+   its space always (opacity 0 when idle) so toggling sort never reflows. */
+.tk-table th.tk-th-sortable {
+  cursor: pointer;
+  user-select: none;
+  transition: color var(--dur-fast) var(--ease);
+}
+.tk-table th.tk-th-sortable:hover {
+  color: var(--fg-muted);
+}
+.tk-table th.tk-th-sortable::after {
+  content: "";
+  display: inline-block;
+  width: 0;
+  height: 0;
+  margin-left: 6px;
+  vertical-align: middle;
+  border-left: 3px solid transparent;
+  border-right: 3px solid transparent;
+  opacity: 0;
+}
+.tk-table th.tk-th-asc::after {
+  border-bottom: 4px solid currentColor;
+  opacity: 0.7;
+}
+.tk-table th.tk-th-desc::after {
+  border-top: 4px solid currentColor;
+  opacity: 0.7;
 }
 
 /* ---- modal (scout .modal-scrim / .modal / head / body / foot) ------------ */
@@ -272,4 +418,57 @@
   color: var(--maybe);
   background: rgba(245, 185, 66, 0.08);
   border-left-color: var(--maybe);
+}
+
+/* ---- toast (transient notification stack — scout's toast()) -------------- */
+.tk-toast-host {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: 80;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+  pointer-events: none;
+}
+.tk-toast {
+  pointer-events: auto;
+  cursor: pointer;
+  max-width: min(360px, calc(100vw - 40px));
+  padding: 10px 14px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--border-strong);
+  background: var(--panel-2);
+  color: var(--fg);
+  font-size: 13px;
+  line-height: 1.45;
+  box-shadow: var(--shadow-md);
+  opacity: 0;
+  transform: translateY(8px);
+  transition: opacity var(--dur-base) var(--ease),
+    transform var(--dur-base) var(--ease);
+}
+.tk-toast-in {
+  opacity: 1;
+  transform: translateY(0);
+}
+.tk-toast-error {
+  border-color: var(--no);
+  color: var(--no);
+  background: var(--no-bg);
+}
+.tk-toast-success {
+  border-color: var(--yes);
+  color: var(--yes);
+  background: var(--yes-bg);
+}
+@media (prefers-reduced-motion: reduce) {
+  .tk-toast {
+    transform: none;
+    transition: opacity var(--dur-fast) var(--ease);
+  }
+  .tk-toast-in {
+    transform: none;
+  }
 }

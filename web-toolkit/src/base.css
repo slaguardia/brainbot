@@ -196,6 +196,15 @@ main {
     text-shadow: -1.5px 0 rgba(255, 45, 120, 0.72), 1.5px 0 rgba(40, 224, 255, 0.72);
   }
 }
+/* Respect reduced-motion: the brand glitch is purely decorative, so kill it when
+   the user has asked for less motion. (Ported from the scout consumer, which
+   guards the same animation — base.css is the shared layer the dashboard renders
+   the wordmark from, so the guard belongs here.) */
+@media (prefers-reduced-motion: reduce) {
+  .brand:hover {
+    animation: none;
+  }
+}
 
 .cap-nav a {
   font-family: var(--font-mono);
@@ -233,6 +242,53 @@ main {
 /* The content region mountApp() mounts views into. */
 .tk-content {
   flex: 1;
+}
+
+/* ===========================================================================
+   Sidebar layout — opt-in via mountApp({ layout: "sidebar" }). A vertical nav
+   rail beside a full-width content column, instead of the centered .cap-head
+   column. Both layouts are first-class; apps pick. Rail width themes via
+   --cap-side-w. Generalized from the scout consumer's Linear-style sidebar.
+   =========================================================================== */
+.cap-layout {
+  display: grid;
+  grid-template-columns: var(--cap-side-w, 248px) 1fr;
+  min-height: 100dvh;
+}
+.cap-side {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: max(18px, env(safe-area-inset-top)) 16px
+    max(20px, env(safe-area-inset-bottom)) max(20px, env(safe-area-inset-left));
+  border-right: 1px solid var(--border);
+  background: var(--bg-2);
+  position: sticky;
+  top: 0;
+  max-height: 100dvh;
+  overflow-y: auto;
+}
+/* The sidebar's content column is a <main> too, so neutralize the centered
+   header-mode `main` rule above and let it run full-width. */
+main.cap-main {
+  max-width: none;
+  margin: 0;
+  display: block;
+  min-height: 0;
+  min-width: 0; /* let wide content (tables) scroll, not blow out the 1fr track */
+  gap: 0;
+  padding: max(18px, env(safe-area-inset-top))
+    max(24px, env(safe-area-inset-right))
+    max(20px, env(safe-area-inset-bottom)) 24px;
+}
+/* Vertical nav: stack the pills full-width and left-align them. */
+.cap-nav-vert {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+}
+.cap-nav-vert a {
+  text-align: left;
 }
 
 /* ===========================================================================

@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev:client": "vite",
+    "dev:client": "node --import tsx ./node_modules/vite/bin/vite.js",
     "dev:server": "BRAIN_SERVICE_URL=http://localhost:8100 tsx watch src/server/index.ts",
     "dev": "concurrently -k -n client,server -c cyan,magenta \"npm:dev:client\" \"npm:dev:server\"",
     "build": "tsc -p tsconfig.server.json && node --import tsx ./node_modules/vite/bin/vite.js build",

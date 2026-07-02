@@ -152,9 +152,9 @@ diff-and-re-embed is a later optimization, not before it's needed.
 | **Deployment** | Single docker-compose on a small VPS | All services on one box. Iteration: `git pull && docker compose up -d --build`. |
 | **TLS / domain** | Caddy + Let's Encrypt | UFW restricts to 80/443; fail2ban handles abuse |
 
-## History, open questions, plans
+## History, open questions
 
-Design history — what was believed, what broke, what changed, chapter by chapter — lives in [`learnings.md`](./learnings.md). Open design questions live in [`brain-architecture.md`](./brain-architecture.md); pending feature plans in [`../plans/`](../plans/).
+Design history — what was believed, what broke, what changed, chapter by chapter — lives in [`learnings.md`](./learnings.md). Open design questions live in [`brain-architecture.md`](./brain-architecture.md).
 
 ## Honest tradeoffs (signed off)
 

@@ -30,8 +30,7 @@ by two different people.
 Same shape every time:
 
 - **The brain** has retrieval-chain prompts (query decomposition, coverage-judge,
-  rerank — see [`../plans/agent-task-support.md`](../plans/agent-task-support.md)).
-  Ships defaults. The owner overrides them in *brain* settings.
+  rerank). Ships defaults. The owner overrides them in *brain* settings.
 - **Scout** has its *own* prompts — turning a job posting into the intent it hands
   the brain, and reasoning over the returned chunks into pursue/skip/maybe. Ships
   defaults. The owner overrides them in *scout* settings.
@@ -70,8 +69,7 @@ different person, a different column.
   the dashboard `#integrations` page where the owner sets the Notion token (DB overrides
   env). Same surface, same audience.
 - **Planned:** the brain's *retrieval-chain* prompts become configurable when that
-  chain is built (Direction B in
-  [`../plans/agent-task-support.md`](../plans/agent-task-support.md)). Scout's prompt
+  chain is built. Scout's prompt
   config is likewise app-side work. This doc states the convention they must follow;
   it does not claim those surfaces exist yet.
 

@@ -39,3 +39,7 @@ Thumbs.db
 
 # Claude Code task tracking (session-local; never commit)
 .tasks/
+
+# Unshipped planning docs + local dev runner — kept out of the shared repo
+plans/
+mprocs.yaml

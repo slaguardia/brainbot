@@ -84,7 +84,7 @@ def _run(dsn: str, coro_factory):
     return asyncio.run(_go())
 
 
-def _ingest(dsn, *, force_rewrite=False, source_id=DUMP_ID, text=DUMP, title="Dump", path="Dump"):
+def _ingest(dsn, *, force_rewrite=False, defer_analysis=False, source_id=DUMP_ID, text=DUMP, title="Dump", path="Dump"):
     async def _c(pool):
         return await store.upsert_source(
             pool,
@@ -94,9 +94,18 @@ def _ingest(dsn, *, force_rewrite=False, source_id=DUMP_ID, text=DUMP, title="Du
             path=path,
             source_id=source_id,
             force_rewrite=force_rewrite,
+            defer_analysis=defer_analysis,
         )
 
     return _run(dsn, _c)
+
+
+def _analyze_source(dsn, source_id=DUMP_ID):
+    return _run(dsn, lambda pool: store.analyze_source(pool, source_id))
+
+
+def _owed(dsn):
+    return _run(dsn, store.analysis_owed_ids)
 
 
 def _row(dsn, source_id=DUMP_ID):
@@ -250,6 +259,97 @@ def test_changed_content_reanalyzes(legible):
     _ingest(dsn, text=DUMP + "\nfourth idea about dates")
     assert fake.calls == 2  # content moved -> hash differs -> re-analysis
     assert len(_chunks(dsn)) == 4
+
+
+# ---- deferred analysis: the /ingest fast path + its background completion -------
+
+
+def test_defer_analysis_skips_llm_and_marks_owed(legible):
+    """The user-facing /ingest fix: defer_analysis stores chunks from RAW and marks
+    the analysis owed — the LLM does NOT run in the request path (so the response
+    can't blow the dashboard's 60s deadline), and the source is queued for the
+    background drain."""
+    enable, fake = legible
+    dsn = enable(mode="auto", threshold=60)  # inline this would rewrite (score 10 < 60)
+    _, n = _ingest(dsn, defer_analysis=True)
+    assert n == 1  # chunked from raw, not the 3-way rewrite
+    assert fake.calls == 0  # the rewrite LLM did NOT run in the request path
+    row = _row(dsn)
+    assert row["analysis_hash"] == store._DEFERRED_ANALYSIS
+    assert row["rewrite_text"] is None
+    assert row["health"] is None
+    assert _owed(dsn) == [DUMP_ID]  # queued for the background drain
+
+
+def test_analyze_source_completes_deferred_ingest(legible):
+    """The background worker finishes a deferred ingest: runs the LLM, re-chunks from
+    the rewrite, stores health, and clears the owed marker — then is idempotent."""
+    enable, fake = legible
+    dsn = enable(mode="auto", threshold=60)
+    _ingest(dsn, defer_analysis=True)
+    assert _analyze_source(dsn) is True
+    assert fake.calls == 1
+    row = _row(dsn)
+    assert row["analysis_hash"] not in (None, store._DEFERRED_ANALYSIS)  # a real content hash
+    assert row["rewrite_text"] is not None
+    assert row["health"] is not None
+    assert [c["heading"] for c in _chunks(dsn)] == ["apples", "bananas", "cherries"]
+    assert _owed(dsn) == []  # nothing owed now
+    assert _analyze_source(dsn) is False  # not owed -> no re-run
+    assert fake.calls == 1  # no second (paid) LLM call
+
+
+def test_analyze_source_noop_when_not_owed(legible):
+    """analyze_source is a cheap no-op on a source that isn't awaiting deferral — an
+    off-legibility (non-deferred) ingest kicks it too, and it must not re-analyze."""
+    enable, fake = legible
+    dsn = enable()
+    _ingest(dsn)  # inline analyze -> already done, marker is a real hash, not owed
+    assert fake.calls == 1
+    assert _analyze_source(dsn) is False
+    assert fake.calls == 1
+
+
+def test_deferred_then_disabled_clears_marker_without_llm(legible):
+    """If legibility is turned off before the deferred analysis runs, the drain still
+    resolves the owed source — clearing the marker and keeping raw chunks — with no
+    LLM call (the worker re-reads the live policy via upsert_source)."""
+    enable, fake = legible
+    dsn = enable()
+    _ingest(dsn, defer_analysis=True)
+    assert _owed(dsn) == [DUMP_ID]
+    _run(dsn, lambda p: p.execute("DELETE FROM settings WHERE key=$1", LEGIBILITY_ENABLED_KEY))
+    assert _analyze_source(dsn) is True  # resolved the owed source...
+    assert fake.calls == 0  # ...but the LLM never ran (disabled)
+    assert _row(dsn)["analysis_hash"] is None  # marker cleared to NULL
+    assert _owed(dsn) == []
+
+
+def test_ingest_endpoint_defers_and_kicks_background(legible, client, monkeypatch):
+    """POST /ingest returns immediately with RAW chunks and marks analysis owed — it
+    never blocks on the rewrite LLM (the dashboard-timeout fix), and it schedules the
+    background completion. The kick is stubbed so the deferred state is observed
+    deterministically; the completion path itself is covered above."""
+    enable, fake = legible
+    dsn = enable(mode="auto", threshold=60)  # inline this would rewrite; deferred it won't
+    page = {"id": DUMP_ID, "title": "Dump", "text": DUMP, "path": "Dump",
+            "parent_id": None, "last_edited_time": None}
+    monkeypatch.setattr("brain.api.fetch_page", lambda url, token: page)
+
+    async def _tok(pool):
+        return ("tok", "env")
+
+    monkeypatch.setattr("brain.api._active_notion_token", _tok)
+    kicked = []
+    monkeypatch.setattr("brain.api._spawn", lambda coro: (kicked.append(1), coro.close()))
+
+    resp = client.post("/ingest", json={"url": "https://notion.so/x"})
+    assert resp.status_code == 200
+    assert resp.json()["chunks"] == 1  # RAW chunk count, not the 3-way rewrite
+    assert fake.calls == 0  # the rewrite LLM did NOT run in the request path
+    assert kicked == [1]  # the background analysis was scheduled
+    assert _row(dsn)["analysis_hash"] == store._DEFERRED_ANALYSIS
+    assert _owed(dsn) == [DUMP_ID]
 
 
 def test_manual_mode_analyzes_but_does_not_rewrite(legible):

@@ -48,6 +48,8 @@ from .settings import (
 )
 from .store import (
     _parse_iso,
+    analysis_owed_ids,
+    analyze_source,
     change_cursor,
     delete_source,
     doc,
@@ -66,6 +68,21 @@ logger = logging.getLogger(__name__)
 # wakes from its sleep and re-reads the new interval instead of waiting out the
 # old one. Lives in the app's single event loop alongside the loop and routes.
 _poll_reconfig = asyncio.Event()
+
+# Live fire-and-forget background tasks (the deferred legibility analysis kicked
+# after /ingest). asyncio only weakly references scheduled tasks, so a task that
+# nothing awaits can be GC'd mid-flight — holding it here until it finishes (the
+# done-callback drops it) keeps it alive. analyze_source swallows its own errors,
+# so a task never fails; this is purely about lifetime.
+_background_tasks: set[asyncio.Task] = set()
+
+
+def _spawn(coro) -> None:
+    """Schedule `coro` on the running loop as a tracked background task — used to
+    kick a deferred legibility analysis without blocking the request."""
+    task = asyncio.create_task(coro)
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
 
 
 mcp = FastMCP(
@@ -160,12 +177,24 @@ async def ingest(request: Request) -> JSONResponse:
             # Notion's real last-edited time (provenance), kept distinct from our
             # ingest/sync time (sources.updated_at).
             last_edited=page.get("last_edited_time"),
+            # Return as soon as the raw page is embedded; the legibility rewrite (a
+            # 40-130s LLM call that used to blow the dashboard's 60s proxy deadline)
+            # runs in the background below instead of blocking this response.
+            defer_analysis=True,
         )
     except Exception as e:  # noqa: BLE001
         logger.exception("ingest: upsert_source failed")
         return JSONResponse({"error": f"ingest failed: {e}"}, status_code=500)
 
-    # The page is split into sections — one chunk each; report the real count.
+    # Kick the deferred legibility analysis so it lands promptly (it re-chunks from
+    # the rewrite once done). A cheap no-op when nothing was deferred (legibility off
+    # or the source pinned 'off'); the poll loop is the backstop if this is lost to a
+    # restart before it runs.
+    _spawn(analyze_source(pool, source_id))
+
+    # The page is split into sections — one chunk each; report the real count. This
+    # is the RAW-text count; the rewrite may re-chunk it when the deferred analysis
+    # completes.
     return JSONResponse(
         {"source_id": source_id, "chunks": chunk_count, "path": page["path"], "title": page["title"]}
     )
@@ -949,6 +978,20 @@ async def _sync_notion(pool) -> tuple[int, int, int]:
     return (synced, discovered, failed)
 
 
+async def _drain_deferred_analyses(pool) -> int:
+    """Run every owed deferred legibility analysis and return how many actually ran.
+    The restart backstop for the post-ingest kick: if the brain is redeployed between
+    an /ingest response and its background analyze_source, the deferred marker on the
+    source survives, and this drains it on the next poll tick. Sequential and best-
+    effort (analyze_source never raises); each source is searchable in raw form
+    meanwhile, so a slow drain only delays the tidied re-chunk, never availability."""
+    analyzed = 0
+    for sid in await analysis_owed_ids(pool):
+        if await analyze_source(pool, sid):
+            analyzed += 1
+    return analyzed
+
+
 async def _poll_loop(pool) -> None:
     """Sync Notion on the effective interval until cancelled at shutdown — re-ingest
     stale pages and pick up new pages under already-pulled content. The interval is
@@ -972,10 +1015,15 @@ async def _poll_loop(pool) -> None:
             pass  # the interval elapsed → run a sweep
         try:
             synced, discovered, failed = await _sync_notion(pool)
-            if synced or discovered or failed:
+            # Restart backstop: finish any deferred legibility analyses whose
+            # post-ingest kick was lost (e.g. a redeploy between /ingest and the
+            # background task). Independent of Notion — it re-uses stored text, no
+            # fetch — so it runs even when the sweep no-oped for a missing token.
+            analyzed = await _drain_deferred_analyses(pool)
+            if synced or discovered or failed or analyzed:
                 logger.info(
-                    "brain: notion sync — %d re-ingested, %d new, %d failed",
-                    synced, discovered, failed,
+                    "brain: notion sync — %d re-ingested, %d new, %d failed, %d analyzed",
+                    synced, discovered, failed, analyzed,
                 )
         except asyncio.CancelledError:
             raise

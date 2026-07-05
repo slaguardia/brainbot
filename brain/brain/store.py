@@ -76,6 +76,16 @@ _EMBED_CHAR_BUDGET = 110_000
 # flattener (notion.py) emits h1-h3, but match h1-h6 so any markdown source splits.
 _HEADING_RE = re.compile(r"^(#{1,6})\s+(.*)$")
 
+# Deferred-analysis marker for the `analysis_hash` column. The user-facing /ingest
+# path stores chunks from RAW text and stamps this sentinel to record that the
+# legibility LLM analysis is OWED — run in the background by `analyze_source`
+# (kicked right after ingest, drained by the poll loop) so the request returns in
+# seconds instead of blocking on a 40-130s rewrite. It is a sentinel, never a valid
+# md5 hex, so the idempotency gate treats it as "not yet analyzed" and a source
+# ingested while the feature was OFF (analysis_hash NULL) is never mistaken for one
+# awaiting deferral — only an explicit defer sets this.
+_DEFERRED_ANALYSIS = "deferred"
+
 # The consumer version stamp: a content hash over exactly what /doc serves —
 # title + raw_text. Changes iff the served {title, text} change; deliberately
 # NOT the `version` int column (which bumps on every re-sync, changed or not)
@@ -256,6 +266,7 @@ async def upsert_source(
     parent_id: str | None = None,
     last_edited: str | None = None,
     force_rewrite: bool = False,
+    defer_analysis: bool = False,
 ) -> tuple[str, int]:
     """Create or replace a source, then re-derive its chunks (wipe-replace).
 
@@ -274,6 +285,15 @@ async def upsert_source(
     (bypassing the analysis-hash cache) and uses the rewrite regardless of mode/
     threshold. The per-source `'off'` pin still wins over it. Auto/poll ingest
     leaves it False.
+
+    `defer_analysis` is set by the user-facing /ingest path: when the inline
+    analysis would otherwise run (enabled, not `'off'`, content changed), it is
+    SKIPPED — chunks are built from RAW text and `analysis_hash` is set to the
+    deferred marker, so the request returns without blocking on the rewrite LLM.
+    `analyze_source` finishes the analysis out of band (kicked right after ingest,
+    drained by the poll loop). The manual and poll paths leave it False and analyze
+    inline. Ignored when legibility is off or the source is pinned `'off'` (nothing
+    would have been analyzed anyway).
 
     The note-legibility layer (docs/note-legibility.md) sits at the edge of this
     function: with it disabled (or the source pinned 'off'), the legibility columns
@@ -317,6 +337,16 @@ async def upsert_source(
             )
             rewrite_text = stored_rewrite
             analysis_hash = content_hash
+        elif defer_analysis:
+            # Deferred path (the user-facing /ingest call): DON'T block the request
+            # on the 40-130s rewrite LLM. Store chunks from RAW now (rewrite_text and
+            # health stay None -> chunk_source = raw below), so the page is searchable
+            # in seconds, and stamp the OWED marker. analyze_source runs the real
+            # analysis in the background and re-chunks from the rewrite; the poll loop
+            # drains any kick lost to a restart. A changed page's now-stale stored
+            # rewrite is intentionally dropped here (chunk from raw) — the fresh one
+            # lands shortly, and a stale rewrite for changed text would be worse.
+            analysis_hash = _DEFERRED_ANALYSIS
         else:
             try:
                 # ONE LLM call (segment + score), off the event loop like embed().
@@ -753,6 +783,77 @@ async def set_rewrite_policy(pool: asyncpg.Pool, source_id: str, policy: str) ->
             "UPDATE sources SET rewrite_policy=$2 WHERE id=$1::uuid", source_id, policy
         )
     return result.rsplit(" ", 1)[-1] != "0"
+
+
+# ---- deferred legibility analysis: the background half of the split ingest ------
+
+# Source ids whose deferred analysis is running right now, so the immediate
+# post-ingest kick and the poll-loop drain can never double-run the (paid) LLM on
+# the same source. The brain is single-event-loop, so a plain set is race-free as
+# long as the check-and-add straddles no await (it doesn't, below).
+_analyzing: set[str] = set()
+
+
+async def analyze_source(pool: asyncpg.Pool, source_id: str) -> bool:
+    """Run the OWED legibility analysis for one source in place — the background
+    half of the deferred /ingest. Re-runs `upsert_source` (with `defer_analysis`
+    False) from the source's own stored text, so the normal analyze -> decide-
+    rewrite -> re-chunk -> re-embed path applies and the deferred marker is cleared
+    (to a real content hash when analyzed, or to NULL if legibility was turned off /
+    the source pinned `'off'` in the meantime — `upsert_source` handles both). No
+    Notion fetch: it reuses the stored provenance.
+
+    Self-guarding and best-effort: does nothing (returns False) when the source is
+    gone or not actually awaiting deferred analysis, and never raises — a create_task
+    kick or a poll drain must not crash on it. Returns True iff it resolved an owed
+    source — normally the analysis ran; in the rare case the feature was turned off
+    (or the source pinned `'off'`) after the defer, the marker is simply cleared."""
+    if source_id in _analyzing:
+        return False
+    _analyzing.add(source_id)
+    try:
+        async with pool.acquire() as conn:
+            owed = await conn.fetchval(
+                "SELECT analysis_hash = $2 FROM sources WHERE id = $1::uuid",
+                source_id,
+                _DEFERRED_ANALYSIS,
+            )
+        # NULL (no row, or analysis_hash NULL) and False (a real hash) both mean
+        # nothing is owed — an off-legibility ingest kicks this too, cheaply no-op.
+        if not owed:
+            return False
+        rec = await source_for_rewrite(pool, source_id)
+        if rec is None:  # deleted between the owed check and now
+            return False
+        await upsert_source(
+            pool,
+            kind=rec["kind"],
+            title=rec["title"],
+            raw_text=rec["raw_text"],
+            path=rec["path"],
+            source_id=source_id,
+            parent_id=rec["parent_id"],
+            last_edited=rec["last_edited"],
+        )
+        return True
+    except Exception:  # noqa: BLE001 — deferred analysis must never crash its caller
+        logger.exception("legibility: deferred analyze failed for %s", source_id)
+        return False
+    finally:
+        _analyzing.discard(source_id)
+
+
+async def analysis_owed_ids(pool: asyncpg.Pool) -> list[str]:
+    """Ids of sources whose legibility analysis was deferred at ingest and is still
+    owed (`analysis_hash` == the deferred marker) — the poll loop's drain queue and
+    the restart backstop for post-ingest kicks lost before they ran. Oldest-updated
+    first, so a backlog drains roughly in ingest order."""
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            "SELECT id FROM sources WHERE analysis_hash = $1 ORDER BY updated_at",
+            _DEFERRED_ANALYSIS,
+        )
+    return [str(r["id"]) for r in rows]
 
 
 # ---- doc (deterministic fetch): one whole document by stable id ---------------

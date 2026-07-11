@@ -164,60 +164,26 @@ main {
   margin-top: 8px;
 }
 
-/* Discover link — the doorway to pulling more Notion pages into the brain.
-   Standalone (empty-brain hero) it's a chunky button; in the Sources header
-   row it slims down and hugs the right edge. */
-.home-discover {
+/* Browse-pages button — the landing's doorway to the Notion pages view, sitting
+   under the search box. A chunky call-to-action; it steps aside while recall
+   results are up. */
+.home-browse {
   display: inline-block;
   margin: 22px 0 0;
   color: var(--link);
   background: var(--link-bg);
   border: 1px solid var(--border-strong);
   border-radius: var(--r-md);
-  padding: 7px 14px;
-  font-size: 13.5px;
+  padding: 9px 16px;
+  font-size: 14px;
   text-decoration: none;
+  transition: border-color var(--dur-fast) var(--ease);
 }
-.home-discover:hover {
+.home-browse:hover {
   border-color: var(--link);
 }
-.home-map-head .home-discover {
-  margin: 0 0 0 auto;
-  padding: 3px 10px;
-  font-size: 12.5px;
-  border-radius: var(--r-sm);
-}
 
-/* --- Source map: path tree -------------------------------------------------*/
-.home-map {
-  margin: 22px 0 0;
-}
-.home-map-head {
-  display: flex;
-  align-items: baseline;
-  gap: 10px;
-}
-.home-map h2 {
-  font-size: 13px;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--fg-faint);
-  margin: 0 0 8px;
-}
-/* Notion sync status in the home meta line: faint while checking/current, and
-   hosting the one re-pull button when pages drifted. */
-.home-sync {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--fg-faint);
-  font-family: var(--font-mono);
-  font-size: 13px;
-}
-.home-sync.is-current::before {
-  content: "✓ ";
-  color: var(--yes);
-}
+/* --- Source tree (the #discover page's Notion tree) ------------------------*/
 .src-list {
   list-style: none;
   margin: 0;
@@ -352,46 +318,195 @@ main {
 }
 
 /* ===========================================================================
-   Discovery view (#discover). What the Notion integration can see vs. what's
-   in the brain, as a parent/child page tree with a per-page "pull" action.
-   Reuses the home shell (.home section, .src-list tree rails).
+   Notion pages view (#discover) — the browse-and-manage surface. A summary strip
+   (page / in-brain / changed counts + overall legibility), a filter toolbar, and
+   the parent/child Notion tree with per-page pull / remove and per-source
+   legibility badges. Reuses the home shell (.home section, .src-list tree rails).
    =========================================================================== */
 
+/* Header: title + one-line sub on the left, Refresh pinned right. */
 .disc-head {
   display: flex;
-  align-items: baseline;
+  align-items: flex-start;
   justify-content: space-between;
+  gap: 16px;
+}
+.disc-head-text {
+  min-width: 0;
 }
 .disc-head h2 {
-  font-size: 13px;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--fg-faint);
   margin: 0;
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--fg);
 }
 .disc-refresh {
+  flex: 0 0 auto;
   color: var(--link);
   background: var(--link-bg);
   border: 1px solid var(--border-strong);
   border-radius: var(--r-md);
-  padding: 5px 12px;
+  padding: 6px 13px;
   font-size: 13px;
   text-decoration: none;
+  transition: border-color var(--dur-fast) var(--ease);
 }
 .disc-refresh:hover {
   border-color: var(--link);
 }
 .disc-sub {
-  margin: 6px 0 14px;
+  margin: 6px 0 0;
+  max-width: 70ch;
   color: var(--fg-muted);
-  font-size: 13px;
+  font-size: 13.5px;
   line-height: 1.5;
 }
-.disc-counts {
-  margin: 0 0 8px;
-  color: var(--fg-faint);
+
+/* --- Summary strip ---------------------------------------------------------*/
+/* Stat tiles on the left (pages · in brain · changed · avg legibility), the sync
+   time + the one bulk re-pull action on the right. */
+.disc-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px 20px;
+  margin: 18px 0 0;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  background: var(--bg-elevated);
+}
+.disc-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 26px;
+}
+.disc-stat {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+}
+.disc-stat-n {
+  font-size: 20px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  color: var(--fg);
+}
+.disc-stat-l {
   font-size: 12.5px;
+  color: var(--fg-faint);
+}
+.disc-stat.is-in .disc-stat-n {
+  color: var(--yes);
+}
+.disc-stat.is-changed .disc-stat-n {
+  color: var(--maybe);
+}
+/* Overall-legibility tile — a coloured dot before the score, tiered like the
+   per-row badge. Hidden until map() resolves. */
+.disc-health-stat {
+  align-items: center;
+}
+.disc-health-stat .disc-stat-n::before {
+  content: "";
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 7px;
+  border-radius: 50%;
+  vertical-align: middle;
+  background: var(--fg-faint);
+}
+.disc-health-stat.is-good .disc-stat-n::before {
+  background: #2e7d52;
+}
+.disc-health-stat.is-fair .disc-stat-n::before {
+  background: #b07a1e;
+}
+.disc-health-stat.is-poor .disc-stat-n::before {
+  background: #b3402f;
+}
+.disc-summary-side {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.disc-synced {
+  color: var(--fg-faint);
   font-family: var(--font-mono);
+  font-size: 12px;
+  white-space: nowrap;
+}
+/* Bulk re-pull — every ingested page whose Notion copy drifted, in one batch. */
+.disc-resync {
+  color: var(--link);
+  background: var(--link-bg);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
+  padding: 6px 12px;
+  font-size: 12.5px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: border-color var(--dur-fast) var(--ease);
+}
+.disc-resync:hover {
+  border-color: var(--link);
+}
+.disc-resync:disabled {
+  color: var(--fg-faint);
+  background: transparent;
+  cursor: default;
+}
+
+/* --- Filter toolbar --------------------------------------------------------*/
+.disc-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin: 16px 0 2px;
+}
+/* The filter field is the toolkit's tk-input; grow to fill the row. */
+.disc-filter {
+  flex: 1 1 220px;
+  min-width: 0;
+  font-size: 13.5px;
+  padding: 8px 12px;
+}
+.disc-toggles {
+  display: flex;
+  gap: 8px;
+}
+.disc-toggle {
+  color: var(--fg-muted);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 6px 13px;
+  font: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color var(--dur-fast) var(--ease),
+    border-color var(--dur-fast) var(--ease),
+    background-color var(--dur-fast) var(--ease);
+}
+.disc-toggle:hover {
+  color: var(--fg);
+  border-color: var(--border-strong);
+}
+.disc-toggle.is-on {
+  color: var(--link);
+  border-color: var(--link);
+  background: var(--link-bg);
+}
+
+/* --- Tree ------------------------------------------------------------------*/
+.disc-tree-wrap {
+  margin-top: 8px;
 }
 /* One page row: title grows, edited date + action hug the right edge. */
 .disc-row {
@@ -469,6 +584,30 @@ main {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* Open-in-Notion — a muted ↗ right after the title, revealed on row hover so it
+   stays out of the way at rest. Where hover doesn't exist (touch), it's faintly
+   visible instead of invisible. */
+.disc-open {
+  flex: 0 0 auto;
+  padding: 0 4px;
+  color: var(--fg-faint);
+  font-size: 13px;
+  text-decoration: none;
+  opacity: 0;
+  transition: opacity var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+}
+.disc-row:hover .disc-open,
+.disc-open:focus-visible {
+  opacity: 1;
+}
+.disc-open:hover {
+  color: var(--link);
+}
+@media (hover: none) {
+  .disc-open {
+    opacity: 0.55;
+  }
+}
 /* Right-hand columns: fixed-width cells pinned to the shared right edge, each
    right-aligning its content, so dates line up under dates and buttons under
    buttons down the whole list. An empty cell still holds its width, so a row
@@ -489,8 +628,21 @@ main {
 .disc-cell-status {
   width: 104px;
 }
+/* Legibility-score slot — the per-source badge (.src-health) for an in-brain
+   page, filled by applyHealth() once the brain's map() resolves. Narrow; empty
+   (but holding its width) for pages the layer hasn't scored. */
+.disc-cell-health {
+  width: 46px;
+}
 .disc-cell-remove {
   width: 116px;
+}
+/* On a phone the edited-date column is the first thing to sacrifice — it frees
+   room for the title and the actions that matter. */
+@media (max-width: 560px) {
+  .disc-cell-meta {
+    display: none;
+  }
 }
 .disc-badge.is-ingested {
   color: var(--yes);
@@ -539,26 +691,6 @@ main {
 }
 .disc-pull:disabled,
 .disc-pull-db:disabled {
-  color: var(--fg-faint);
-  background: transparent;
-  cursor: default;
-}
-/* The one bulk re-pull action, inline in the counts line — a pull button
-   sized to sit in that small mono row. */
-.disc-resync {
-  color: var(--link);
-  background: var(--link-bg);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--r-sm);
-  padding: 1px 8px;
-  font-size: 12px;
-  font-family: var(--font-mono);
-  cursor: pointer;
-}
-.disc-resync:hover {
-  border-color: var(--link);
-}
-.disc-resync:disabled {
   color: var(--fg-faint);
   background: transparent;
   cursor: default;

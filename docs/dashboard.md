@@ -12,8 +12,8 @@ The in-app "how the brain works" docs and the evolution timeline are **rendered 
 
 The toolkit's `mountApp()` wires these routes (`dashboard/src/main.ts`):
 
-- `#` (home) — the dashboard: source/domain counts, an inline **recall search** box, the **source map** (path tree), and the Notion **sync status** with a manual re-pull. Search and the map used to be separate routes; they now live on home.
-- `#discover` — Notion discovery + selective ingest/revoke.
+- `#` (home) — the **landing**: just a hybrid **recall search** box over every source, and a button through to `#discover`. Deliberately spare — reading the brain (here) and browsing/managing it (`#discover`) are two clean surfaces now.
+- `#discover` — the **Notion pages** view: the parent/child tree of every shared page with per-page pull/revoke (+ database pull-all/remove-all), a **summary strip** (page / in-brain / changed counts + overall legibility), a **filter toolbar** (text + not-in-brain / changed toggles), the per-source **legibility badge** on in-brain rows (from `map()` — a source's id is its Notion page uuid), and a bulk **re-pull** for pages that drifted. Absorbed the old home source map + Notion sync status.
 - `#integrations` — connect Notion (paste a token; a DB-stored token overrides the `NOTION_TOKEN` env) and set the **auto-sync interval** — how often the brain re-pulls changed Notion pages and picks up new pages added under anything already pulled (child pages of a pulled page, new rows of a pulled database) (`0` = off; overrides `BRAIN_POLL_INTERVAL_SECONDS`). Both take effect without a restart.
 - `#apps` — the **launcher**: a card per app from the registry, each health-pinged (connected/offline) and linking out. See below.
 - `#docs` / `#learnings` — the in-app explainer + evolution timeline, rendered from the repo docs (`chrome:false` full-bleed views).
@@ -25,8 +25,8 @@ The toolkit's `mountApp()` wires these routes (`dashboard/src/main.ts`):
 ## Layout (under `dashboard/`)
 
 - `src/main.ts` — wires the brainbot views into the toolkit's hash router + nav.
-- `src/home.ts` — home dashboard: counts + inline recall search + source map + Notion sync, via the toolkit's `recall()` / `map()`.
-- `src/discover.ts` — Notion discovery + selective ingest/revoke view.
+- `src/home.ts` — the landing: a recall search box (toolkit `recall()`) + a button to `#discover`. Nothing else.
+- `src/discover.ts` — the Notion pages view: the page tree + ingest/revoke, plus the summary strip, filter toolbar, and legibility badges (via `map()`) folded in from the old home hub.
 - `src/apps.ts` + `src/apps.json` — the launcher view and its registry.
 - `src/docs.ts` — renders `docs/*.md?raw` for the `#docs` / `#learnings` views.
 - `src/style.css` — app-specific CSS only (home/docs/discover); base + components come from the toolkit.
@@ -59,8 +59,8 @@ The dashboard reads the brain through the backend's `/api/brain/*` proxy, so the
 
 1. `npm run dev`
 2. Open http://localhost:5173
-3. The home dashboard loads. With the brain running (and `BRAIN_SERVICE_URL` pointing at it) it shows real source/domain counts, search, and the map; otherwise a "couldn't reach the brain" note.
-4. Visit `#discover`, `#apps`, and `#docs` / `#learnings`.
+3. The landing loads with the recall search box + a **Browse Notion pages** button. Searching (with the brain running, `BRAIN_SERVICE_URL` pointing at it) returns recall hits; otherwise a "couldn't reach the brain" note.
+4. Visit `#discover` — the Notion pages tree with its summary strip, filter toolbar, per-page pull/remove, and (with sources analyzed) legibility badges. Then `#apps` and `#docs` / `#learnings`.
 
 ## Build & run (prod / Docker)
 

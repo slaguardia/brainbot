@@ -1,16 +1,26 @@
-// The discovery view (`#discover`) — what the Notion integration can see vs.
+// The Notion pages view (`#discover`) — the one place you *browse and manage*
 // what's in the brain. GET /api/notion/pages returns every shared page (children
 // included) as flat {id, title, parent_id, last_edited_time, url, ingested,
 // ingested_last_edited} facts; this view builds the parent/child tree and offers
 // a per-page "pull" action that POSTs the page's URL to /api/ingest (the brain's
 // existing write path), a per-page "remove" action that DELETEs an ingested
 // page's source from the brain (/api/sources/{id}), plus ONE bulk "re-pull"
-// button for ingested pages whose Notion copy moved past what the brain
-// captured. No per-page resync UI.
+// button for ingested pages whose Notion copy moved past what the brain captured.
 //
-// All Notion-returned strings (titles) are escaped before they touch innerHTML.
+// Two things folded in here from the old home hub (which is now just search):
+//   • a summary strip — page / in-brain / changed counts + an overall legibility
+//     readout, replacing the old plain mono counts line;
+//   • the note-legibility badge on each in-brain row. A brain source's id IS its
+//     Notion page uuid (see brain/api.py: ingested = page.id in sources), so
+//     map()'s per-source health joins straight onto this tree by id — no home
+//     tree to keep in step anymore.
+//
+// A filter toolbar (text + "not in brain" / "changed" toggles) narrows a big
+// shared workspace to what you're looking for. All Notion-returned strings
+// (titles) are escaped before they touch innerHTML.
 
 import { button, modal, toast } from "@brainbot/web-toolkit/components";
+import { map, type Health } from "@brainbot/web-toolkit/brain";
 
 function esc(s: unknown): string {
   return String(s ?? "")
@@ -21,7 +31,7 @@ function esc(s: unknown): string {
     .replace(/'/g, "&#39;");
 }
 
-export interface NotionPage {
+interface NotionPage {
   id?: string;
   kind?: string; // 'page' | 'database' — database rows are pages parented by a database
   title?: string;
@@ -35,8 +45,7 @@ export interface NotionPage {
 // A pulled page is stale when Notion's copy moved past the one the brain
 // captured at ingest — or when the brain recorded no edit time at all (sources
 // ingested before that was stored), where "possibly stale" must mean re-pull.
-// Exported: the home dashboard's sync status applies the same rule.
-export function isStale(p: NotionPage): boolean {
+function isStale(p: NotionPage): boolean {
   if (!p.ingested || !p.url || !p.last_edited_time) return false;
   if (!p.ingested_last_edited) return true;
   return new Date(p.last_edited_time) > new Date(p.ingested_last_edited);
@@ -53,6 +62,15 @@ const CACHE_KEY = "discover-pages-v2";
 
 let currentPages: NotionPage[] = [];
 let fetchedAt = 0;
+
+// Per-source legibility signal, keyed by the page uuid (== the brain source id).
+// Filled by loadHealth() from map(); overlaid onto in-brain rows. Empty until
+// that first read resolves — the badges are an enhancement, never blocking.
+let healthById = new Map<string, Health>();
+
+// The active filter — persisted across re-renders (a pull re-renders the whole
+// body, and we don't want the filter to reset under the user).
+const filterState = { text: "", onlyNew: false, onlyChanged: false };
 
 function readCache(): NotionPage[] | null {
   try {
@@ -78,38 +96,20 @@ function writeCache(pages: NotionPage[], at: number = Date.now()): void {
   }
 }
 
-// The page list for callers outside this view (the home dashboard's sync
-// status): cached copy when one exists, live sweep otherwise — and a live
-// sweep always refreshes the shared cache, so the two views agree.
-export async function fetchNotionPages(force = false): Promise<NotionPage[]> {
-  if (!force) {
-    const cached = readCache();
-    if (cached) {
-      currentPages = cached;
-      return cached;
-    }
-  }
-  const res = await fetch(`/api/notion/pages`);
-  const data = (await res.json()) as { pages?: NotionPage[]; error?: string };
-  if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
-  const pages = Array.isArray(data.pages) ? data.pages : [];
-  currentPages = pages;
-  writeCache(pages);
-  return pages;
-}
-
 export function mountDiscover(container: HTMLElement): void {
   // The shared header/nav chrome is rendered by the toolkit shell (mountApp);
   // this view renders only its body into the content region.
   container.innerHTML = `
     <section class="home discover">
       <div class="disc-head">
-        <h2>Notion pages</h2>
+        <div class="disc-head-text">
+          <h2>Notion pages</h2>
+          <p class="disc-sub">
+            Every page shared with the integration. Pull the ones you want into the brain.
+          </p>
+        </div>
         <a class="disc-refresh" href="#discover">Refresh</a>
       </div>
-      <p class="disc-sub">
-        Every page shared with the integration. Pull the ones you want into the brain.
-      </p>
       <div class="disc-body"><p class="home-status">Asking Notion…</p></div>
     </section>`;
   const body = container.querySelector<HTMLElement>(".disc-body")!;
@@ -117,10 +117,12 @@ export function mountDiscover(container: HTMLElement): void {
     e.preventDefault();
     body.innerHTML = `<p class="home-status">Asking Notion…</p>`;
     void loadPages(body);
+    void loadHealth(body);
   });
-  // Delegated pull handler, attached ONCE — renders replace body.innerHTML, so a
+  // Delegated handlers, attached ONCE — renders replace body.innerHTML, so a
   // per-render listener would stack across refreshes and double-fire ingest.
-  wireIngest(body);
+  wireIngest(body); // clicks: pull / remove / filter toggles / open-in-Notion
+  wireFilter(body); // input: the filter text box
   const cached = readCache();
   if (cached) {
     currentPages = cached;
@@ -128,6 +130,9 @@ export function mountDiscover(container: HTMLElement): void {
   } else {
     void loadPages(body);
   }
+  // Legibility badges load independently of the page list (they come from the
+  // brain's map(), not Notion) and paint in when ready.
+  void loadHealth(body);
 }
 
 async function loadPages(body: HTMLElement): Promise<void> {
@@ -147,6 +152,74 @@ async function loadPages(body: HTMLElement): Promise<void> {
   }
 }
 
+// The per-source legibility signal, from the brain's map(). Best-effort: a
+// failure just leaves the badges off — the page list stands on its own.
+async function loadHealth(body: HTMLElement): Promise<void> {
+  try {
+    const sources = await map();
+    const next = new Map<string, Health>();
+    for (const s of sources) if (s.health) next.set(s.id, s.health);
+    healthById = next;
+    applyHealth(body);
+  } catch {
+    // Health is an enhancement; never surface its failure over the page list.
+  }
+}
+
+// --- note-legibility badge ---------------------------------------------------
+
+// A note-legibility badge for an in-brain page: the 0–100 score, colour-tiered,
+// with its actionable reasons in the tooltip and a link to the per-source
+// legibility view (raw-vs-rewrite diff + actions). Empty string when the layer
+// hasn't analyzed the page yet, so the column is invisible until it has.
+function healthBadge(id: string | undefined, health: Health | null | undefined): string {
+  if (!health) return "";
+  const score = Math.round(health.score);
+  const tier = score >= 70 ? "good" : score >= 40 ? "fair" : "poor";
+  const reasons = health.notes.length
+    ? `Legibility ${score}/100 — ${health.notes.join("; ")}`
+    : `Legibility ${score}/100 — already legible to agents.`;
+  const href = id ? `#legibility/${encodeURIComponent(id)}` : "#docs";
+  return `<a class="src-health is-${tier}" href="${href}" title="${esc(reasons)}">${score}</a>`;
+}
+
+// Overlay the loaded health onto the rendered tree without re-rendering it —
+// so the branches you've expanded and the filter box you're typing in stay put.
+// Fills each in-brain row's health slot (keyed by data-health-for) and the
+// summary's overall-legibility stat.
+function applyHealth(body: HTMLElement): void {
+  for (const [id, h] of healthById) {
+    const cell = body.querySelector<HTMLElement>(`[data-health-for="${id}"]`);
+    if (cell) cell.innerHTML = healthBadge(id, h);
+  }
+  const stat = body.querySelector<HTMLElement>(".disc-health-stat");
+  if (stat) {
+    const avg = avgHealth();
+    if (avg !== null) {
+      const tier = avg >= 70 ? "good" : avg >= 40 ? "fair" : "poor";
+      stat.className = `disc-stat disc-health-stat is-${tier}`;
+      stat.innerHTML = `<span class="disc-stat-n">${avg}</span><span class="disc-stat-l">avg legibility</span>`;
+      stat.removeAttribute("hidden");
+    }
+  }
+}
+
+// Mean legibility across the in-brain pages the layer has scored (databases have
+// no document body, so they're excluded). Null when nothing's been analyzed.
+function avgHealth(): number | null {
+  let sum = 0;
+  let k = 0;
+  for (const p of currentPages) {
+    if (!p.ingested || p.kind === "database" || !p.id) continue;
+    const h = healthById.get(p.id);
+    if (h) {
+      sum += h.score;
+      k++;
+    }
+  }
+  return k ? Math.round(sum / k) : null;
+}
+
 // --- parent/child tree -------------------------------------------------------
 
 interface PageNode {
@@ -154,9 +227,11 @@ interface PageNode {
   children: PageNode[];
 }
 
-// The last-rendered tree, by page id — lets the pull handler find a clicked
-// page's children for the pull-with-children modal.
+// The last-built FULL tree + its by-id index. Actions (pull-all, remove-all)
+// resolve a clicked page's real subtree through nodeById, so they operate on the
+// whole workspace even when the filter is showing a subset.
 let nodeById = new Map<string, PageNode>();
+let fullRoots: PageNode[] = [];
 
 // Roots = pages whose parent isn't itself a visible page (workspace/database/
 // block parents, or a parent page that wasn't shared with the integration).
@@ -191,40 +266,118 @@ function renderPages(body: HTMLElement, pages: NotionPage[]): void {
       </p>`;
     return;
   }
-  const roots = buildTree(pages);
+  fullRoots = buildTree(pages); // sets nodeById (the full-tree index)
+  body.innerHTML = `${renderSummary(pages)}${renderToolbar()}<div class="disc-tree-wrap"></div>`;
+  renderTree(body); // renders the (possibly filtered) tree + overlays health
+}
+
+// The summary strip: page / in-brain / changed stat tiles, an overall-legibility
+// tile (filled by applyHealth once map() resolves), and the sync time + the one
+// bulk re-pull action. Replaces the old single mono counts line.
+function renderSummary(pages: NotionPage[]): string {
   const real = pages.filter((p) => p.kind !== "database");
   const n = real.length;
   const nIn = real.filter((p) => p.ingested).length;
-  const at = fetchedAt
-    ? ` · synced ${new Date(fetchedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`
-    : "";
-  // One bulk action — re-pull every ingested page whose Notion copy moved.
-  // No per-page resync UI; the handler recomputes the stale set from
-  // currentPages on click.
   const nStale = real.filter(isStale).length;
-  const resync = nStale
-    ? ` · <button class="disc-resync" type="button">re-pull ${nStale} changed</button>`
+  const at = fetchedAt
+    ? `synced ${new Date(fetchedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`
     : "";
-  body.innerHTML = `
-    <p class="disc-counts">${n} page${n === 1 ? "" : "s"} visible · ${nIn} in the brain${at}${resync}</p>
-    <ul class="src-list disc-tree">${roots.map(renderNode).join("")}</ul>`;
+  const changedStat = nStale
+    ? `<div class="disc-stat is-changed"><span class="disc-stat-n">${nStale}</span><span class="disc-stat-l">changed</span></div>`
+    : "";
+  // One bulk action — re-pull every ingested page whose Notion copy moved. The
+  // handler recomputes the stale set from currentPages on click.
+  const resync = nStale
+    ? `<button class="disc-resync" type="button">Re-pull ${nStale} changed</button>`
+    : "";
+  return `
+    <div class="disc-summary">
+      <div class="disc-stats">
+        <div class="disc-stat"><span class="disc-stat-n">${n}</span><span class="disc-stat-l">page${n === 1 ? "" : "s"}</span></div>
+        <div class="disc-stat is-in"><span class="disc-stat-n">${nIn}</span><span class="disc-stat-l">in brain</span></div>
+        ${changedStat}
+        <div class="disc-stat disc-health-stat" hidden></div>
+      </div>
+      <div class="disc-summary-side">
+        ${resync}
+        ${at ? `<span class="disc-synced">${at}</span>` : ""}
+      </div>
+    </div>`;
 }
 
-// One row, laid out as columns so the eye can scan down: the title grows to
-// fill the middle, then three fixed-width cells hug the right edge — meta (a
-// page's edited date / a database's row count), status (pull · in brain · pull
-// all), and remove (remove · remove all). The cells are pinned to the shared
-// right edge and right-align their content, so dates line up under dates and
-// buttons under buttons across every row, whatever the title length or depth.
+function renderToolbar(): string {
+  const f = filterState;
+  return `
+    <div class="disc-toolbar">
+      <input id="disc-filter" class="tk-input disc-filter" type="search"
+        placeholder="Filter pages…" autocomplete="off" value="${esc(f.text)}" />
+      <div class="disc-toggles">
+        <button class="disc-toggle${f.onlyNew ? " is-on" : ""}" data-toggle="new" type="button">Not in brain</button>
+        <button class="disc-toggle${f.onlyChanged ? " is-on" : ""}" data-toggle="changed" type="button">Changed</button>
+      </div>
+    </div>`;
+}
+
+function filterActive(): boolean {
+  return !!(filterState.text.trim() || filterState.onlyNew || filterState.onlyChanged);
+}
+
+// Whether a page itself satisfies the active filter. Text matches its title;
+// the toggles gate on real (non-database) pages — "not in brain" = pullable and
+// not yet ingested, "changed" = ingested but drifted.
+function pageMatches(p: NotionPage): boolean {
+  const text = filterState.text.trim().toLowerCase();
+  if (text && !(p.title ?? "").toLowerCase().includes(text)) return false;
+  if (filterState.onlyNew && (p.kind === "database" || p.ingested)) return false;
+  if (filterState.onlyChanged && !isStale(p)) return false;
+  return true;
+}
+
+// Prune the full tree to the filter: a node survives if it matches, or if any
+// descendant survives (so a matching page keeps its ancestors for context).
+function filterNode(node: PageNode): PageNode | null {
+  const kids = node.children.map(filterNode).filter((n): n is PageNode => n !== null);
+  if (kids.length || pageMatches(node.page)) return { page: node.page, children: kids };
+  return null;
+}
+
+// Render (or re-render) just the tree region — the toolbar and summary stay put,
+// so the filter box keeps focus while you type. When a filter is active, every
+// branch renders open so matches deep in the workspace are actually visible.
+function renderTree(body: HTMLElement): void {
+  const wrap = body.querySelector<HTMLElement>(".disc-tree-wrap");
+  if (!wrap) return;
+  const active = filterActive();
+  const view = active
+    ? fullRoots.map(filterNode).filter((n): n is PageNode => n !== null)
+    : fullRoots;
+  if (view.length === 0) {
+    wrap.innerHTML = `<p class="home-status">No pages match the filter.</p>`;
+    return;
+  }
+  wrap.innerHTML = `<ul class="src-list disc-tree">${view.map((n) => renderNode(n, active)).join("")}</ul>`;
+  applyHealth(body); // fill the freshly rendered rows' health slots
+}
+
+// One row, laid out as columns so the eye can scan down: the title grows to fill
+// the middle (with a hover-revealed open-in-Notion link), then fixed-width cells
+// hug the right edge — meta (edited date / row count), status (pull · in brain ·
+// pull all), health (legibility score), and remove (remove · remove all). The
+// cells right-align, so dates line up under dates and buttons under buttons.
 function rowHTML(node: PageNode): string {
   const p = node.page;
   const isDb = p.kind === "database";
+  const id = esc(p.id ?? "");
+  const url = esc(p.url ?? "");
   const title = esc(p.title || "(untitled)");
+  const open = p.url
+    ? `<a class="disc-open" href="${url}" target="_blank" rel="noopener" data-url="${url}" title="Open in Notion" aria-label="Open in Notion">↗</a>`
+    : "";
   let meta = ""; // a page's edited date, or a database's row count
   let status = ""; // pull · in brain · pull all
+  let health = `<span class="disc-cell disc-cell-health"></span>`; // legibility score slot
   let remove = ""; // remove · remove all
   if (isDb) {
-    const id = esc(p.id ?? "");
     const n = node.children.length;
     const pending = collectChildPages(node).length;
     const ingested = collectIngestedChildPages(node).length;
@@ -234,11 +387,13 @@ function rowHTML(node: PageNode): string {
     if (ingested)
       remove = `<button class="disc-remove-db" type="button" data-id="${id}">remove all ${ingested}</button>`;
   } else {
-    const id = esc(p.id ?? "");
-    const url = esc(p.url ?? "");
     meta = p.last_edited_time ? esc(p.last_edited_time.slice(0, 10)) : "";
     if (p.ingested) {
       status = `<span class="disc-badge is-ingested">in brain</span>`;
+      // The slot carries data-health-for so applyHealth can fill it later even
+      // when map() hasn't resolved at first render.
+      const badge = healthBadge(p.id, healthById.get(p.id ?? "") ?? null);
+      health = `<span class="disc-cell disc-cell-health" data-health-for="${id}">${badge}</span>`;
       remove = `<button class="disc-remove" type="button" data-id="${id}" data-url="${url}" title="remove from the brain">remove</button>`;
     } else {
       status = `<button class="disc-pull" type="button" data-id="${id}" data-url="${url}">pull</button>`;
@@ -246,22 +401,24 @@ function rowHTML(node: PageNode): string {
   }
   return `
       ${isDb ? `<span class="disc-kind-db">db</span>` : ""}
-      <span class="src-label">${title}</span>
+      <span class="src-label">${title}</span>${open}
       <span class="disc-cell disc-cell-meta">${meta}</span>
       <span class="disc-cell disc-cell-status">${status}</span>
+      ${health}
       <span class="disc-cell disc-cell-remove">${remove}</span>`;
 }
 
-function renderNode(node: PageNode): string {
+function renderNode(node: PageNode, openAll = false): string {
   // A parent (page with sub-pages, or a database with rows) renders as a native
   // <details> so it collapses; collapsed by default keeps big databases (every
-  // row is a page) from flooding the view. Leaves stay plain rows.
+  // row is a page) from flooding the view — unless a filter is active, when we
+  // open everything so matches aren't hidden inside a folded branch.
   if (node.children.length) {
     return `
     <li class="src-node is-source">
-      <details class="disc-branch">
+      <details class="disc-branch"${openAll ? " open" : ""}>
         <summary class="disc-row">${rowHTML(node)}</summary>
-        <ul class="src-list">${node.children.map(renderNode).join("")}</ul>
+        <ul class="src-list">${node.children.map((c) => renderNode(c, openAll)).join("")}</ul>
       </details>
     </li>`;
   }
@@ -271,11 +428,45 @@ function renderNode(node: PageNode): string {
     </li>`;
 }
 
+// --- filter wiring -----------------------------------------------------------
+
+function wireFilter(body: HTMLElement): void {
+  // Delegated so it survives full body re-renders. Typing only re-renders the
+  // tree region (not the toolbar), so the input keeps focus.
+  body.addEventListener("input", (e) => {
+    const t = e.target as HTMLElement;
+    if (t.id === "disc-filter") {
+      filterState.text = (t as HTMLInputElement).value;
+      renderTree(body);
+    }
+  });
+}
+
 // --- selective pull ----------------------------------------------------------
 
 function wireIngest(body: HTMLElement): void {
   body.addEventListener("click", (e) => {
     const btn = e.target as HTMLElement;
+    if (btn.classList.contains("disc-toggle")) {
+      // A filter toggle: flip its state, reflect it on the chip, re-render the
+      // tree region only.
+      e.preventDefault();
+      const which = btn.getAttribute("data-toggle");
+      if (which === "new") filterState.onlyNew = !filterState.onlyNew;
+      if (which === "changed") filterState.onlyChanged = !filterState.onlyChanged;
+      btn.classList.toggle("is-on");
+      renderTree(body);
+      return;
+    }
+    if (btn.classList.contains("disc-open")) {
+      // Open-in-Notion sits inside a <summary>; preventDefault stops the click
+      // from toggling the branch, and we open the page ourselves. (Right-click /
+      // middle-click still use the <a href>.)
+      e.preventDefault();
+      const url = btn.getAttribute("data-url");
+      if (url) window.open(url, "_blank", "noopener");
+      return;
+    }
     if (btn.classList.contains("disc-resync")) {
       // Bulk re-pull: ingest is wipe-replace keyed on the page id, so re-posting
       // each stale page's URL syncs it in place — same write path as a pull.
@@ -480,10 +671,15 @@ async function removePage(btn: HTMLButtonElement, id: string, url: string): Prom
       cached.ingested_last_edited = null;
       writeCache(currentPages, fetchedAt);
     }
-    // Drop the "in brain" badge that precedes this button, then replace the
-    // button itself with a fresh pull button.
-    const badge = btn.previousElementSibling;
-    if (badge?.classList.contains("disc-badge")) badge.remove();
+    // Drop the "in brain" badge that precedes this button, clear the row's
+    // legibility slot, then replace the button itself with a fresh pull button.
+    const row = btn.closest(".disc-row");
+    row?.querySelector(".disc-badge")?.remove();
+    const healthCell = row?.querySelector<HTMLElement>(".disc-cell-health");
+    if (healthCell) {
+      healthCell.innerHTML = "";
+      healthCell.removeAttribute("data-health-for");
+    }
     const pull = document.createElement("button");
     pull.className = "disc-pull";
     pull.type = "button";

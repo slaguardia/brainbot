@@ -415,15 +415,14 @@ function rowHTML(node: PageNode): string {
   const id = esc(p.id ?? "");
   const url = esc(p.url ?? "");
   const title = esc(p.title || "(untitled)");
-  const open = p.url
-    ? `<a class="disc-open" href="${url}" target="_blank" rel="noopener" data-url="${url}" title="Open in Notion" aria-label="Open in Notion">↗</a>`
-    : "";
-  // Auto-expand opt-in pill — only where it applies: a database, or an in-brain
-  // page that already has sub-pages (a leaf page has nothing to expand).
+  // Auto-expand opt-in — a switch in its own right-hand cell, only where it
+  // applies: a database, or an in-brain page that already has sub-pages (a leaf
+  // page has nothing to expand).
   const canExpand = isDb || (!!p.ingested && node.children.length > 0);
   const expandOn = !!p.auto_expand;
+  const kind = isDb ? "rows" : "sub-pages";
   const expand = canExpand
-    ? `<button class="disc-expand${expandOn ? " is-on" : ""}" type="button" data-id="${id}" data-on="${expandOn ? "1" : "0"}" aria-pressed="${expandOn}" title="Auto-pull new ${isDb ? "rows" : "sub-pages"} under this as they appear in Notion (opt-in)">auto-pull</button>`
+    ? `<button class="disc-switch${expandOn ? " is-on" : ""}" type="button" role="switch" aria-checked="${expandOn}" data-id="${id}" data-on="${expandOn ? "1" : "0"}" title="Auto-pull new ${kind} under this as they appear in Notion (opt-in)" aria-label="Auto-pull new ${kind}"><span class="disc-switch-knob"></span></button>`
     : "";
   let meta = ""; // a page's edited date, or a database's row count
   let status = ""; // pull · in brain · pull all
@@ -453,30 +452,33 @@ function rowHTML(node: PageNode): string {
   }
   return `
       ${isDb ? `<span class="disc-kind-db">db</span>` : ""}
-      <span class="src-label">${title}</span>${open}${expand}
+      <span class="src-label">${title}</span>
       <span class="disc-cell disc-cell-meta">${meta}</span>
       <span class="disc-cell disc-cell-status">${status}</span>
       ${health}
+      <span class="disc-cell disc-cell-expand">${expand}</span>
       <span class="disc-cell disc-cell-remove">${remove}</span>`;
 }
 
 function renderNode(node: PageNode, openAll = false): string {
-  // A parent (page with sub-pages, or a database with rows) renders as a native
-  // <details> so it collapses; collapsed by default keeps big databases (every
-  // row is a page) from flooding the view — unless a filter is active, when we
-  // open everything so matches aren't hidden inside a folded branch.
+  // The whole row opens the page in Notion on click (data-url); a leading caret
+  // toggles expand. A parent renders as a native <details> (its open state is
+  // driven by the caret, not the summary's default toggle, which the row-click
+  // handler suppresses); collapsed by default keeps big databases from flooding
+  // the view — unless a filter is active, when we open everything.
+  const url = esc(node.page.url ?? "");
   if (node.children.length) {
     return `
     <li class="src-node is-source">
       <details class="disc-branch"${openAll ? " open" : ""}>
-        <summary class="disc-row">${rowHTML(node)}</summary>
+        <summary class="disc-row" data-url="${url}"><span class="disc-caret" aria-hidden="true"></span>${rowHTML(node)}</summary>
         <ul class="src-list">${node.children.map((c) => renderNode(c, openAll)).join("")}</ul>
       </details>
     </li>`;
   }
   return `
     <li class="src-node is-source">
-      <span class="disc-row">${rowHTML(node)}</span>
+      <span class="disc-row" data-url="${url}"><span class="disc-caret-spacer" aria-hidden="true"></span>${rowHTML(node)}</span>
     </li>`;
 }
 
@@ -515,22 +517,23 @@ function wireIngest(body: HTMLElement): void {
       renderTree(body);
       return;
     }
-    if (btn.classList.contains("disc-open")) {
-      // Open-in-Notion sits inside a <summary>; preventDefault stops the click
-      // from toggling the branch, and we open the page ourselves. (Right-click /
-      // middle-click still use the <a href>.)
+    const caret = btn.closest(".disc-caret");
+    if (caret) {
+      // The leading caret is the expand control now — toggle the branch (and stop
+      // the whole-row open handler below from also firing).
       e.preventDefault();
-      const url = btn.getAttribute("data-url");
-      if (url) window.open(url, "_blank", "noopener");
+      const details = caret.closest("details.disc-branch") as HTMLDetailsElement | null;
+      if (details) details.open = !details.open;
       return;
     }
-    if (btn.classList.contains("disc-expand")) {
-      // Auto-expand opt-in toggle (sits inside a <summary>): preventDefault stops
-      // the branch toggling; flip the opt-in in the brain.
+    const sw = btn.closest(".disc-switch") as HTMLButtonElement | null;
+    if (sw) {
+      // Auto-expand opt-in switch (a click can land on the knob span): flip it in
+      // the brain. preventDefault stops the enclosing <summary> from toggling.
       e.preventDefault();
-      const id = btn.getAttribute("data-id");
-      const on = btn.getAttribute("data-on") === "1";
-      if (id) void toggleAutoExpand(btn as HTMLButtonElement, id, !on);
+      const id = sw.getAttribute("data-id");
+      const on = sw.getAttribute("data-on") === "1";
+      if (id) void toggleAutoExpand(sw, id, !on);
       return;
     }
     if (btn.classList.contains("disc-resync")) {
@@ -569,7 +572,23 @@ function wireIngest(body: HTMLElement): void {
       if (id) void removePage(btn as HTMLButtonElement, id, btn.getAttribute("data-url") ?? "");
       return;
     }
-    if (!btn.classList.contains("disc-pull")) return;
+    if (!btn.classList.contains("disc-pull")) {
+      // Anywhere else on a row: the whole row opens the page in Notion (this
+      // replaced the old hover arrow). preventDefault stops a branch <summary>
+      // from also toggling; a row with no url (a database) toggles its branch.
+      const row = btn.closest(".disc-row");
+      if (row) {
+        e.preventDefault();
+        const rowUrl = row.getAttribute("data-url");
+        if (rowUrl) {
+          window.open(rowUrl, "_blank", "noopener");
+        } else {
+          const details = row.closest("details.disc-branch") as HTMLDetailsElement | null;
+          if (details) details.open = !details.open;
+        }
+      }
+      return;
+    }
     // A pull button can sit inside a <summary>; without this the click ALSO
     // toggles the branch open/closed.
     e.preventDefault();
@@ -798,7 +817,7 @@ async function toggleAutoExpand(btn: HTMLButtonElement, id: string, value: boole
       return;
     }
     btn.classList.toggle("is-on", value);
-    btn.setAttribute("aria-pressed", value ? "true" : "false");
+    btn.setAttribute("aria-checked", value ? "true" : "false");
     btn.setAttribute("data-on", value ? "1" : "0");
     const cached = currentPages.find((p) => p.id === id);
     if (cached) {

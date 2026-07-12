@@ -538,12 +538,16 @@ main {
   padding-top: 10px;
   padding-bottom: 10px;
 }
+/* The whole row is the click target (opens the page in Notion) — cursor + a
+   subtle, smooth background lift on hover so it reads like a soft table row. */
 .disc-tree .disc-row {
   padding: 0 8px;
   border-radius: var(--r-md);
+  cursor: pointer;
+  transition: background-color var(--dur-fast) var(--ease);
 }
 .disc-tree .disc-row:hover {
-  background: var(--panel-2);
+  background: var(--bg-elevated);
 }
 /* A touch more indent between nesting levels than the home map, so deep
    database trees stay legible. */
@@ -551,34 +555,45 @@ main {
   margin-left: 11px;
   padding-left: 16px;
 }
-/* Collapsible branch: a leading caret that rotates when open. The summary IS
-   the row, so the whole line is the toggle target. */
+/* The summary's default disclosure toggle is suppressed by the row-click handler
+   (the whole row opens the page in Notion); expand/collapse is driven by the
+   leading caret instead. */
 .disc-branch > summary {
-  cursor: pointer;
   list-style: none;
 }
 .disc-branch > summary::-webkit-details-marker {
   display: none;
 }
-/* Border-drawn chevron (the ▸ glyph rendered as a barely-visible dot in some
-   fonts): points right when closed, down when open. */
-.disc-branch > summary::before {
+/* Leading caret: a full-row-height clickable box holding a border-drawn chevron
+   (points right when closed, down when open). A same-width spacer keeps leaf rows
+   aligned with branch rows so the tree reads like a table. */
+.disc-caret,
+.disc-caret-spacer {
+  flex: 0 0 auto;
+  width: 15px;
+  align-self: stretch;
+}
+.disc-caret {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.disc-caret::before {
   content: "";
-  width: 7px;
-  height: 7px;
+  width: 6px;
+  height: 6px;
   border-right: 2px solid var(--fg-muted);
   border-bottom: 2px solid var(--fg-muted);
   border-radius: 1px;
   transform: rotate(-45deg);
-  flex: 0 0 auto;
-  margin-right: 2px;
-  transition: transform 0.12s ease;
+  transition: transform 0.12s ease, border-color var(--dur-fast) var(--ease);
 }
-.disc-branch > summary:hover::before {
-  border-color: var(--link);
-}
-.disc-branch[open] > summary::before {
+.disc-branch[open] > summary > .disc-caret::before {
   transform: rotate(45deg);
+}
+.disc-caret:hover::before {
+  border-color: var(--link);
 }
 /* A database node: its "children" are rows, not sub-pages. One quiet cue — a
    small muted 'db' chip; the title stays styled like any page. */
@@ -601,61 +616,45 @@ main {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-/* Open-in-Notion — a muted ↗ right after the title, revealed on row hover so it
-   stays out of the way at rest. Where hover doesn't exist (touch), it's faintly
-   visible instead of invisible. */
-.disc-open {
+/* Auto-expand opt-in — a compact switch in its own right-hand cell (databases +
+   in-brain branch pages). Off = muted track; on = accent track, knob slid right.
+   The knob span is the moving part; the button is the track. */
+.disc-switch {
+  position: relative;
   flex: 0 0 auto;
-  padding: 0 4px;
-  color: var(--fg-faint);
-  font-size: 13px;
-  text-decoration: none;
-  opacity: 0;
-  transition: opacity var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
-}
-.disc-row:hover .disc-open,
-.disc-open:focus-visible {
-  opacity: 1;
-}
-.disc-open:hover {
-  color: var(--link);
-}
-@media (hover: none) {
-  .disc-open {
-    opacity: 0.55;
-  }
-}
-/* Auto-expand opt-in pill — inline after the title on a database or an in-brain
-   branch page. Muted when off, accent when on; toggles whether the sync loop
-   auto-pulls new descendants (child pages / new rows) under it. */
-.disc-expand {
-  flex: 0 0 auto;
-  color: var(--fg-faint);
-  background: transparent;
-  border: 1px solid var(--border);
+  width: 30px;
+  height: 17px;
+  padding: 0;
+  border: 1px solid var(--border-strong);
   border-radius: 999px;
-  padding: 1px 9px;
-  font: inherit;
-  font-size: 11.5px;
+  background: var(--panel-2);
   cursor: pointer;
-  white-space: nowrap;
-  transition: color var(--dur-fast) var(--ease),
-    border-color var(--dur-fast) var(--ease),
+  transition: background-color var(--dur-fast) var(--ease),
+    border-color var(--dur-fast) var(--ease);
+}
+.disc-switch-knob {
+  position: absolute;
+  top: 1px;
+  left: 1px;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: var(--fg-faint);
+  transition: transform var(--dur-fast) var(--ease),
     background-color var(--dur-fast) var(--ease);
 }
-.disc-expand::before {
-  content: "⤵ ";
-}
-.disc-expand:hover {
-  color: var(--fg);
-  border-color: var(--border-strong);
-}
-.disc-expand.is-on {
-  color: var(--link);
+.disc-switch:hover {
   border-color: var(--link);
-  background: var(--link-bg);
 }
-.disc-expand:disabled {
+.disc-switch.is-on {
+  background: var(--link-bg);
+  border-color: var(--link);
+}
+.disc-switch.is-on .disc-switch-knob {
+  transform: translateX(13px);
+  background: var(--link);
+}
+.disc-switch:disabled {
   opacity: 0.6;
   cursor: default;
 }
@@ -684,6 +683,11 @@ main {
    (but holding its width) for pages the layer hasn't scored. */
 .disc-cell-health {
   width: 46px;
+}
+/* Auto-expand switch slot (databases + in-brain branch pages; empty but holding
+   its width elsewhere so the switches line up in a column). */
+.disc-cell-expand {
+  width: 44px;
 }
 .disc-cell-remove {
   width: 116px;

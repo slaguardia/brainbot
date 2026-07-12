@@ -255,6 +255,14 @@ async def _stored_legibility(
     )
 
 
+def _enough_legibility_content(text: str, min_chars: int) -> bool:
+    """Whether a page has enough rendered text to be worth scoring. A router /
+    bookmark stub (a caption + a link) falls below `min_chars`, so legibility
+    skips it — a score on near-nothing is noise and an auto-rewrite pointless.
+    Pure and DB-free so it's unit-testable on its own."""
+    return len(text.strip()) >= min_chars
+
+
 async def upsert_source(
     pool: asyncpg.Pool,
     *,
@@ -319,7 +327,7 @@ async def upsert_source(
     # what's served. health_json/rewrite_text/analysis_hash stay None unless the
     # feature actually runs — that None triple is what keeps a disabled (or 'off')
     # ingest byte-identical to the base brain.
-    enabled, mode, threshold, model, api_key = await _effective_legibility(pool)
+    enabled, mode, threshold, model, min_chars, api_key = await _effective_legibility(pool)
     policy, stored_hash, stored_health, stored_rewrite = await _stored_legibility(
         pool, source_id
     )
@@ -328,7 +336,11 @@ async def upsert_source(
     rewrite_text: str | None = None
     analysis_hash: str | None = None
 
-    if enabled and policy != "off":
+    # Skip content-light pages (router/bookmark stubs) unless a manual rewrite was
+    # explicitly requested — health stays NULL (n/a, no badge) and no auto-rewrite
+    # fires, so a page with no prose can't produce a noise score or a pointless
+    # rewrite. See _enough_legibility_content / legibility.min_chars.
+    if enabled and policy != "off" and (force_rewrite or _enough_legibility_content(page_text, min_chars)):
         if content_hash == stored_hash and not force_rewrite:
             # Idempotency gate: unchanged content -> reuse the stored analysis, no
             # LLM call (prevents nondeterministic chunk churn + needless cost).

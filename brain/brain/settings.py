@@ -45,6 +45,7 @@ LEGIBILITY_ENABLED_KEY = "legibility.enabled"      # "true" | "false" (default f
 LEGIBILITY_MODE_KEY = "legibility.mode"            # "auto" | "manual"
 LEGIBILITY_THRESHOLD_KEY = "legibility.threshold"  # health score below which auto-rewrite fires
 LEGIBILITY_MODEL_KEY = "legibility.model"          # model id for the analysis call
+LEGIBILITY_MIN_CHARS_KEY = "legibility.min_chars"  # skip scoring pages with less rendered text than this
 
 # Defaults when the corresponding row is unset or malformed.
 _LEGIBILITY_DEFAULT_MODE = "auto"
@@ -54,6 +55,12 @@ _LEGIBILITY_DEFAULT_MODE = "auto"
 # (recall saturates) — re-tune via brain/eval/run_ab.py when it grows.
 _LEGIBILITY_DEFAULT_THRESHOLD = 65
 _LEGIBILITY_DEFAULT_MODEL = "claude-sonnet-4-6"
+# Below this many characters of rendered page text, skip legibility entirely
+# (health stays NULL — reads as "n/a", no badge — and no auto-rewrite fires). A
+# "router"/bookmark page (a caption + a link) has no prose to score, so a number
+# on it is noise and a rewrite pointless. ~300 ≈ a short paragraph. A manual
+# (force_rewrite) trigger still runs regardless of length.
+_LEGIBILITY_DEFAULT_MIN_CHARS = 300
 
 
 async def get_setting(pool: asyncpg.Pool, key: str) -> str | None:
@@ -92,12 +99,12 @@ async def _active_anthropic_key(pool: asyncpg.Pool) -> tuple[str | None, str | N
     return None, None
 
 
-async def _read_legibility(pool: asyncpg.Pool) -> tuple[bool, str, int, str]:
+async def _read_legibility(pool: asyncpg.Pool) -> tuple[bool, str, int, str, int]:
     """The raw stored legibility policy with defaults applied →
-    (enabled, mode, threshold, model). No key check, no logging — the shared core
-    of `_effective_legibility` (ingest) and `legibility_status` (UI). A malformed
-    stored value (non-int threshold, unknown mode) falls back to its default rather
-    than erroring, so a bad row can't wedge the feature."""
+    (enabled, mode, threshold, model, min_chars). No key check, no logging — the
+    shared core of `_effective_legibility` (ingest) and `legibility_status` (UI). A
+    malformed stored value (non-int threshold, unknown mode) falls back to its
+    default rather than erroring, so a bad row can't wedge the feature."""
     enabled = (await get_setting(pool, LEGIBILITY_ENABLED_KEY)) == "true"
 
     mode = await get_setting(pool, LEGIBILITY_MODE_KEY)
@@ -112,15 +119,23 @@ async def _read_legibility(pool: asyncpg.Pool) -> tuple[bool, str, int, str]:
         except ValueError:
             pass  # malformed -> keep the default, never wedge the feature
 
+    min_chars = _LEGIBILITY_DEFAULT_MIN_CHARS
+    raw_min = await get_setting(pool, LEGIBILITY_MIN_CHARS_KEY)
+    if raw_min is not None:
+        try:
+            min_chars = max(0, int(raw_min))
+        except ValueError:
+            pass  # malformed -> keep the default
+
     model = (await get_setting(pool, LEGIBILITY_MODEL_KEY)) or _LEGIBILITY_DEFAULT_MODEL
-    return enabled, mode, threshold, model
+    return enabled, mode, threshold, model, min_chars
 
 
 async def _effective_legibility(
     pool: asyncpg.Pool,
-) -> tuple[bool, str, int, str, str]:
+) -> tuple[bool, str, int, str, int, str]:
     """Resolve the live note-legibility policy at ingest time →
-    (enabled, mode, threshold, model, api_key). The exact shape/role of
+    (enabled, mode, threshold, model, min_chars, api_key). The exact shape/role of
     api._effective_poll_interval, for the same reason: the policy is a set of
     runtime `settings` rows the owner toggles from the UI (no restart), so it can't
     be a boot-time env decision.
@@ -134,7 +149,7 @@ async def _effective_legibility(
     `api_key` is the resolved secret to authenticate the analysis call (the caller
     only reaches the LLM when enabled, so it's guaranteed non-empty there).
     """
-    enabled, mode, threshold, model = await _read_legibility(pool)
+    enabled, mode, threshold, model, min_chars = await _read_legibility(pool)
     key, _ = await _active_anthropic_key(pool)
     if enabled and not key:
         logger.warning(
@@ -143,7 +158,7 @@ async def _effective_legibility(
             "Provision the key to enable."
         )
         enabled = False
-    return enabled, mode, threshold, model, key or ""
+    return enabled, mode, threshold, model, min_chars, key or ""
 
 
 async def legibility_status(pool: asyncpg.Pool) -> dict:
@@ -155,7 +170,7 @@ async def legibility_status(pool: asyncpg.Pool) -> dict:
     there's no key" itself. `key_source` ('db'|'env'|None) lets the UI show how the
     key is provided and offer to remove a UI-stored one; the key itself is never
     returned."""
-    enabled, mode, threshold, model = await _read_legibility(pool)
+    enabled, mode, threshold, model, min_chars = await _read_legibility(pool)
     key, key_source = await _active_anthropic_key(pool)
     has_key = bool(key)
     return {
@@ -163,6 +178,7 @@ async def legibility_status(pool: asyncpg.Pool) -> dict:
         "active": enabled and has_key,
         "mode": mode,
         "threshold": threshold,
+        "min_chars": min_chars,
         "model": model,
         "has_key": has_key,
         "key_source": key_source,

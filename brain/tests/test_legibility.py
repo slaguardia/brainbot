@@ -29,6 +29,7 @@ from brain import store
 from brain.settings import (
     ANTHROPIC_API_KEY_KEY,
     LEGIBILITY_ENABLED_KEY,
+    LEGIBILITY_MIN_CHARS_KEY,
     LEGIBILITY_MODE_KEY,
     LEGIBILITY_THRESHOLD_KEY,
     _active_anthropic_key,
@@ -147,11 +148,16 @@ def legible(clean_db, fake_embed, monkeypatch):
     fake = FakeAnalyze()
     monkeypatch.setattr(store, "analyze", fake)
 
-    def enable(*, mode="auto", threshold=60):
+    def enable(*, mode="auto", threshold=60, min_chars=0):
+        # min_chars defaults to 0 here so the short test corpus (DUMP) still scores
+        # as it did before the content-length gate existed; min_chars=None leaves
+        # the row unset so the production default (300) applies.
         async def _c(pool):
             await set_setting(pool, LEGIBILITY_ENABLED_KEY, "true")
             await set_setting(pool, LEGIBILITY_MODE_KEY, mode)
             await set_setting(pool, LEGIBILITY_THRESHOLD_KEY, str(threshold))
+            if min_chars is not None:
+                await set_setting(pool, LEGIBILITY_MIN_CHARS_KEY, str(min_chars))
 
         _run(clean_db, _c)
         return clean_db
@@ -160,10 +166,11 @@ def legible(clean_db, fake_embed, monkeypatch):
 
     async def _cleanup(pool):
         await pool.execute(
-            "DELETE FROM settings WHERE key IN ($1,$2,$3)",
+            "DELETE FROM settings WHERE key IN ($1,$2,$3,$4)",
             LEGIBILITY_ENABLED_KEY,
             LEGIBILITY_MODE_KEY,
             LEGIBILITY_THRESHOLD_KEY,
+            LEGIBILITY_MIN_CHARS_KEY,
         )
 
     _run(clean_db, _cleanup)
@@ -668,14 +675,17 @@ def test_integrations_reports_legibility_default_off(client, integrations_clean)
     leg = body["legibility"]
     assert leg["enabled"] is False  # off by default
     assert leg["active"] is False
-    assert set(leg) == {"enabled", "active", "mode", "threshold", "model", "has_key", "key_source"}
+    assert leg["min_chars"] == 300  # the content-length floor default
+    assert set(leg) == {
+        "enabled", "active", "mode", "threshold", "min_chars", "model", "has_key", "key_source"
+    }
 
 
 def test_put_legibility_settings_roundtrip(client, integrations_clean, monkeypatch):
     monkeypatch.setenv("ANTHROPIC_API_KEY", "k")  # key present -> active can be true
     resp = client.put(
         "/integrations/legibility",
-        json={"enabled": True, "mode": "manual", "threshold": 45},
+        json={"enabled": True, "mode": "manual", "threshold": 45, "min_chars": 150},
     )
     assert resp.status_code == 200
     leg = resp.json()
@@ -683,8 +693,11 @@ def test_put_legibility_settings_roundtrip(client, integrations_clean, monkeypat
     assert leg["active"] is True  # enabled AND key present
     assert leg["mode"] == "manual"
     assert leg["threshold"] == 45
+    assert leg["min_chars"] == 150
     # GET reflects the stored values.
-    assert client.get("/integrations").json()["legibility"]["threshold"] == 45
+    got = client.get("/integrations").json()["legibility"]
+    assert got["threshold"] == 45
+    assert got["min_chars"] == 150
 
 
 def test_put_legibility_enabled_without_key_is_inactive(client, integrations_clean, monkeypatch):
@@ -698,6 +711,8 @@ def test_put_legibility_enabled_without_key_is_inactive(client, integrations_cle
 def test_put_legibility_validation(client, integrations_clean):
     assert client.put("/integrations/legibility", json={"mode": "nope"}).status_code == 400
     assert client.put("/integrations/legibility", json={"threshold": 500}).status_code == 400
+    assert client.put("/integrations/legibility", json={"min_chars": -1}).status_code == 400
+    assert client.put("/integrations/legibility", json={"min_chars": "x"}).status_code == 400
     assert client.put("/integrations/legibility", json={"enabled": "yes"}).status_code == 400
     assert client.put("/integrations/legibility", json={}).status_code == 400
 
@@ -828,3 +843,60 @@ def test_delete_anthropic_key_falls_back_to_env(client, integrations_clean, monk
         "has_key": False,
         "key_source": None,
     }
+
+
+# ---- content-light ("router" page) legibility gate ---------------------------
+
+STUB_ID = "cccccccc-cccc-4ccc-8ccc-cccccccccccc"
+# ~366 chars — comfortably above the 300-char production default.
+LONG_TEXT = "apples and bananas and cherries, a real note with substance. " * 6
+
+
+def test_enough_legibility_content_helper():
+    """The pure content-length predicate: strips whitespace, inclusive at the
+    boundary, a 0 floor always passes."""
+    assert store._enough_legibility_content("x" * 300, 300) is True
+    assert store._enough_legibility_content("x" * 299, 300) is False
+    assert store._enough_legibility_content("   short   ", 5) is True
+    assert store._enough_legibility_content("   ", 1) is False
+    assert store._enough_legibility_content("", 0) is True
+
+
+def test_router_page_below_default_min_chars_skipped(legible):
+    """A router/bookmark stub falls below the 300-char default, so the deferred
+    /ingest path skips legibility entirely: health stays NULL, the page is never
+    marked owed, and analyze() is never called — even with legibility on + auto."""
+    enable, fake = legible
+    dsn = enable(min_chars=None)  # unset row -> production default (300)
+    _ingest(dsn, text="Twitter\nhttps://twitter.com/acme", source_id=STUB_ID, defer_analysis=True)
+    assert _row(dsn, STUB_ID)["health"] is None
+    assert STUB_ID not in _owed(dsn)
+    assert fake.calls == 0
+
+
+def test_substantial_page_above_default_still_scored(legible):
+    """A page above the default min_chars is scored as before (regression)."""
+    enable, fake = legible
+    dsn = enable(min_chars=None)
+    _ingest(dsn, text=LONG_TEXT, source_id=STUB_ID)
+    assert _row(dsn, STUB_ID)["health"] is not None
+    assert fake.calls == 1
+
+
+def test_min_chars_is_configurable(legible):
+    """Raising legibility.min_chars gates a page that would otherwise be scored."""
+    enable, fake = legible
+    dsn = enable(min_chars=1000)  # above LONG_TEXT's length
+    _ingest(dsn, text=LONG_TEXT, source_id=STUB_ID)
+    assert _row(dsn, STUB_ID)["health"] is None
+    assert fake.calls == 0
+
+
+def test_manual_rewrite_bypasses_min_chars(legible):
+    """An explicit manual (force_rewrite) trigger analyzes even a sub-threshold
+    page — user intent overrides the content-length skip."""
+    enable, fake = legible
+    dsn = enable(min_chars=1000)
+    _ingest(dsn, text="Twitter\nhttps://twitter.com/acme", source_id=STUB_ID, force_rewrite=True)
+    assert _row(dsn, STUB_ID)["health"] is not None
+    assert fake.calls == 1

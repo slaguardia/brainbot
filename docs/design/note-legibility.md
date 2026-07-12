@@ -159,13 +159,17 @@ a `settings`-table value, resolved per-request):
   - `legibility.threshold` — health score below which auto-rewrite fires.
   - `legibility.model` — model id (default `claude-sonnet-4-6`; one model for both the
     health pass and the rewrite).
+  - `legibility.min_chars` — skip legibility for pages with less rendered text than
+    this (default 300). A router/bookmark stub has no prose to score, so it stays
+    un-analyzed (health NULL — reads as n/a, no badge — and no auto-rewrite); a manual
+    `force_rewrite` bypasses it.
 
 **The seam resolution (this is the part the plan previously left ambiguous):**
 
 `Config().validate()` does **not** gate on the key — it can't, because both `enabled`
 and the key are DB values and `validate()` runs at boot with no pool. Boot stays
 key-agnostic. Instead, an `_effective_legibility(pool) -> (enabled, mode, threshold,
-model, api_key)` helper — the exact shape of `_effective_poll_interval` — resolves the
+model, min_chars, api_key)` helper — the exact shape of `_effective_poll_interval` — resolves the
 live policy and the key (via `_active_anthropic_key`, DB-over-env) at ingest time, and
 **treats "enabled but no key" as disabled (pass-through), logging a warning.** This
 mirrors the established defense that "a malformed stored value can't wedge syncing off":
@@ -185,9 +189,10 @@ it false.
 ```
 raw_text          = fetched page text (verbatim, stored as-is)
 h                 = md5(raw_text)
-enabled, mode, threshold, model = _effective_legibility(pool)   # 'enabled but no key' -> disabled
+enabled, mode, threshold, model, min_chars, api_key = _effective_legibility(pool)  # 'enabled but no key' -> disabled
 
-if enabled and rewrite_policy != 'off':
+# skip content-light stubs (a router/bookmark page) unless manually forced
+if enabled and rewrite_policy != 'off' and (force_rewrite or len(raw_text.strip()) >= min_chars):
     if h == stored analysis_hash and not force_rewrite:
         reuse stored health + rewrite_text            # idempotency gate — no LLM
     else:

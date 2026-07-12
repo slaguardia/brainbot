@@ -34,6 +34,7 @@ from .notion import NotionError, fetch_page, list_pages, verify_token
 from .settings import (
     ANTHROPIC_API_KEY_KEY,
     LEGIBILITY_ENABLED_KEY,
+    LEGIBILITY_MIN_CHARS_KEY,
     LEGIBILITY_MODE_KEY,
     LEGIBILITY_MODEL_KEY,
     LEGIBILITY_THRESHOLD_KEY,
@@ -274,7 +275,7 @@ async def rewrite_source_route(request: Request) -> JSONResponse:
 
     try:
         pool = await get_pool()
-        enabled, _mode, _threshold, _model, _key = await _effective_legibility(pool)
+        enabled, _mode, _threshold, _model, _min_chars, _key = await _effective_legibility(pool)
         if not enabled:
             # Globally off (toggle false, or enabled-but-no-key) — never analyze.
             return JSONResponse(
@@ -575,8 +576,8 @@ async def legibility_setting(request: Request) -> JSONResponse:
     `legibility.*` rows, toggleable without a restart exactly like the Notion poll
     interval. The SECRET (ANTHROPIC_API_KEY) is NOT managed here; it's env-only.
 
-    PUT {enabled?, mode?, threshold?, model?}: store any provided field (partial
-    updates allowed). DELETE: drop all four rows, reverting to the defaults
+    PUT {enabled?, mode?, threshold?, min_chars?, model?}: store any provided field
+    (partial updates allowed). DELETE: drop all the rows, reverting to the defaults
     (disabled = today's behavior). Both return the resulting legibility status
     (the same shape GET /integrations carries under `legibility`)."""
     pool = await get_pool()
@@ -587,6 +588,7 @@ async def legibility_setting(request: Request) -> JSONResponse:
                 LEGIBILITY_ENABLED_KEY,
                 LEGIBILITY_MODE_KEY,
                 LEGIBILITY_THRESHOLD_KEY,
+                LEGIBILITY_MIN_CHARS_KEY,
                 LEGIBILITY_MODEL_KEY,
             ):
                 await delete_setting(pool, key)
@@ -600,7 +602,7 @@ async def legibility_setting(request: Request) -> JSONResponse:
         body = await request.json()
     except Exception:
         return JSONResponse(
-            {"error": "body must be JSON {enabled?, mode?, threshold?, model?}"},
+            {"error": "body must be JSON {enabled?, mode?, threshold?, min_chars?, model?}"},
             status_code=400,
         )
     body = body or {}
@@ -628,6 +630,18 @@ async def legibility_setting(request: Request) -> JSONResponse:
                 {"error": "field 'threshold' must be in 0..100"}, status_code=400
             )
         updates.append((LEGIBILITY_THRESHOLD_KEY, str(threshold)))
+    if "min_chars" in body:
+        try:
+            min_chars = int(body["min_chars"])
+        except (TypeError, ValueError):
+            return JSONResponse(
+                {"error": "field 'min_chars' must be an integer"}, status_code=400
+            )
+        if not 0 <= min_chars <= 10000:
+            return JSONResponse(
+                {"error": "field 'min_chars' must be in 0..10000"}, status_code=400
+            )
+        updates.append((LEGIBILITY_MIN_CHARS_KEY, str(min_chars)))
     if "model" in body:
         if not isinstance(body["model"], str) or not body["model"].strip():
             return JSONResponse({"error": "field 'model' must be a non-empty string"}, status_code=400)
@@ -635,7 +649,7 @@ async def legibility_setting(request: Request) -> JSONResponse:
 
     if not updates:
         return JSONResponse(
-            {"error": "no recognized fields (enabled, mode, threshold, model)"},
+            {"error": "no recognized fields (enabled, mode, threshold, min_chars, model)"},
             status_code=400,
         )
 

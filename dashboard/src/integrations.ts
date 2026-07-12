@@ -32,6 +32,7 @@ interface LegibilityStatus {
   active?: boolean; // enabled AND the key is present (i.e. actually running)
   mode?: "auto" | "manual";
   threshold?: number;
+  min_chars?: number; // skip legibility for pages with less rendered text than this
   model?: string;
   has_key?: boolean;
   key_source?: "db" | "env" | null; // how the Anthropic key is provided
@@ -265,6 +266,7 @@ function legibilityCard(leg: LegibilityStatus): string {
   const active = !!leg.active;
   const mode = leg.mode === "manual" ? "manual" : "auto";
   const threshold = typeof leg.threshold === "number" ? leg.threshold : 60;
+  const minChars = typeof leg.min_chars === "number" ? leg.min_chars : 300;
   const hasKey = !!leg.has_key;
 
   const status = !enabled
@@ -301,6 +303,12 @@ function legibilityCard(leg: LegibilityStatus): string {
           <input class="intg-leg-threshold tk-input" type="number" min="0" max="100" step="1"
             inputmode="numeric" value="${threshold}" aria-label="Auto-rewrite health threshold" />
         </label>
+        <label class="intg-leg-row">
+          Min content (chars)
+          <input class="intg-leg-minchars tk-input" type="number" min="0" max="10000" step="10"
+            inputmode="numeric" value="${minChars}"
+            aria-label="Skip legibility for pages shorter than this many characters" />
+        </label>
         <div class="intg-leg-actions">
           <button class="intg-leg-save" type="submit">Save</button>
           <button class="intg-leg-reset" type="button">Reset</button>
@@ -315,6 +323,7 @@ function wireLegibility(body: HTMLElement): void {
   const enabledEl = body.querySelector<HTMLInputElement>(".intg-leg-enabled")!;
   const modeEl = body.querySelector<HTMLSelectElement>(".intg-leg-mode")!;
   const thrEl = body.querySelector<HTMLInputElement>(".intg-leg-threshold")!;
+  const minEl = body.querySelector<HTMLInputElement>(".intg-leg-minchars")!;
   const save = body.querySelector<HTMLButtonElement>(".intg-leg-save")!;
   const msg = body.querySelector<HTMLElement>(".intg-leg-msg")!;
   form.addEventListener("submit", (e) => {
@@ -324,10 +333,16 @@ function wireLegibility(body: HTMLElement): void {
       msg.textContent = "Threshold must be a whole number from 0 to 100.";
       return;
     }
+    const minChars = Number(minEl.value);
+    if (!Number.isInteger(minChars) || minChars < 0 || minChars > 10000) {
+      msg.textContent = "Min content must be a whole number from 0 to 10000.";
+      return;
+    }
     void saveLegibility(body, save, msg, {
       enabled: enabledEl.checked,
       mode: modeEl.value === "manual" ? "manual" : "auto",
       threshold: thr,
+      min_chars: minChars,
     });
   });
   const resetBtn = body.querySelector<HTMLButtonElement>(".intg-leg-reset")!;
@@ -517,7 +532,7 @@ async function saveLegibility(
   body: HTMLElement,
   btn: HTMLButtonElement,
   msg: HTMLElement,
-  payload: { enabled: boolean; mode: "auto" | "manual"; threshold: number },
+  payload: { enabled: boolean; mode: "auto" | "manual"; threshold: number; min_chars: number },
 ): Promise<void> {
   btn.disabled = true;
   btn.textContent = "Saving…";

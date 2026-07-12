@@ -7,12 +7,18 @@
    =========================================================================== */
 
 /* Widen the shared shell's content column for this app. The toolkit base.css
-   caps <main> at 720px — fine for a reading column, but the home source map and
-   the discover table are denser and read better with the extra width. Scoped to
-   this app's style.css (loaded after base.css), so other toolkit apps keep the
-   narrower default. */
+   caps <main> at 720px — fine for a reading column, but the discover table is
+   dense and multi-column, so give it room to breathe. Scoped to this app's
+   style.css (loaded after base.css), so other toolkit apps keep the narrower
+   default. */
 main {
-  max-width: 1080px;
+  max-width: 1400px;
+}
+/* The landing is just a search box + a button — keep it a readable, centred
+   column instead of stretching it across the whole wide shell. */
+.home.landing {
+  max-width: 760px;
+  margin-inline: auto;
 }
 
 /* ===========================================================================
@@ -538,16 +544,42 @@ main {
   padding-top: 10px;
   padding-bottom: 10px;
 }
-/* The whole row is the click target (opens the page in Notion) — cursor + a
-   subtle, smooth background lift on hover so it reads like a soft table row. */
+/* A subtle, smooth background lift on hover so rows read like soft table rows.
+   Row actions (open ↗, pull, remove, the switch) carry their own cursor; a branch
+   summary is clickable (toggles) via the rule below. */
 .disc-tree .disc-row {
   padding: 0 8px;
   border-radius: var(--r-md);
-  cursor: pointer;
   transition: background-color var(--dur-fast) var(--ease);
 }
 .disc-tree .disc-row:hover {
   background: var(--bg-elevated);
+}
+/* Column-header row: reuses the row flex + fixed .disc-cell widths so headers sit
+   over their columns. Uppercase, faint, with a bottom rule. The per-column font
+   overrides (mono meta, etc.) are reset so the header reads uniformly. */
+.disc-tree-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 2px 8px 7px;
+  margin-bottom: 2px;
+  border-bottom: 1px solid var(--border);
+  font-size: 10.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--fg-faint);
+  white-space: nowrap;
+}
+.disc-tree-head .disc-cell {
+  font-size: inherit;
+  font-family: inherit;
+  color: inherit;
+}
+.disc-head-page {
+  flex: 1;
+  min-width: 0;
 }
 /* A touch more indent between nesting levels than the home map, so deep
    database trees stay legible. */
@@ -555,11 +587,11 @@ main {
   margin-left: 11px;
   padding-left: 16px;
 }
-/* The summary's default disclosure toggle is suppressed by the row-click handler
-   (the whole row opens the page in Notion); expand/collapse is driven by the
-   leading caret instead. */
+/* A branch toggles on a summary click (native <details>); the leading caret is
+   the visual indicator. */
 .disc-branch > summary {
   list-style: none;
+  cursor: pointer;
 }
 .disc-branch > summary::-webkit-details-marker {
   display: none;
@@ -691,6 +723,22 @@ main {
 }
 .disc-cell-remove {
   width: 116px;
+}
+/* Far-right open-in-Notion column. */
+.disc-cell-open {
+  width: 30px;
+}
+.disc-open {
+  color: var(--fg-faint);
+  font-size: 13px;
+  text-decoration: none;
+  padding: 3px 5px;
+  border-radius: var(--r-sm);
+  transition: color var(--dur-fast) var(--ease), background-color var(--dur-fast) var(--ease);
+}
+.disc-open:hover {
+  color: var(--link);
+  background: var(--link-bg);
 }
 /* On a phone the edited-date column is the first thing to sacrifice — it frees
    room for the title and the actions that matter. */

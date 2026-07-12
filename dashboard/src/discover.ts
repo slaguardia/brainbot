@@ -386,6 +386,23 @@ function filterNode(node: PageNode): PageNode | null {
   return null;
 }
 
+// The tree's column-header row — cells reuse the same fixed-width .disc-cell
+// classes as the data rows so the columns line up, and the leading spacer matches
+// a row's caret width so "Page" sits over the titles.
+function treeHead(): string {
+  return `
+    <div class="disc-tree-head">
+      <span class="disc-caret-spacer"></span>
+      <span class="disc-head-page">Page</span>
+      <span class="disc-cell disc-cell-meta">Edited</span>
+      <span class="disc-cell disc-cell-status">Status</span>
+      <span class="disc-cell disc-cell-health">Leg.</span>
+      <span class="disc-cell disc-cell-expand">Auto</span>
+      <span class="disc-cell disc-cell-remove"></span>
+      <span class="disc-cell disc-cell-open"></span>
+    </div>`;
+}
+
 // Render (or re-render) just the tree region — the toolbar and summary stay put,
 // so the filter box keeps focus while you type. When a filter is active, every
 // branch renders open so matches deep in the workspace are actually visible.
@@ -400,7 +417,7 @@ function renderTree(body: HTMLElement): void {
     wrap.innerHTML = `<p class="home-status">No pages match the filter.</p>`;
     return;
   }
-  wrap.innerHTML = `<ul class="src-list disc-tree">${view.map((n) => renderNode(n, active)).join("")}</ul>`;
+  wrap.innerHTML = `${treeHead()}<ul class="src-list disc-tree">${view.map((n) => renderNode(n, active)).join("")}</ul>`;
   applyHealth(body); // fill the freshly rendered rows' health slots
 }
 
@@ -423,6 +440,11 @@ function rowHTML(node: PageNode): string {
   const kind = isDb ? "rows" : "sub-pages";
   const expand = canExpand
     ? `<button class="disc-switch${expandOn ? " is-on" : ""}" type="button" role="switch" aria-checked="${expandOn}" data-id="${id}" data-on="${expandOn ? "1" : "0"}" title="Auto-pull new ${kind} under this as they appear in Notion (opt-in)" aria-label="Auto-pull new ${kind}"><span class="disc-switch-knob"></span></button>`
+    : "";
+  // Open-in-Notion — an explicit ↗ link in the far-right column (databases have
+  // no url, so they get an empty cell).
+  const openBtn = p.url
+    ? `<a class="disc-open" href="${url}" target="_blank" rel="noopener" data-url="${url}" title="Open in Notion" aria-label="Open in Notion">↗</a>`
     : "";
   let meta = ""; // a page's edited date, or a database's row count
   let status = ""; // pull · in brain · pull all
@@ -457,28 +479,27 @@ function rowHTML(node: PageNode): string {
       <span class="disc-cell disc-cell-status">${status}</span>
       ${health}
       <span class="disc-cell disc-cell-expand">${expand}</span>
-      <span class="disc-cell disc-cell-remove">${remove}</span>`;
+      <span class="disc-cell disc-cell-remove">${remove}</span>
+      <span class="disc-cell disc-cell-open">${openBtn}</span>`;
 }
 
 function renderNode(node: PageNode, openAll = false): string {
-  // The whole row opens the page in Notion on click (data-url); a leading caret
-  // toggles expand. A parent renders as a native <details> (its open state is
-  // driven by the caret, not the summary's default toggle, which the row-click
-  // handler suppresses); collapsed by default keeps big databases from flooding
-  // the view — unless a filter is active, when we open everything.
-  const url = esc(node.page.url ?? "");
+  // A parent renders as a native <details> that toggles on a summary click; the
+  // leading caret is the visual indicator (a same-width spacer aligns leaf rows).
+  // Collapsed by default keeps big databases from flooding the view — unless a
+  // filter is active, when we open everything.
   if (node.children.length) {
     return `
     <li class="src-node is-source">
       <details class="disc-branch"${openAll ? " open" : ""}>
-        <summary class="disc-row" data-url="${url}"><span class="disc-caret" aria-hidden="true"></span>${rowHTML(node)}</summary>
+        <summary class="disc-row"><span class="disc-caret" aria-hidden="true"></span>${rowHTML(node)}</summary>
         <ul class="src-list">${node.children.map((c) => renderNode(c, openAll)).join("")}</ul>
       </details>
     </li>`;
   }
   return `
     <li class="src-node is-source">
-      <span class="disc-row" data-url="${url}"><span class="disc-caret-spacer" aria-hidden="true"></span>${rowHTML(node)}</span>
+      <span class="disc-row"><span class="disc-caret-spacer" aria-hidden="true"></span>${rowHTML(node)}</span>
     </li>`;
 }
 
@@ -517,13 +538,13 @@ function wireIngest(body: HTMLElement): void {
       renderTree(body);
       return;
     }
-    const caret = btn.closest(".disc-caret");
-    if (caret) {
-      // The leading caret is the expand control now — toggle the branch (and stop
-      // the whole-row open handler below from also firing).
+    if (btn.classList.contains("disc-open")) {
+      // Open-in-Notion link. It can sit inside a <summary>; preventDefault stops
+      // the branch from also toggling, and we open the page ourselves (right-click
+      // / middle-click still use the <a href>).
       e.preventDefault();
-      const details = caret.closest("details.disc-branch") as HTMLDetailsElement | null;
-      if (details) details.open = !details.open;
+      const url = btn.getAttribute("data-url");
+      if (url) window.open(url, "_blank", "noopener");
       return;
     }
     const sw = btn.closest(".disc-switch") as HTMLButtonElement | null;
@@ -572,23 +593,9 @@ function wireIngest(body: HTMLElement): void {
       if (id) void removePage(btn as HTMLButtonElement, id, btn.getAttribute("data-url") ?? "");
       return;
     }
-    if (!btn.classList.contains("disc-pull")) {
-      // Anywhere else on a row: the whole row opens the page in Notion (this
-      // replaced the old hover arrow). preventDefault stops a branch <summary>
-      // from also toggling; a row with no url (a database) toggles its branch.
-      const row = btn.closest(".disc-row");
-      if (row) {
-        e.preventDefault();
-        const rowUrl = row.getAttribute("data-url");
-        if (rowUrl) {
-          window.open(rowUrl, "_blank", "noopener");
-        } else {
-          const details = row.closest("details.disc-branch") as HTMLDetailsElement | null;
-          if (details) details.open = !details.open;
-        }
-      }
-      return;
-    }
+    // Anything else on a branch summary (the caret, the title, empty space) falls
+    // through to the native <details> toggle — that's the expand control now.
+    if (!btn.classList.contains("disc-pull")) return;
     // A pull button can sit inside a <summary>; without this the click ALSO
     // toggles the branch open/closed.
     e.preventDefault();

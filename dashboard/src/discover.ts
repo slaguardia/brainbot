@@ -399,7 +399,7 @@ function treeHead(): string {
       <span class="disc-cell disc-cell-health">Leg.</span>
       <span class="disc-cell disc-cell-expand">Auto</span>
       <span class="disc-cell disc-cell-remove"></span>
-      <span class="disc-cell disc-cell-open"></span>
+      <span class="disc-cell disc-cell-open"><button class="disc-legend-btn" type="button" title="What do these columns mean?" aria-label="Explain the columns">?</button></span>
     </div>`;
 }
 
@@ -538,6 +538,11 @@ function wireIngest(body: HTMLElement): void {
       renderTree(body);
       return;
     }
+    if (btn.classList.contains("disc-legend-btn")) {
+      e.preventDefault();
+      showLegend();
+      return;
+    }
     if (btn.classList.contains("disc-open")) {
       // Open-in-Notion link. It can sit inside a <summary>; preventDefault stops
       // the branch from also toggling, and we open the page ourselves (right-click
@@ -642,6 +647,61 @@ function collectIngestedChildPages(node: PageNode): NotionPage[] {
   };
   walk(node);
   return out;
+}
+
+// --- column legend modal ------------------------------------------------------
+
+// A small help modal explaining each column of the tree, with live sample chips
+// (the real .disc-badge / .src-health / .disc-switch styling) so the legend
+// matches what's on screen. All static markup — no user data.
+function showLegend(): void {
+  const el = document.createElement("div");
+  el.className = "disc-legend";
+  el.innerHTML = `
+    <dl class="disc-legend-dl">
+      <dt>Page</dt>
+      <dd>The Notion page's title, in its parent/child tree — click a branch row to
+        expand it. A <span class="disc-kind-db">db</span> chip marks a database
+        (its rows show up as pages under it).</dd>
+
+      <dt>Edited</dt>
+      <dd>When Notion last edited the page; for a database, how many pages it holds.</dd>
+
+      <dt>Status</dt>
+      <dd><span class="disc-badge is-ingested">in brain</span> means it's already
+        ingested; otherwise a <span class="disc-pull">pull</span> button ingests it.
+        Databases offer <em>pull all</em> / <em>remove all</em> for their rows, and
+        <span class="disc-resync">Re-pull&nbsp;N&nbsp;changed</span> in the summary
+        re-syncs pages whose Notion copy drifted.</dd>
+
+      <dt>Leg.</dt>
+      <dd>Note-legibility of an in-brain page — how easily an agent can use it, 0–100:
+        <span class="src-health is-good">80</span> good,
+        <span class="src-health is-fair">55</span> fair,
+        <span class="src-health is-poor">30</span> poor. Content-light pages (a link
+        or a stub) aren't scored. Click a score to see why.</dd>
+
+      <dt><span class="disc-switch is-on disc-legend-switch"><span class="disc-switch-knob"></span></span> Auto</dt>
+      <dd><strong>Auto-pull</strong>: turn it on for a database or a page with
+        sub-pages and the brain auto-ingests new descendants (new sub-pages / rows)
+        as they appear in Notion. Opt-in, off by default.</dd>
+
+      <dt>↗</dt>
+      <dd>Open the page in Notion.</dd>
+    </dl>`;
+  const handle = modal({ title: "What the columns mean", body: el });
+  // Rebuilt per open, so drop it from the DOM once it's finished fading out — no
+  // matter which close path ran (×, ESC, scrim) — so repeated opens don't pile up.
+  handle.el.classList.add("disc-legend-modal");
+  handle.el.addEventListener("transitionend", (e) => {
+    if (
+      e.target === handle.el &&
+      e.propertyName === "opacity" &&
+      !handle.el.classList.contains("tk-open")
+    )
+      handle.el.remove();
+  });
+  handle.open();
 }
 
 // --- pull-with-children modal -------------------------------------------------

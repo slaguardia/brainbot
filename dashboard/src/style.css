@@ -804,6 +804,68 @@ main {
   width: 420px;
 }
 
+/* Column-legend help button (the "?" in the header row) + its modal. */
+.disc-legend-btn {
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 1px solid var(--border-strong);
+  border-radius: 50%;
+  background: transparent;
+  color: var(--fg-faint);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  transition: color var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
+}
+.disc-legend-btn:hover {
+  color: var(--link);
+  border-color: var(--link);
+}
+.disc-legend-modal .tk-modal {
+  width: 540px;
+}
+/* Legend body: a two-column definition list (term · description) with live sample
+   chips reused from the tree so the legend matches what's on screen. */
+.disc-legend-dl {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 12px 16px;
+  margin: 2px 0 0;
+  align-items: baseline;
+}
+.disc-legend-dl dt {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  color: var(--fg);
+  white-space: nowrap;
+}
+.disc-legend-dl dd {
+  margin: 0;
+  color: var(--fg-muted);
+  font-size: 13.5px;
+  line-height: 1.55;
+}
+/* Inline sample chips in the legend keep their tree styling but shouldn't be
+   interactive here. */
+.disc-legend-dl .disc-pull,
+.disc-legend-dl .disc-resync {
+  cursor: default;
+}
+.disc-legend-dl .disc-badge,
+.disc-legend-dl .src-health,
+.disc-legend-dl .disc-pull,
+.disc-legend-dl .disc-resync {
+  vertical-align: middle;
+}
+.disc-legend-switch {
+  display: inline-block;
+  vertical-align: middle;
+}
+
 /* ===========================================================================
    Documentation view (#docs). Same scout palette; UI chrome is sans/mono. The
    diagram legend hues map onto scout's semantic colors: blue = embeddings,

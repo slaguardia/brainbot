@@ -698,12 +698,47 @@ async function removeBatch(
   if (failed > 0) toast(`${failed} of ${pages.length} removals failed — retry from the tree.`);
 }
 
-// Un-ingest one page: DELETE its source from the brain, then swap the "in brain"
-// badge + remove button back to a pull button in place (and patch the cache, so
-// the next render doesn't resurrect the badge). The inverse of pullPage.
+// Flip one row between the ingested and not-ingested states in place — no full
+// reload, so expanded branches and scroll stay put. Rewrites the three cells
+// that differ so the row matches exactly what rowHTML() would render fresh:
+//   status → "in brain" badge  |  pull button
+//   remove → remove button     |  (empty)
+//   health → legibility slot   |  (empty)
+// This is the fix for the old replaceWith-the-clicked-button approach, which
+// left the remove button missing after a pull (and mis-columned it after a
+// remove→re-add, since the pull button had been swapped into the remove cell).
+function setRowIngested(row: Element, ingested: boolean, id: string, url: string): void {
+  const eid = esc(id);
+  const eurl = esc(url);
+  const status = row.querySelector<HTMLElement>(".disc-cell-status");
+  const remove = row.querySelector<HTMLElement>(".disc-cell-remove");
+  const health = row.querySelector<HTMLElement>(".disc-cell-health");
+  if (status)
+    status.innerHTML = ingested
+      ? `<span class="disc-badge is-ingested">in brain</span>`
+      : `<button class="disc-pull" type="button" data-id="${eid}" data-url="${eurl}">pull</button>`;
+  if (remove)
+    remove.innerHTML = ingested
+      ? `<button class="disc-remove" type="button" data-id="${eid}" data-url="${eurl}" title="remove from the brain">remove</button>`
+      : "";
+  if (health) {
+    if (ingested) {
+      health.setAttribute("data-health-for", eid);
+      health.innerHTML = healthBadge(id, healthById.get(id) ?? null);
+    } else {
+      health.removeAttribute("data-health-for");
+      health.innerHTML = "";
+    }
+  }
+}
+
+// Un-ingest one page: DELETE its source from the brain, then flip the row back to
+// its not-ingested state in place (and patch the cache, so the next render
+// doesn't resurrect the badge). The inverse of pullPage.
 async function removePage(btn: HTMLButtonElement, id: string, url: string): Promise<void> {
   btn.disabled = true;
   btn.textContent = "removing…";
+  const row = btn.closest(".disc-row");
   try {
     const res = await fetch(`/api/sources/${id}`, { method: "DELETE" });
     const data = (await res.json()) as { error?: string };
@@ -719,22 +754,7 @@ async function removePage(btn: HTMLButtonElement, id: string, url: string): Prom
       cached.ingested_last_edited = null;
       writeCache(currentPages, fetchedAt);
     }
-    // Drop the "in brain" badge that precedes this button, clear the row's
-    // legibility slot, then replace the button itself with a fresh pull button.
-    const row = btn.closest(".disc-row");
-    row?.querySelector(".disc-badge")?.remove();
-    const healthCell = row?.querySelector<HTMLElement>(".disc-cell-health");
-    if (healthCell) {
-      healthCell.innerHTML = "";
-      healthCell.removeAttribute("data-health-for");
-    }
-    const pull = document.createElement("button");
-    pull.className = "disc-pull";
-    pull.type = "button";
-    pull.dataset.id = id;
-    pull.dataset.url = url;
-    pull.textContent = "pull";
-    btn.replaceWith(pull);
+    if (row) setRowIngested(row, false, id, url);
   } catch (err) {
     btn.disabled = false;
     btn.textContent = "retry";
@@ -743,8 +763,10 @@ async function removePage(btn: HTMLButtonElement, id: string, url: string): Prom
 }
 
 async function pullPage(btn: HTMLButtonElement, url: string): Promise<void> {
+  const id = btn.getAttribute("data-id") ?? "";
   btn.disabled = true;
   btn.textContent = "pulling…";
+  const row = btn.closest(".disc-row");
   try {
     const res = await fetch(`/api/ingest`, {
       method: "POST",
@@ -758,20 +780,17 @@ async function pullPage(btn: HTMLButtonElement, url: string): Promise<void> {
       btn.title = data.error ?? `HTTP ${res.status}`;
       return;
     }
-    // Swap the button for the ingested badge in place — no full reload needed —
-    // and patch the cache so the next render doesn't resurrect the pull button.
-    // The brain just captured the page at its listed edit time; record that too,
-    // or the next render would count the fresh pull as stale.
+    // Flip the row to its ingested state in place — no full reload needed — and
+    // patch the cache so the next render doesn't resurrect the pull button. The
+    // brain just captured the page at its listed edit time; record that too, or
+    // the next render would count the fresh pull as stale.
     const cached = currentPages.find((p) => p.url === url);
     if (cached) {
       cached.ingested = true;
       cached.ingested_last_edited = cached.last_edited_time ?? null;
       writeCache(currentPages, fetchedAt);
     }
-    const badge = document.createElement("span");
-    badge.className = "disc-badge is-ingested";
-    badge.textContent = "in brain";
-    btn.replaceWith(badge);
+    if (row) setRowIngested(row, true, cached?.id ?? id, url);
   } catch (err) {
     btn.disabled = false;
     btn.textContent = "retry";

@@ -70,7 +70,7 @@ let healthById = new Map<string, Health>();
 
 // The active filter — persisted across re-renders (a pull re-renders the whole
 // body, and we don't want the filter to reset under the user).
-const filterState = { text: "", onlyNew: false, onlyChanged: false };
+const filterState = { text: "", onlyNew: false, onlyChanged: false, onlyPoor: false };
 
 function readCache(): NotionPage[] | null {
   try {
@@ -161,6 +161,9 @@ async function loadHealth(body: HTMLElement): Promise<void> {
     for (const s of sources) if (s.health) next.set(s.id, s.health);
     healthById = next;
     applyHealth(body);
+    // The "Poor legibility" filter gates on health that arrives after the first
+    // render — re-run the tree so a filter toggled before it loaded picks it up.
+    if (filterState.onlyPoor) renderTree(body);
   } catch {
     // Health is an enhancement; never surface its failure over the page list.
   }
@@ -186,7 +189,7 @@ function healthBadge(id: string | undefined, health: Health | null | undefined):
 // Overlay the loaded health onto the rendered tree without re-rendering it —
 // so the branches you've expanded and the filter box you're typing in stay put.
 // Fills each in-brain row's health slot (keyed by data-health-for) and the
-// summary's overall-legibility stat.
+// summary's avg-legibility + poor-count stats.
 function applyHealth(body: HTMLElement): void {
   for (const [id, h] of healthById) {
     const cell = body.querySelector<HTMLElement>(`[data-health-for="${id}"]`);
@@ -194,30 +197,62 @@ function applyHealth(body: HTMLElement): void {
   }
   const stat = body.querySelector<HTMLElement>(".disc-health-stat");
   if (stat) {
-    const avg = avgHealth();
-    if (avg !== null) {
-      const tier = avg >= 70 ? "good" : avg >= 40 ? "fair" : "poor";
+    const hs = healthStats();
+    if (hs) {
+      const tier = hs.avg >= 70 ? "good" : hs.avg >= 40 ? "fair" : "poor";
+      // Show coverage only when not every in-brain page has been scored — an
+      // average over 2 of 40 pages shouldn't read as the whole brain's health.
+      const cov = hs.scored < hs.total ? ` · ${hs.scored}/${hs.total} scored` : "";
       stat.className = `disc-stat disc-health-stat is-${tier}`;
-      stat.innerHTML = `<span class="disc-stat-n">${avg}</span><span class="disc-stat-l">avg legibility</span>`;
+      stat.innerHTML = `<span class="disc-stat-n">${hs.avg}</span><span class="disc-stat-l">avg legibility${cov}</span>`;
       stat.removeAttribute("hidden");
+    }
+  }
+  const poorStat = body.querySelector<HTMLElement>(".disc-poor-stat");
+  if (poorStat) {
+    const n = poorCount();
+    if (n > 0) {
+      poorStat.innerHTML = `<span class="disc-stat-n">${n}</span><span class="disc-stat-l">poor</span>`;
+      poorStat.removeAttribute("hidden");
+    } else {
+      poorStat.setAttribute("hidden", "");
+      poorStat.innerHTML = "";
     }
   }
 }
 
-// Mean legibility across the in-brain pages the layer has scored (databases have
-// no document body, so they're excluded). Null when nothing's been analyzed.
-function avgHealth(): number | null {
+// Legibility rollups over the in-brain pages the layer has scored (databases
+// have no document body, so they're excluded). `total` counts scorable in-brain
+// pages whether scored yet or not, so the summary can show coverage. Null when
+// nothing's been analyzed.
+function healthStats(): { avg: number; scored: number; total: number } | null {
   let sum = 0;
-  let k = 0;
+  let scored = 0;
+  let total = 0;
   for (const p of currentPages) {
     if (!p.ingested || p.kind === "database" || !p.id) continue;
+    total++;
     const h = healthById.get(p.id);
     if (h) {
       sum += h.score;
-      k++;
+      scored++;
     }
   }
-  return k ? Math.round(sum / k) : null;
+  return scored ? { avg: Math.round(sum / scored), scored, total } : null;
+}
+
+// A scored in-brain page below the "poor" tier (score < 40 — the red badge). The
+// summary counts these; the "Poor legibility" filter isolates them.
+function isPoor(p: NotionPage): boolean {
+  if (!p.ingested || p.kind === "database" || !p.id) return false;
+  const h = healthById.get(p.id);
+  return !!h && h.score < 40;
+}
+
+function poorCount(): number {
+  let n = 0;
+  for (const p of currentPages) if (isPoor(p)) n++;
+  return n;
 }
 
 // --- parent/child tree -------------------------------------------------------
@@ -297,6 +332,7 @@ function renderSummary(pages: NotionPage[]): string {
         <div class="disc-stat is-in"><span class="disc-stat-n">${nIn}</span><span class="disc-stat-l">in brain</span></div>
         ${changedStat}
         <div class="disc-stat disc-health-stat" hidden></div>
+        <div class="disc-stat disc-poor-stat" hidden></div>
       </div>
       <div class="disc-summary-side">
         ${resync}
@@ -312,14 +348,20 @@ function renderToolbar(): string {
       <input id="disc-filter" class="tk-input disc-filter" type="search"
         placeholder="Filter pages…" autocomplete="off" value="${esc(f.text)}" />
       <div class="disc-toggles">
-        <button class="disc-toggle${f.onlyNew ? " is-on" : ""}" data-toggle="new" type="button">Not in brain</button>
-        <button class="disc-toggle${f.onlyChanged ? " is-on" : ""}" data-toggle="changed" type="button">Changed</button>
+        <button class="disc-toggle${f.onlyNew ? " is-on" : ""}" data-toggle="new" type="button" aria-pressed="${f.onlyNew}">Not in brain</button>
+        <button class="disc-toggle${f.onlyChanged ? " is-on" : ""}" data-toggle="changed" type="button" aria-pressed="${f.onlyChanged}">Changed</button>
+        <button class="disc-toggle${f.onlyPoor ? " is-on" : ""}" data-toggle="poor" type="button" aria-pressed="${f.onlyPoor}">Poor legibility</button>
       </div>
     </div>`;
 }
 
 function filterActive(): boolean {
-  return !!(filterState.text.trim() || filterState.onlyNew || filterState.onlyChanged);
+  return !!(
+    filterState.text.trim() ||
+    filterState.onlyNew ||
+    filterState.onlyChanged ||
+    filterState.onlyPoor
+  );
 }
 
 // Whether a page itself satisfies the active filter. Text matches its title;
@@ -330,6 +372,7 @@ function pageMatches(p: NotionPage): boolean {
   if (text && !(p.title ?? "").toLowerCase().includes(text)) return false;
   if (filterState.onlyNew && (p.kind === "database" || p.ingested)) return false;
   if (filterState.onlyChanged && !isStale(p)) return false;
+  if (filterState.onlyPoor && !isPoor(p)) return false;
   return true;
 }
 
@@ -432,12 +475,15 @@ function renderNode(node: PageNode, openAll = false): string {
 
 function wireFilter(body: HTMLElement): void {
   // Delegated so it survives full body re-renders. Typing only re-renders the
-  // tree region (not the toolbar), so the input keeps focus.
+  // tree region (not the toolbar), so the input keeps focus. Debounced so a big
+  // workspace isn't re-rendered on every keystroke.
+  let timer: ReturnType<typeof setTimeout> | undefined;
   body.addEventListener("input", (e) => {
     const t = e.target as HTMLElement;
     if (t.id === "disc-filter") {
       filterState.text = (t as HTMLInputElement).value;
-      renderTree(body);
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => renderTree(body), 120);
     }
   });
 }
@@ -454,7 +500,9 @@ function wireIngest(body: HTMLElement): void {
       const which = btn.getAttribute("data-toggle");
       if (which === "new") filterState.onlyNew = !filterState.onlyNew;
       if (which === "changed") filterState.onlyChanged = !filterState.onlyChanged;
-      btn.classList.toggle("is-on");
+      if (which === "poor") filterState.onlyPoor = !filterState.onlyPoor;
+      const on = btn.classList.toggle("is-on");
+      btn.setAttribute("aria-pressed", on ? "true" : "false");
       renderTree(body);
       return;
     }

@@ -405,6 +405,11 @@ main {
 .disc-stat.is-changed .disc-stat-n {
   color: var(--maybe);
 }
+/* Poor-legibility count — red, to read as "needs attention" (score < 40, the
+   red badge tier). Hidden until map() resolves and only shown when nonzero. */
+.disc-poor-stat .disc-stat-n {
+  color: var(--no);
+}
 /* Overall-legibility tile — a coloured dot before the score, tiered like the
    per-row badge. Hidden until map() resolves. */
 .disc-health-stat {

@@ -275,9 +275,10 @@ const server = createServer((req, res) => {
     void proxyJson(req, res, "DELETE", `/sources/${id}`);
     return;
   }
-  // Note-legibility owner actions on one source: the diff read (GET) + manual
-  // rewrite trigger (POST) at /api/sources/{id}/rewrite, and the per-source policy
-  // pin (PUT) at /api/sources/{id}/rewrite-policy.
+  // Per-source owner actions: note-legibility diff read (GET) + manual rewrite
+  // trigger (POST) at /api/sources/{id}/rewrite, the per-source policy pin (PUT) at
+  // /api/sources/{id}/rewrite-policy, and the auto-expand opt-in (PUT) at
+  // /api/sources/{id}/auto-expand (also valid for a database id).
   if (url.pathname.startsWith("/api/sources/")) {
     const rest = url.pathname.slice("/api/sources/".length); // "<id>/rewrite" etc.
     const slash = rest.indexOf("/");
@@ -294,6 +295,10 @@ const server = createServer((req, res) => {
       }
       if (action === "rewrite-policy" && req.method === "PUT") {
         void proxyJson(req, res, "PUT", `/sources/${id}/rewrite-policy`);
+        return;
+      }
+      if (action === "auto-expand" && req.method === "PUT") {
+        void proxyJson(req, res, "PUT", `/sources/${id}/auto-expand`);
         return;
       }
     }

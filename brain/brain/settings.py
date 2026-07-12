@@ -37,6 +37,13 @@ ANTHROPIC_API_KEY_KEY = "anthropic_api_key"
 # overrides BRAIN_POLL_INTERVAL_SECONDS (env); "0" explicitly disables the loop.
 POLL_INTERVAL_KEY = "notion_poll_interval"
 
+# Per-Notion-id opt-in for auto-expand: a `settings` row `auto_expand.<id> = "true"`
+# means the sync loop may auto-pull NEW descendants (child pages / new database
+# rows) under that page or database. Opt-in, default off (absence = off). Keyed by
+# raw Notion id so it works uniformly for pages AND databases — the latter have no
+# `sources` row of their own to carry a column.
+AUTO_EXPAND_PREFIX = "auto_expand."
+
 # Note-legibility policy (docs/note-legibility.md), all runtime/UI-toggleable —
 # the switch and its knobs. The SECRET it authenticates with is the separate
 # ANTHROPIC_API_KEY_KEY row above (or the env fallback), resolved by
@@ -83,6 +90,20 @@ async def delete_setting(pool: asyncpg.Pool, key: str) -> bool:
     """Remove `key`. Returns True if a row was deleted (asyncpg's tag is 'DELETE n')."""
     tag = await pool.execute("DELETE FROM settings WHERE key = $1", key)
     return tag.rsplit(" ", 1)[-1] != "0"
+
+
+async def auto_expand_ids(pool: asyncpg.Pool) -> set[str]:
+    """The Notion ids (pages OR databases) opted in to auto-expand — the sync loop
+    auto-pulls new descendants only under these. Reads the `auto_expand.<id>`
+    settings rows (opt-in, default off). `left(key, n)` avoids LIKE's underscore
+    wildcard biting the `auto_expand` prefix."""
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            "SELECT key FROM settings WHERE left(key, $2) = $1 AND value = 'true'",
+            AUTO_EXPAND_PREFIX,
+            len(AUTO_EXPAND_PREFIX),
+        )
+    return {r["key"][len(AUTO_EXPAND_PREFIX):] for r in rows}
 
 
 async def _active_anthropic_key(pool: asyncpg.Pool) -> tuple[str | None, str | None]:

@@ -107,42 +107,52 @@ def _node(pid: str, *, kind: str = "page", parent: str | None = None,
     return {"id": pid, "kind": kind, "parent_id": parent, "url": url}
 
 
-def test_child_of_pulled_page_is_discovered():
+# auto-expand is per-page OPT-IN (default off): _new_children only walks out from
+# pages/databases whose id is in the `expand_ids` set.
+
+
+def test_child_of_opted_in_page_is_discovered():
     pages = [_node("root"), _node("kid", parent="root")]
-    assert [p["id"] for p in _new_children(pages, {"root": None})] == ["kid"]
+    assert [p["id"] for p in _new_children(pages, {"root": None}, {"root"})] == ["kid"]
 
 
-def test_new_row_of_pulled_database_is_discovered():
-    # We have row r1 (parent = database db); r2 is a new row under the same db.
-    # The db node itself is never pulled — having a row seeds discovery of new rows.
+def test_pulled_page_not_opted_in_discovers_nothing():
+    # The whole point of opt-in: a pulled page with auto-expand OFF never auto-pulls.
+    pages = [_node("root"), _node("kid", parent="root")]
+    assert _new_children(pages, {"root": None}, set()) == []
+
+
+def test_new_row_of_opted_in_database_is_discovered():
+    # A database has no source row of its own, so the opt-in is keyed on the database
+    # id directly; opting it in pulls its not-yet-ingested rows.
     pages = [
         _node("db", kind="database", url=""),
         _node("r1", parent="db"),
         _node("r2", parent="db"),
     ]
-    assert [p["id"] for p in _new_children(pages, {"r1": None})] == ["r2"]
+    assert [p["id"] for p in _new_children(pages, {"r1": None}, {"db"})] == ["r2"]
 
 
 def test_already_pulled_page_is_not_rediscovered():
     pages = [_node("root"), _node("kid", parent="root")]
-    assert _new_children(pages, {"root": None, "kid": None}) == []
+    assert _new_children(pages, {"root": None, "kid": None}, {"root"}) == []
 
 
-def test_page_under_unpulled_parent_is_ignored():
-    # `other` is a workspace-root page we never pulled — not under pulled content.
+def test_page_under_unopted_parent_is_ignored():
+    # `other` is a workspace-root page we never pulled — not under opted-in content.
     pages = [_node("root"), _node("kid", parent="root"), _node("other")]
-    assert [p["id"] for p in _new_children(pages, {"root": None})] == ["kid"]
+    assert [p["id"] for p in _new_children(pages, {"root": None}, {"root"})] == ["kid"]
 
 
-def test_nested_database_rows_discovered_but_database_not_ingested():
-    # A database nested under a pulled page: its rows are new children, but the
-    # database node itself is never returned (no url to /ingest).
+def test_nested_database_rows_cascade_under_opted_in_root():
+    # A database nested under an opted-in page: opting the page in cascades into the
+    # nested db's rows; the database node itself is never returned (no url to /ingest).
     pages = [
         _node("root"),
         _node("db", kind="database", parent="root", url=""),
         _node("row", parent="db"),
     ]
-    assert [p["id"] for p in _new_children(pages, {"root": None})] == ["row"]
+    assert [p["id"] for p in _new_children(pages, {"root": None}, {"root"})] == ["row"]
 
 
 def test_deep_descendant_caught_in_one_pass():
@@ -152,16 +162,25 @@ def test_deep_descendant_caught_in_one_pass():
         _node("b", parent="a"),
         _node("c", parent="b"),
     ]
-    assert sorted(p["id"] for p in _new_children(pages, {"root": None})) == ["a", "b", "c"]
+    got = _new_children(pages, {"root": None}, {"root"})
+    assert sorted(p["id"] for p in got) == ["a", "b", "c"]
 
 
-def test_nothing_pulled_discovers_nothing():
+def test_nothing_opted_in_discovers_nothing():
     pages = [_node("root"), _node("kid", parent="root")]
-    assert _new_children(pages, {}) == []
+    assert _new_children(pages, {"root": None}, set()) == []
+    assert _new_children(pages, {}, set()) == []
+
+
+def test_stale_opt_in_for_unknown_id_is_ignored():
+    # An opt-in for an id that's neither an ingested page nor a database (e.g. a
+    # since-deleted page) seeds nothing.
+    pages = [_node("root"), _node("kid", parent="root")]
+    assert _new_children(pages, {"root": None}, {"ghost"}) == []
 
 
 def test_reached_page_without_url_is_skipped():
     # A reachable child that has no url can't be /ingested — leave it out.
     pages = [_node("root"), _node("kid", parent="root", url="")]
-    assert _new_children(pages, {"root": None}) == []
+    assert _new_children(pages, {"root": None}, {"root"}) == []
 

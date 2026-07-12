@@ -33,6 +33,7 @@ from .legibility import verify_key
 from .notion import NotionError, fetch_page, list_pages, verify_token
 from .settings import (
     ANTHROPIC_API_KEY_KEY,
+    AUTO_EXPAND_PREFIX,
     LEGIBILITY_ENABLED_KEY,
     LEGIBILITY_MIN_CHARS_KEY,
     LEGIBILITY_MODE_KEY,
@@ -42,6 +43,7 @@ from .settings import (
     POLL_INTERVAL_KEY,
     _active_anthropic_key,
     _effective_legibility,
+    auto_expand_ids,
     delete_setting,
     get_setting,
     legibility_status,
@@ -216,6 +218,8 @@ async def delete_source_route(request: Request) -> JSONResponse:
     try:
         pool = await get_pool()
         deleted = await delete_source(pool, source_id)
+        # Drop any auto-expand opt-in too, so re-adding the page later starts off.
+        await delete_setting(pool, AUTO_EXPAND_PREFIX + source_id)
     except Exception as e:  # noqa: BLE001 — db failure: surface, don't 500
         logger.exception("sources: delete failed")
         return JSONResponse({"error": f"delete failed: {e}"}, status_code=502)
@@ -351,6 +355,40 @@ async def rewrite_policy_route(request: Request) -> JSONResponse:
     return JSONResponse({"id": source_id, "rewrite_policy": policy})
 
 
+@mcp.custom_route("/sources/{source_id}/auto-expand", methods=["PUT"])
+async def auto_expand_route(request: Request) -> JSONResponse:
+    """PUT /sources/{id}/auto-expand {auto_expand: bool} — opt a page or database
+    IN/OUT of auto-expand: when on, the sync loop auto-pulls new descendants (child
+    pages / new database rows) under it. Opt-in, default off. Keyed by raw Notion id
+    (a `settings` row), so it applies to databases too, which have no source row —
+    `id` need not be an ingested source."""
+    source_id = request.path_params["source_id"]
+    try:
+        uuid.UUID(source_id)
+    except (ValueError, AttributeError, TypeError):
+        return JSONResponse({"error": "id must be a uuid"}, status_code=400)
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "body must be JSON {auto_expand}"}, status_code=400)
+    value = (body or {}).get("auto_expand")
+    if not isinstance(value, bool):
+        return JSONResponse(
+            {"error": "field 'auto_expand' must be a boolean"}, status_code=400
+        )
+    key = AUTO_EXPAND_PREFIX + source_id
+    try:
+        pool = await get_pool()
+        if value:
+            await set_setting(pool, key, "true")
+        else:
+            await delete_setting(pool, key)
+    except Exception as e:  # noqa: BLE001 — db failure: surface, don't 500
+        logger.exception("sources: set auto_expand failed")
+        return JSONResponse({"error": f"set auto_expand failed: {e}"}, status_code=502)
+    return JSONResponse({"id": source_id, "auto_expand": value})
+
+
 @mcp.custom_route("/notion/pages", methods=["GET"])
 async def notion_pages(_request: Request) -> JSONResponse:
     """GET /notion/pages — every Notion page shared with the integration (the
@@ -373,12 +411,16 @@ async def notion_pages(_request: Request) -> JSONResponse:
 
     try:
         ingested = await sources_last_edited(pool)
+        expand_ids = await auto_expand_ids(pool)
     except Exception as e:  # noqa: BLE001 — db failure: surface, don't 500
         logger.exception("notion/pages: sources_last_edited failed")
         return JSONResponse({"error": f"discovery failed: {e}"}, status_code=502)
 
     for p in pages:
         p["ingested"] = p["id"] in ingested
+        # Auto-expand opt-in is keyed per Notion id (pages AND databases), so carry
+        # it on every page — the consumer shows the toggle where it applies.
+        p["auto_expand"] = p["id"] in expand_ids
         if p["ingested"]:
             # None for sources ingested before the edit time was recorded — the
             # consumer should treat those as possibly stale.
@@ -902,31 +944,28 @@ def _is_stale(page: dict, ingested: dict[str, str | None]) -> bool:
     return _parse_iso(page["last_edited_time"]) > _parse_iso(captured)
 
 
-def _new_children(pages: list[dict], ingested: dict[str, str | None]) -> list[dict]:
-    """New pages under already-pulled content — the auto-discover half of the sweep.
-    Pure over the world list (`list_pages`) + the ingested-id set the sweep already
-    has, so no extra Notion calls. A page qualifies when it isn't pulled yet but its
-    parent chain bottoms out at a pulled page OR a database we already have a row
-    from — the two cases: a child page of a pulled page, a new row of a pulled
-    database.
+def _new_children(
+    pages: list[dict], ingested: dict[str, str | None], expand_ids: set[str]
+) -> list[dict]:
+    """New pages under already-pulled content the owner opted in to auto-expand —
+    the auto-discover half of the sweep. Pure over the world list (`list_pages`),
+    the ingested-id set, and `expand_ids` (the pages/databases with auto-expand ON),
+    so no extra Notion calls.
 
-    BFS outward from those seeds so a page several levels under a pulled root is
-    caught in one sweep: a newly-reached page — or a database nested under pulled
-    content — becomes a parent for the next level. Databases join the frontier (so
-    their rows surface) but are never returned (no url to /ingest)."""
+    Auto-expand is per-page OPT-IN (default off): only an ingested page or a
+    database whose id is in `expand_ids` seeds the walk, so nothing auto-pulls under
+    content you didn't enable. BFS outward from those seeds so the whole new subtree
+    under an opted-in root is caught in one sweep (a newly-reached page becomes a
+    parent for the next level; a database on the frontier surfaces its rows but is
+    never returned — no url to /ingest)."""
     ingested_ids = set(ingested)
     children: dict[str | None, list[dict]] = {}
     for p in pages:
         children.setdefault(p.get("parent_id"), []).append(p)
     db_ids = {p["id"] for p in pages if p.get("kind") == "database"}
-    # Seeds: every pulled page, plus databases we already have a row from (their id
-    # is the parent of an ingested page) — that seeds discovery of new rows added to
-    # a pulled database, whose own database node may sit at a workspace root.
-    known: set[str | None] = set(ingested_ids)
-    known |= {
-        p.get("parent_id") for p in pages
-        if p["id"] in ingested_ids and p.get("parent_id") in db_ids
-    }
+    # Seeds = opted-in ids that are actually an ingested page or a real database.
+    # (A stale opt-in for a deleted/unknown id matches neither and is ignored.)
+    known: set[str | None] = set(expand_ids & (ingested_ids | db_ids))
     frontier = list(known)
     while frontier:
         for child in children.get(frontier.pop(), ()):
@@ -966,17 +1005,19 @@ async def _reingest_page(pool, token: str, p: dict) -> bool:
 
 async def _sync_notion(pool) -> tuple[int, int, int]:
     """One sync sweep: re-ingest every pulled page whose Notion copy moved past the
-    brain's, AND first-ingest new pages under already-pulled content (child pages of
-    a pulled page, new rows of a pulled database). Returns (synced, discovered,
-    failed). Reuses the same fetch + wipe-replace upsert as /ingest, so it stays
-    idempotent. No-ops when Notion isn't connected."""
+    brain's (unconditional), AND first-ingest new pages under content the owner
+    opted in to auto-expand (child pages / new database rows; per-page opt-in,
+    default off). Returns (synced, discovered, failed). Reuses the same fetch +
+    wipe-replace upsert as /ingest, so it stays idempotent. No-ops when Notion
+    isn't connected."""
     token, _ = await _active_notion_token(pool)
     if token is None:
         return (0, 0, 0)
     pages = await asyncio.to_thread(list_pages, token)
     ingested = await sources_last_edited(pool)
+    expand_ids = await auto_expand_ids(pool)  # per-page opt-in; empty by default
     stale = [p for p in pages if _is_stale(p, ingested)]
-    new = _new_children(pages, ingested)  # disjoint from stale (not-yet-ingested)
+    new = _new_children(pages, ingested, expand_ids)  # disjoint from stale (not-yet-ingested)
 
     synced = discovered = failed = 0
     for p in stale:

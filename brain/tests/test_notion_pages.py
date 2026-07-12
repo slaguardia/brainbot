@@ -55,3 +55,46 @@ def test_ingested_pages_carry_the_captured_edit_time(client, seed, monkeypatch):
     # Not-ingested pages don't grow the key — `ingested` already says it all.
     assert by_id[NOT_PULLED]["ingested"] is False
     assert "ingested_last_edited" not in by_id[NOT_PULLED]
+
+
+def test_auto_expand_opt_in_surfaced_and_cleaned_up(client, seed, monkeypatch):
+    """PUT /sources/{id}/auto-expand toggles the per-page opt-in; /notion/pages
+    carries `auto_expand`; deleting the source clears the opt-in (re-add starts off)."""
+    seed(title="Root", text="x", path="Root", source_id=INGESTED)
+    pages = [_page(INGESTED, "Root"), _page(NOT_PULLED, "New")]
+    monkeypatch.setattr(api, "list_pages", lambda token=None: [dict(p) for p in pages])
+
+    # Default: off for every page.
+    by_id = {p["id"]: p for p in client.get("/notion/pages").json()["pages"]}
+    assert by_id[INGESTED]["auto_expand"] is False
+    assert by_id[NOT_PULLED]["auto_expand"] is False
+
+    # Opt the ingested page in.
+    r = client.put(f"/sources/{INGESTED}/auto-expand", json={"auto_expand": True})
+    assert r.status_code == 200 and r.json() == {"id": INGESTED, "auto_expand": True}
+    by_id = {p["id"]: p for p in client.get("/notion/pages").json()["pages"]}
+    assert by_id[INGESTED]["auto_expand"] is True
+
+    # Toggling off deletes the opt-in.
+    assert client.put(f"/sources/{INGESTED}/auto-expand", json={"auto_expand": False}).json()[
+        "auto_expand"
+    ] is False
+    assert {p["id"]: p for p in client.get("/notion/pages").json()["pages"]}[INGESTED][
+        "auto_expand"
+    ] is False
+
+    # Opt in again, then delete the source — the opt-in must be cleared too.
+    client.put(f"/sources/{INGESTED}/auto-expand", json={"auto_expand": True})
+    assert client.delete(f"/sources/{INGESTED}").status_code == 200
+    assert {p["id"]: p for p in client.get("/notion/pages").json()["pages"]}[INGESTED][
+        "auto_expand"
+    ] is False
+
+
+def test_auto_expand_validation(client):
+    assert client.put(
+        f"/sources/{INGESTED}/auto-expand", json={"auto_expand": "yes"}
+    ).status_code == 400
+    assert client.put(
+        "/sources/not-a-uuid/auto-expand", json={"auto_expand": True}
+    ).status_code == 400

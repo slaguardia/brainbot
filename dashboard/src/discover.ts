@@ -40,6 +40,7 @@ interface NotionPage {
   url?: string;
   ingested?: boolean;
   ingested_last_edited?: string | null; // origin edit time the brain captured at ingest
+  auto_expand?: boolean; // opted in to auto-pulling new descendants as they appear
 }
 
 // A pulled page is stale when Notion's copy moved past the one the brain
@@ -103,6 +104,7 @@ export function mountDiscover(container: HTMLElement): void {
     <section class="home discover">
       <div class="disc-head">
         <div class="disc-head-text">
+          <a class="disc-back" href="#">← Search the brain</a>
           <h2>Notion pages</h2>
           <p class="disc-sub">
             Every page shared with the integration. Pull the ones you want into the brain.
@@ -416,6 +418,13 @@ function rowHTML(node: PageNode): string {
   const open = p.url
     ? `<a class="disc-open" href="${url}" target="_blank" rel="noopener" data-url="${url}" title="Open in Notion" aria-label="Open in Notion">↗</a>`
     : "";
+  // Auto-expand opt-in pill — only where it applies: a database, or an in-brain
+  // page that already has sub-pages (a leaf page has nothing to expand).
+  const canExpand = isDb || (!!p.ingested && node.children.length > 0);
+  const expandOn = !!p.auto_expand;
+  const expand = canExpand
+    ? `<button class="disc-expand${expandOn ? " is-on" : ""}" type="button" data-id="${id}" data-on="${expandOn ? "1" : "0"}" aria-pressed="${expandOn}" title="Auto-pull new ${isDb ? "rows" : "sub-pages"} under this as they appear in Notion (opt-in)">auto-pull</button>`
+    : "";
   let meta = ""; // a page's edited date, or a database's row count
   let status = ""; // pull · in brain · pull all
   let health = `<span class="disc-cell disc-cell-health"></span>`; // legibility score slot
@@ -444,7 +453,7 @@ function rowHTML(node: PageNode): string {
   }
   return `
       ${isDb ? `<span class="disc-kind-db">db</span>` : ""}
-      <span class="src-label">${title}</span>${open}
+      <span class="src-label">${title}</span>${open}${expand}
       <span class="disc-cell disc-cell-meta">${meta}</span>
       <span class="disc-cell disc-cell-status">${status}</span>
       ${health}
@@ -513,6 +522,15 @@ function wireIngest(body: HTMLElement): void {
       e.preventDefault();
       const url = btn.getAttribute("data-url");
       if (url) window.open(url, "_blank", "noopener");
+      return;
+    }
+    if (btn.classList.contains("disc-expand")) {
+      // Auto-expand opt-in toggle (sits inside a <summary>): preventDefault stops
+      // the branch toggling; flip the opt-in in the brain.
+      e.preventDefault();
+      const id = btn.getAttribute("data-id");
+      const on = btn.getAttribute("data-on") === "1";
+      if (id) void toggleAutoExpand(btn as HTMLButtonElement, id, !on);
       return;
     }
     if (btn.classList.contains("disc-resync")) {
@@ -758,6 +776,37 @@ async function removePage(btn: HTMLButtonElement, id: string, url: string): Prom
   } catch (err) {
     btn.disabled = false;
     btn.textContent = "retry";
+    btn.title = String(err);
+  }
+}
+
+// Flip a page/database's auto-expand opt-in in the brain, then reflect it on the
+// pill in place (and patch the cache so a re-render keeps the state). Opt-in,
+// default off — when on, the sync loop auto-pulls new descendants under it.
+async function toggleAutoExpand(btn: HTMLButtonElement, id: string, value: boolean): Promise<void> {
+  btn.disabled = true;
+  try {
+    const res = await fetch(`/api/sources/${id}/auto-expand`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ auto_expand: value }),
+    });
+    btn.disabled = false;
+    if (!res.ok) {
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      btn.title = data.error ?? `HTTP ${res.status}`;
+      return;
+    }
+    btn.classList.toggle("is-on", value);
+    btn.setAttribute("aria-pressed", value ? "true" : "false");
+    btn.setAttribute("data-on", value ? "1" : "0");
+    const cached = currentPages.find((p) => p.id === id);
+    if (cached) {
+      cached.auto_expand = value;
+      writeCache(currentPages, fetchedAt);
+    }
+  } catch (err) {
+    btn.disabled = false;
     btn.title = String(err);
   }
 }

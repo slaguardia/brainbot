@@ -52,13 +52,13 @@ class Config:
     )
 
     # Periodic Notion sync. Every `poll_interval_seconds` the brain re-ingests
-    # pages whose Notion copy changed since it last captured them, AND picks up new
-    # pages that appear UNDER already-pulled content — new child pages of an ingested
-    # page, new rows of an ingested database (see api._new_children) — so the brain
-    # stays current even when no dashboard is open. It never pulls brand-new
-    # top-level pages a human didn't pull. 0 disables the loop; default 5m. A value
-    # set from the dashboard's #integrations page overrides this (see
-    # api._effective_poll_interval).
+    # pages whose Notion copy changed since it last captured them, AND (for pages /
+    # databases the owner opted in to auto-expand — per-page opt-in, default off; see
+    # api._new_children) picks up new descendants under them — new child pages, new
+    # database rows — so the brain stays current even when no dashboard is open. It
+    # never pulls anything under content you didn't opt in. 0 disables the loop;
+    # default 5m. A value set from the dashboard's #integrations page overrides this
+    # (see api._effective_poll_interval).
     poll_interval_seconds: int = field(
         default_factory=lambda: int(os.environ.get("BRAIN_POLL_INTERVAL_SECONDS") or "300")
     )

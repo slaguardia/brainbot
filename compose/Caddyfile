@@ -109,7 +109,7 @@ scribe.{$BRAIN_DOMAIN} {
 # same way as scout/scribe (oauth2-proxy edge auth; one Google sign-in already
 # covers it via the shared *.{$BRAIN_DOMAIN} cookie) because it quotes scout
 # source. Backed by the standalone `pythonlesson` container (caddy file-server
-# bind-mounting /root/python-lesson.html), NOT part of the compose stack — it's
+# bind-mounting /root/Repositories/python-lesson.html), NOT part of the compose stack — it's
 # a throwaway. Teardown: drop this block + reload, then `docker rm -f pythonlesson`.
 python.{$BRAIN_DOMAIN} {
     @oauth path /oauth2/*

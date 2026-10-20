@@ -104,30 +104,3 @@ scribe.{$BRAIN_DOMAIN} {
         reverse_proxy scribe:8788
     }
 }
-
-# python — python.{$BRAIN_DOMAIN}, a private static DSA lesson page. Gated the
-# same way as scout/scribe (oauth2-proxy edge auth; one Google sign-in already
-# covers it via the shared *.{$BRAIN_DOMAIN} cookie) because it quotes scout
-# source. Backed by the standalone `pythonlesson` container (caddy file-server
-# bind-mounting /root/Repositories/python-lesson.html), NOT part of the compose stack — it's
-# a throwaway. Teardown: drop this block + reload, then `docker rm -f pythonlesson`.
-python.{$BRAIN_DOMAIN} {
-    @oauth path /oauth2/*
-    handle @oauth {
-        reverse_proxy oauth2-proxy:4180
-    }
-
-    handle {
-        forward_auth oauth2-proxy:4180 {
-            uri /oauth2/auth
-            copy_headers X-Auth-Request-Email X-Auth-Request-User
-
-            @bad status 401
-            handle_response @bad {
-                redir * /oauth2/sign_in?rd={scheme}://{host}{uri}
-            }
-        }
-
-        reverse_proxy pythonlesson:80
-    }
-}

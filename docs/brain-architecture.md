@@ -13,7 +13,7 @@ user; it does not know what any app *does* with that knowledge.
 
 Concretely, it is a **Postgres + pgvector document store**. Sources (docs,
 captures, Notion pages) are canonical; their text is split into section-chunks,
-embedded with Voyage, and stored. Reads are pure retrieval over those chunks.
+embedded by a local Ollama model, and stored. Reads are pure retrieval over those chunks.
 There is **no graph DB, no extraction/dedup/bi-temporal machinery**, and **no
 write-time LLM by default** (an opt-in note-legibility layer adds one at the edge
 of ingest — see principle #3 and [`note-legibility.md`](./design/note-legibility.md)).
@@ -124,7 +124,7 @@ domain = a new branch in the tree; no schema change.
 - **No global-merged facts.** Per-source chunks + read-time tolerance; no
   write-time entity resolution. Revisit only if read-time duplicates become a
   real problem.
-- **No reranking / query-transform tuning yet.** RRF over Voyage embeddings is
+- **No reranking / query-transform tuning yet.** RRF over the embedder's vectors is
   the Phase-1 retrieval. A cross-encoder rerank, HNSW tuning, and HyDE are noted
   RAG experiments, not built now.
 - **No multi-tenant.** Single user. Multi-human-per-brain is out of scope.
@@ -158,7 +158,7 @@ and the RRF fusion are all things you own and can tune/evaluate.
 
 **Concrete RAG experiments this unlocks** (rough backlog, not built in Phase 1):
 
-1. **Reranker pass** — add Voyage rerank or a cross-encoder after RRF; measure
+1. **Reranker pass** — add a cross-encoder rerank after RRF; measure
    recall@k lift.
 2. **Chunk vs proposition** — embed raw chunks vs distilled facts; compare
    retrieval precision and answer faithfulness.

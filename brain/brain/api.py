@@ -1098,10 +1098,6 @@ def _with_pool_lifespan(app: Starlette) -> None:
 
     @contextlib.asynccontextmanager
     async def lifespan(app: Starlette) -> AsyncIterator[None]:
-        # Fail loud at boot on missing required config (e.g. VOYAGE_API_KEY) — else
-        # the brain boots 'healthy' (/health is liveness-only) and 502s per request,
-        # and the dashboard gates on brain health, so a silent misconfig would cascade.
-        Config().validate()
         pool = await get_pool()
         try:
             # Inside the try so a failing apply_schema still closes the pool —

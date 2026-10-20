@@ -28,10 +28,6 @@ Before touching the server, have these in hand:
     (this one callback covers **every** app — the shared cookie domain means
     scout and future apps need no additional callback).
   - Keep the **Client ID** and **Client secret**.
-- **A Voyage API key** with a payment method on file
-  ([dashboard.voyageai.com](https://dashboard.voyageai.com/)) — the card just
-  lifts the 3 RPM free-tier throttle that otherwise chokes ingest; tokens stay
-  free at personal scale.
 - **A Notion integration token** (for ingest) — or plan to set it later from the
   dashboard's `#integrations` page (DB-stored token overrides the env var).
 - **An Anthropic API key** if you're deploying scout.
@@ -174,7 +170,6 @@ the full annotated list):
 BRAIN_DOMAIN=your-domain.com
 BRAIN_BEARER_TOKEN=<openssl rand -hex 32>          # headless API auth
 POSTGRES_PASSWORD=<a strong password>
-VOYAGE_API_KEY=pa-...
 NOTION_TOKEN=secret_...                             # or set later in the dashboard
 GOOGLE_OAUTH_CLIENT_ID=...apps.googleusercontent.com
 GOOGLE_OAUTH_CLIENT_SECRET=GOCSPX-...

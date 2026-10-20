@@ -38,8 +38,14 @@ services:
     env_file:
       - .env
     environment:
-      # Secrets (VOYAGE_API_KEY, NOTION_TOKEN, POSTGRES_PASSWORD) come from .env.
+      # Secrets (NOTION_TOKEN, POSTGRES_PASSWORD) come from .env.
       PG_DSN: postgresql://brain:${POSTGRES_PASSWORD}@postgres:5432/brain
+      # Embedder: the ollama service below. Changing the model (and its dim) needs
+      # `docker compose run --rm brain python -m brain.reembed` — the brain refuses
+      # to boot while the stored vectors' dim disagrees. See docs/embedder.md.
+      BRAIN_EMBED_URL: http://ollama:11434
+      BRAIN_EMBED_MODEL: ${BRAIN_EMBED_MODEL:-embeddinggemma}
+      BRAIN_EMBED_DIM: ${BRAIN_EMBED_DIM:-768}
       # How often (seconds) the brain re-ingests pages changed in Notion, so it
       # stays current with no dashboard open. Default 300 (5m); 0 disables.
       # Override per-deployment here or, at runtime, from the dashboard's #integrations.
@@ -47,6 +53,33 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      ollama:
+        condition: service_healthy
+
+  ollama:
+    # Local embedder for the brain (docs/embedder.md): turns chunk and query text
+    # into vectors on this box, so nothing leaves it. CPU-only. The entrypoint
+    # serves, then pulls the model (a no-op once it's in the volume); healthy only
+    # once the model is present, so the brain never boots against a missing model.
+    # KEEP_ALIVE=-1 keeps the model loaded — no cold load on the first query.
+    image: ollama/ollama:0.40.0
+    container_name: ollama
+    restart: unless-stopped
+    networks:
+      - brainnet
+    entrypoint: ["/bin/sh", "-c", "ollama serve & sleep 2; ollama pull \"$$BRAIN_EMBED_MODEL\"; wait"]
+    environment:
+      OLLAMA_KEEP_ALIVE: "-1"
+      BRAIN_EMBED_MODEL: ${BRAIN_EMBED_MODEL:-embeddinggemma}
+    volumes:
+      - ollama-models:/root/.ollama
+    healthcheck:
+      test: ["CMD-SHELL", "ollama show \"$$BRAIN_EMBED_MODEL\" >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 10s
+    mem_limit: 2g
 
   dashboard:
     # One-screen dashboard. Free-text capture is currently DISABLED (the brain's write
@@ -219,3 +252,5 @@ volumes:
   # Caddy's Let's Encrypt certs (caddy-data) + autosaved config (caddy-config).
   caddy-data:
   caddy-config:
+  # Ollama's downloaded embedding model(s). Disposable — re-pulled on start.
+  ollama-models:

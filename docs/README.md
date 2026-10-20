@@ -15,7 +15,7 @@ New to the ideas behind it? Start with [`rag-primer.md`](./rag-primer.md) — pl
 
 - [brain-architecture.md](./brain-architecture.md) — the design rationale: the librarian model, why the index can't drift from your notes, the settled principles, the open questions.
 - [brain.md](./brain.md) — the service itself: the ingest pipeline, the reads, the modules, the config, how to run it.
-- [embedder.md](./embedder.md) — turning text into search vectors: the Voyage default, local and no-embedder alternatives, the trade-offs.
+- [embedder.md](./embedder.md) — turning text into search vectors: the local Ollama default, the eval behind it, how to swap models.
 
 ## Building apps on the brain
 

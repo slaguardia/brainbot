@@ -39,7 +39,7 @@ consumer against it.
 
 There is **no `capture`**. The only write is **`POST /ingest {url}`**, which
 fetches a Notion page, upserts it as a *source*, and wipe-replaces its chunks
-(re-embedding with Voyage). Capture = human edit = re-sync are the same operation.
+(re-embedding them). Capture = human edit = re-sync are the same operation.
 Writes come only from sources.
 
 ## Two faces

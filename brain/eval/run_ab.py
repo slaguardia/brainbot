@@ -4,13 +4,13 @@ Runs the whole experiment IN AN ISOLATED eval database, reading the real corpus'
 raw_text from a source brain and never touching it:
 
   1. ingest the content sources into the eval DB with legibility OFF  -> baseline
-  2. measure recall@k / MRR over the probe set (real Voyage embeddings)
+  2. measure recall@k / MRR over the probe set (real embeddings, via Ollama)
   3. force-rewrite the named headingless dump(s) with legibility ON   -> treatment
      (real Anthropic call; only the named sources change, so the delta is isolated)
   4. measure the same probes again, and diff per-probe
 
 In-process (uses store.recall directly — no HTTP service to stand up). Needs the
-real VOYAGE_API_KEY + ANTHROPIC_API_KEY in env and the brain package importable.
+real ANTHROPIC_API_KEY + a reachable Ollama (BRAIN_EMBED_URL) in env and the brain package importable.
 Re-run it when the corpus grows into more messy dumps — that's when recall@k (not
 just MRR on one buried sub-idea) gets the headroom to set `legibility.threshold`.
 

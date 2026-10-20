@@ -38,7 +38,7 @@ consumers don't cross: they get faithful content, never an assembled view. See
 ## What the brain is
 
 Sources (docs) are **canonical**; their text is split into **chunks**, embedded
-with Voyage, and stored in Postgres + pgvector. Reads are pure retrieval — there
+by a local Ollama model, and stored in Postgres + pgvector. Reads are pure retrieval — there
 is no synthesis, no LLM, no graph. This is a document/vector RAG substrate:
 
 | Table | Holds | Notes |
@@ -69,7 +69,7 @@ Notion page (POST /ingest {url})
   → upsert_source(): UPSERT the source row (recompute path), bump version
   → wipe-replace:    DELETE this source's chunks
   → split:           _split_sections() — one section per heading line
-  → embed():         Voyage embeds every section (one batched call)
+  → embed():         Ollama embeds every section (one batched call)
   → INSERT:          one chunk row per section, position = document order
 ```
 
@@ -111,9 +111,10 @@ Writes come only from sources (ingest / re-sync).
 
 | File | Responsibility |
 |---|---|
-| `brain/config.py` | env config (`PG_DSN`, `VOYAGE_API_KEY`, `BRAIN_EMBED_MODEL`, `NOTION_TOKEN`) + `EMBED_DIM`. |
+| `brain/config.py` | env config (`PG_DSN`, `BRAIN_EMBED_URL`, `BRAIN_EMBED_MODEL`, `NOTION_TOKEN`) + `EMBED_DIM` (`BRAIN_EMBED_DIM`). |
 | `brain/db.py` | the single asyncpg pool (pgvector registered per connection) + `apply_schema` (the idempotent DDL). |
-| `brain/embed.py` | `embed(texts)` — Voyage, batched. |
+| `brain/embed.py` | `embed(texts)` — Ollama `/api/embed`, batched, with the model's query/document prefixes. |
+| `brain/reembed.py` | `python -m brain.reembed` — re-embed every chunk after a model/dim change, in one transaction. |
 | `brain/notion.py` | `fetch_page(url) -> {id, title, text, path, parent_id, last_edited_time}`. |
 | `brain/store.py` | `upsert_source` / `recall` / `doc` / `profile` / `map_` and the `Chunk` / `Context` shapes. |
 | `brain/api.py` | the FastMCP app: custom HTTP routes + the MCP tools. |
@@ -124,8 +125,9 @@ Writes come only from sources (ingest / re-sync).
 | Var | Default | Notes |
 |---|---|---|
 | `PG_DSN` | `postgresql://brain:brain@postgres:5432/brain` | One asyncpg pool is built from it. In compose it's assembled from `POSTGRES_PASSWORD`. |
-| `VOYAGE_API_KEY` | — | required (embeddings) |
-| `BRAIN_EMBED_MODEL` | `voyage-3-lite` | 512-dim → `vector(512)`. The column dim and the model must match — change `EMBED_DIM` if you swap. |
+| `BRAIN_EMBED_URL` | `http://ollama:11434` | the Ollama that embeds chunks + queries |
+| `BRAIN_EMBED_MODEL` | `embeddinggemma` | any Ollama embedding model |
+| `BRAIN_EMBED_DIM` | `768` | must match the model's output → `vector(768)`. The brain refuses to boot while the stored column differs; run `python -m brain.reembed` after a change. |
 | `NOTION_TOKEN` | — | required for `/ingest` (the page must be shared with the integration) |
 
 There is no LLM and no graph-DB config — embedding is the only external call.

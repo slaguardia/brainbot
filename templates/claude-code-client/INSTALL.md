@@ -9,8 +9,8 @@ Nothing assumes a specific project layout or name.
 ## 0. Prerequisites
 
 > **Heads up:** The brain stack is a Postgres + pgvector document store with
-> the `brain` service in front (no graph DB) and assumes Voyage with a payment
-> method on file for embeddings. If you haven't stood up the stack yet, skim the
+> the `brain` service in front (no graph DB) and a local Ollama for embeddings.
+> If you haven't stood up the stack yet, skim the
 > [quickstart's "Setup gotchas"](../../docs/quickstart.md#setup-gotchas)
 > first — there are a couple of setup footguns documented there.
 
@@ -21,8 +21,8 @@ Nothing assumes a specific project layout or name.
   checkout.
 
 **Privacy note:** the `UserPromptSubmit` hook installed in step 3
-sends every prompt's first 2KB to your VPS (which then sends it to
-your embeddings provider, Voyage by default) for vector search.
+sends every prompt's first 2KB to your VPS (which embeds it locally)
+for vector search.
 Set `BRAIN_INJECT_DISABLE=1` in a session to opt out for sensitive
 prompts.
 

@@ -113,7 +113,7 @@ These frameworks are *not* the AI. They're the wiring that connects the AI servi
 
 - **Postgres + pgvector** is the pantry (one engine: relational rows, vectors, and full-text).
 - **The brain service** (`brain/`) is the chef — a small hand-written Python pipeline: split sources into section chunks, embed, store; retrieve with hybrid cosine + full-text fused by RRF.
-- **Voyage** is the embedding service that makes the "vibe stickers" for vector search. There is **no write-time LLM** — ingest is split + embed + insert.
+- **Ollama** runs the embedding model (on the same box) that makes the "vibe stickers" for vector search. There is **no write-time LLM** — ingest is split + embed + insert.
 - **Caddy + Docker** are kitchen plumbing — hosting, networking, TLS.
 - **The dashboard and Claude Code hook** are the customers who walk up and order.
 

@@ -23,7 +23,6 @@ Required env (the brain must already be running with these — this script only
 talks HTTP, it does not read them itself except BRAIN_URL):
   - POSTGRES_PASSWORD   the brain assembles PG_DSN from it in compose; or set
   - PG_DSN              directly if running the brain outside compose.
-  - VOYAGE_API_KEY      embeddings (Voyage). Required by the brain to embed.
   - NOTION_TOKEN        the Notion integration token; the page must be shared
                         with that integration or /ingest returns a 4xx.
   - BRAIN_URL           the brain's base URL. Default http://127.0.0.1:8100.
@@ -56,7 +55,7 @@ DEFAULT_PAGE_URL = (
 # A natural-language query the recall arm should answer from the target-role page.
 RECALL_QUERY = "which locations is Steve open to"
 
-HTTP_TIMEOUT_S = 120  # ingest embeds via Voyage, so allow a generous window.
+HTTP_TIMEOUT_S = 120  # ingest embeds on CPU (Ollama), so allow a generous window.
 
 
 def env() -> tuple[str, dict[str, str]]:

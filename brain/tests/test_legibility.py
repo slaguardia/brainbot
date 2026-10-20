@@ -8,11 +8,11 @@ These tests pin the guarantees that make the feature safe to ship off-by-default
   analysis instead of re-running the LLM (idempotency).
 - The three rewrite triggers (auto / manual-force / 'off' pin) behave as specified.
 - map() carries the health score; doc() stays verbatim.
-- The config seam: validate() never requires the LLM key, and 'enabled but no key'
+- The config seam: boot never requires the LLM key, and 'enabled but no key'
   degrades to pass-through.
 
 The Anthropic call itself is faked everywhere (deterministic structural splitter),
-exactly as the Voyage embedder is — the live model's voice/grounding quality is a
+exactly as the embedder is — the live model's voice/grounding quality is a
 Phase-3 eval concern, not a unit-test one. The analyzer's MECHANICAL contract
 (parse + clamp the structured response) is covered with a mocked SDK client.
 """
@@ -556,18 +556,9 @@ def test_analyze_raises_on_no_text_block(monkeypatch):
         legibility.analyze("x", api_key="k")
 
 
-# ---- config seam: the secret is env, validate() stays key-agnostic ------------
+# ---- config seam: the secret is env, boot stays key-agnostic ------------
 
 from brain.config import Config  # noqa: E402
-
-
-def test_validate_does_not_require_anthropic_key(monkeypatch):
-    """Boot stays key-agnostic: validate() requires only VOYAGE_API_KEY, never the
-    LLM key — because whether legibility is on is a runtime DB value with no pool
-    at boot. Enforcement is deferred to _effective_legibility."""
-    monkeypatch.setenv("VOYAGE_API_KEY", "v")
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-    Config().validate()  # must not raise
 
 
 def test_config_reads_anthropic_key_from_env(monkeypatch):

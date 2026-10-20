@@ -1,13 +1,13 @@
 """Brain service configuration — all from env, with sane defaults.
 
 The brain is a pgvector document store: sources are split into section-chunks,
-embedded with Voyage, stored in Postgres+pgvector. There is no graphiti and no
+embedded by a local Ollama, stored in Postgres+pgvector. There is no graphiti and no
 FalkorDB. There is no write-time LLM *by default* — the optional note-legibility
 layer (docs/note-legibility.md) adds one at the edge of ingest, gated by a runtime
 DB setting; its secret (`anthropic_api_key`) is read here as the env FALLBACK — a
 key set from the UI wins — and the on/off switch lives in the `settings` table, not
 env. Config is the substrate's deploy secrets + defaults: the Postgres DSN, the
-Voyage key + model, the Notion token, the poll interval, and the (optional)
+embedder URL + model, the Notion token, the poll interval, and the (optional)
 Anthropic key.
 """
 
@@ -17,10 +17,11 @@ import os
 from dataclasses import dataclass, field
 
 
-# Embedding dimension — voyage-3-lite is 512-dim, so the chunks.embedding column
-# is vector(512). Single shared constant: the DDL (next task) references this so
-# the column dim and the embedder can never silently drift apart.
-EMBED_DIM = 512
+# Embedding dimension — must match BRAIN_EMBED_MODEL's output. Single shared
+# constant: the DDL references it, embed() checks every vector against it, and
+# apply_schema refuses to boot if the stored column disagrees (run
+# `python -m brain.reembed` after changing the model). Default fits embeddinggemma.
+EMBED_DIM = int(os.environ.get("BRAIN_EMBED_DIM") or "768")
 
 
 @dataclass(frozen=True)
@@ -32,9 +33,9 @@ class Config:
         )
     )
 
-    # Embedder (Voyage). voyage-3-lite -> EMBED_DIM dims.
-    voyage_api_key: str = field(default_factory=lambda: os.environ.get("VOYAGE_API_KEY", ""))
-    embed_model: str = field(default_factory=lambda: os.environ.get("BRAIN_EMBED_MODEL", "voyage-3-lite"))
+    # Embedder: a local Ollama on brainnet. The model must emit EMBED_DIM dims.
+    embed_url: str = field(default_factory=lambda: os.environ.get("BRAIN_EMBED_URL", "http://ollama:11434"))
+    embed_model: str = field(default_factory=lambda: os.environ.get("BRAIN_EMBED_MODEL", "embeddinggemma"))
 
     # Notion ingest.
     notion_token: str = field(default_factory=lambda: os.environ.get("NOTION_TOKEN", ""))
@@ -43,7 +44,7 @@ class Config:
     # the Anthropic key: a key set from the Integrations UI (settings table) wins over
     # this, so deployers can provision it either way (see _active_anthropic_key). The
     # on/off switch is NOT here: it's the `legibility.*` runtime settings. Boot stays
-    # key-agnostic — validate() does NOT require this, because whether the feature is
+    # key-agnostic — nothing requires this at boot, because whether the feature is
     # on is a DB value with no pool at boot. Enforcement is deferred to
     # settings._effective_legibility(), which degrades 'enabled but no key' to
     # pass-through. Empty string when unset.
@@ -62,8 +63,3 @@ class Config:
     poll_interval_seconds: int = field(
         default_factory=lambda: int(os.environ.get("BRAIN_POLL_INTERVAL_SECONDS") or "300")
     )
-
-    def validate(self) -> None:
-        missing = [n for n, v in (("VOYAGE_API_KEY", self.voyage_api_key),) if not v]
-        if missing:
-            raise RuntimeError(f"missing required env: {', '.join(missing)}")

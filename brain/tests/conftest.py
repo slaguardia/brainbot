@@ -3,7 +3,7 @@
 Tests run against a REAL pgvector Postgres: the headline guarantees here — the
 byte-exact /doc round-trip and the version-stamp semantics — are claims about
 asyncpg + Postgres + the JSON layer, so faking the DB would test nothing. The
-Voyage embedder (the only nondeterministic external call) is replaced with a
+embedder (the only nondeterministic external call) is replaced with a
 deterministic fake.
 
 Wiring:
@@ -34,7 +34,7 @@ from brain.config import EMBED_DIM
 
 
 def _fake_embed(texts: list[str], input_type: str = "document") -> list[list[float]]:
-    """Deterministic stand-in for the Voyage embedder: one EMBED_DIM vector per
+    """Deterministic stand-in for the embedder: one EMBED_DIM vector per
     text, derived from its sha256 so distinct texts get distinct vectors.
     Encodes with surrogatepass so a lone-surrogate fixture passes THROUGH the
     embedder and fails at its real boundary (asyncpg's UTF-8 encode) — the
@@ -70,14 +70,13 @@ async def _create_test_db(admin_dsn: str, test_db_name: str) -> None:
 
     conn = await asyncpg.connect(admin_dsn, timeout=5)
     try:
-        # Pin the encoding the version stamp depends on. template0 is required
-        # to set an encoding explicitly; DuplicateDatabase means a prior run
-        # already created it — fine.
+        # Recreated per session: a prior run's schema may carry a different
+        # embedding dim, which apply_schema rightly refuses. Pin the encoding the
+        # version stamp depends on; template0 is required to set one explicitly.
+        await conn.execute(f'DROP DATABASE IF EXISTS "{test_db_name}"')
         await conn.execute(
             f'CREATE DATABASE "{test_db_name}" ENCODING \'UTF8\' TEMPLATE template0'
         )
-    except asyncpg.DuplicateDatabaseError:
-        pass
     finally:
         await conn.close()
 
@@ -98,9 +97,6 @@ def test_db() -> str:
         pytest.skip(f"postgres unreachable at PG_DSN: {e}")
 
     os.environ["PG_DSN"] = test_dsn
-    # The app lifespan validates VOYAGE_API_KEY at boot; the embedder itself is
-    # faked, so any non-empty value satisfies the boot check.
-    os.environ.setdefault("VOYAGE_API_KEY", "test-key")
 
     async def _apply() -> None:
         import asyncpg

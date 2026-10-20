@@ -28,7 +28,7 @@ This is the whole brain in one file (the plan's "~200-line" skeleton):
   titles, paths, parent links, version stamps — so a consumer can find ids to
   pin (and an owner can see the tree).
 
-`embed()` (Voyage) and `fetch_page()` (Notion) are synchronous; async callers
+`embed()` (Ollama) and `fetch_page()` (Notion) are synchronous; async callers
 here wrap `embed` with `asyncio.to_thread`. The asyncpg pool is owned by db.py
 and passed in.
 """
@@ -66,11 +66,11 @@ _ARM_LIMIT = 50
 # with something smarter) without any contract change.
 _COMPLETE_SIM_FLOOR = 0.85
 
-# Embed-input char budget. voyage-3-lite caps a single input near ~32K tokens; at
-# a conservative ~4 chars/token that's ~110K chars (≈28K tokens, with headroom).
-# A very large section is truncated to this before embedding so /ingest never
-# 500s on Voyage's single-input cap.
-_EMBED_CHAR_BUDGET = 110_000
+# Embed-input char budget. Ollama silently truncates input past the model's
+# context window (embeddinggemma: 2048 tokens); at ~4 chars/token that's ~8K
+# chars. Truncating here first makes it visible (a logged warning) rather than
+# silent — the section's tail still reaches recall via the lexical arm.
+_EMBED_CHAR_BUDGET = 8_000
 
 # A markdown heading line: 1-6 '#' then whitespace then the heading text. Notion's
 # flattener (notion.py) emits h1-h3, but match h1-h6 so any markdown source splits.
@@ -395,7 +395,7 @@ async def upsert_source(
     # The ONE behavioral fork: chunk from the rewrite when present, else raw text.
     chunk_source = rewrite_text or page_text
 
-    # Split into sections, then embed all of them in ONE batched Voyage call.
+    # Split into sections, then embed all of them in ONE batched embedder call.
     # Embed first (outside the txn) so an embedder failure aborts before we touch
     # the store — never leave a source with stale or zero chunks.
     sections = _split_sections(title, chunk_source)
@@ -471,7 +471,13 @@ async def recall(
         scope = scope.strip() or None
     k = max(1, min(k, 100))  # clamp in the core so MCP/SDK callers are guarded, not just the HTTP route
 
-    [q_emb] = await asyncio.to_thread(embed, [query], "query")
+    # An embedder failure degrades recall to the lexical arm alone instead of
+    # failing the whole call — the tsvector arm needs no embedding.
+    try:
+        [q_emb] = await asyncio.to_thread(embed, [query], "query")
+    except Exception:  # noqa: BLE001 — any embedder failure: degrade, don't fail
+        logger.warning("recall: embed failed; serving lexical-only", exc_info=True)
+        q_emb = None
 
     # Scope = the exact node OR its proper subtree (never a bare prefix, which
     # over-matches sibling paths). The subtree arm uses a wildcard-free prefix
@@ -489,7 +495,7 @@ async def recall(
         # can't make the semantic arm see the old chunk id and the lexical arm the
         # new one — which would fuse the same page in twice. Read-only: no locks.
         async with conn.transaction(isolation="repeatable_read", readonly=True):
-            semantic = await conn.fetch(
+            semantic = [] if q_emb is None else await conn.fetch(
                 f"""
                 SELECT c.id,
                        c.heading,

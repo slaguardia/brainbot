@@ -43,3 +43,7 @@ Thumbs.db
 # Unshipped planning docs + local dev runner — kept out of the shared repo
 plans/
 mprocs.yaml
+
+# Embedder A/B probes — generated from personal notes; keep out of this public repo
+# (regenerate with brain/eval/gen_probes.py).
+brain/eval/probes_embedder.json

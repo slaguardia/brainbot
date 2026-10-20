@@ -76,7 +76,7 @@ The full landscape — every neighbor and the honest trade-offs — is in [`docs
 Two containers — Postgres and the brain — on your laptop:
 
 ```sh
-cd compose && cp .env.example .env      # set VOYAGE_API_KEY, NOTION_TOKEN, POSTGRES_PASSWORD
+cd compose && cp .env.example .env      # set NOTION_TOKEN, POSTGRES_PASSWORD
 docker compose -f docker-compose.yml -f docker-compose.local.yml up -d
 # pull in a Notion page, then search it:
 curl -X POST http://127.0.0.1:8100/ingest -H 'Content-Type: application/json' \

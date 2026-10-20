@@ -162,7 +162,7 @@ async def _effective_legibility(
     be a boot-time env decision.
 
     THE config seam: the on/off TOGGLE and the SECRET are both runtime values now —
-    the key resolves DB-over-env via `_active_anthropic_key`, and `validate()` never
+    the key resolves DB-over-env via `_active_anthropic_key`, and boot never
     gates on it. So `enabled but no key` degrades to DISABLED (pass-through), with a
     warning — flipping the toggle on without provisioning the secret can't crash
     ingest; it behaves exactly like today. Mirrors "a bad stored poll value can't

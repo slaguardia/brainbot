@@ -6,8 +6,8 @@ description: Test the brainbot brain service end-to-end — ingest Notion source
 # Testing the brain
 
 The brain service (`brain/`) is a **Postgres + pgvector document store** (no graph
-DB, no write-time LLM): sources are ingested, split into chunks, embedded with
-Voyage, and recalled by hybrid cosine + full-text search. This skill is how to
+DB, no write-time LLM): sources are ingested, split into chunks, embedded by a
+local Ollama model, and recalled by hybrid cosine + full-text search. This skill is how to
 exercise and evaluate it. Design context lives in `docs/brain-architecture.md` and
 `docs/brain.md` — read them if a result is surprising.
 
@@ -47,7 +47,7 @@ Re-seed by re-ingesting the source URLs with `POST /ingest`.
 ## Gotchas (learned the hard way — don't relearn them)
 
 - **Re-ingest is wipe-replace, per source.** Re-posting a URL deletes that source's chunks and re-inserts fresh — the source is always current, never appended. Editing the canonical doc then re-ingesting is the update path.
-- **Scores are compressed** with the `voyage-3-lite` embedder (~0.35 on-topic, ~0.20 off-topic — not 0.9). Judge by the **relative gap**, not the absolute number. A bigger embedder widens it (deferred).
+- **Scores are compressed** — cosine similarities sit well below 1.0 even on-topic, and the scale shifts with the embedder (`BRAIN_EMBED_MODEL`). Judge by the **relative gap**, not the absolute number.
 - **Chunking is section-based.** One chunk per markdown heading section (`_split_sections`); preamble before the first heading chunks under the page title, and a page with no headings stays a single whole-page chunk. Sources ingested before this landed may still be whole-page until re-ingested.
 - **`profile(scope)` can flag `truncated`.** If a scope's chunks exceed the budget it degrades to recall-within-scope and sets `truncated=True` rather than silently cutting. Check the flag.
 

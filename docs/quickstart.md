@@ -18,7 +18,6 @@ cp .env.example .env
 
 Set in `compose/.env`:
 
-- `VOYAGE_API_KEY` — embeddings (needs a card on file; see [`deployment.md` §0](./deployment.md#0-prerequisites-off-the-box)).
 - `NOTION_TOKEN` — page fetch on ingest (the page must be shared with that integration).
 - `POSTGRES_PASSWORD`.
 
@@ -49,7 +48,7 @@ BRAIN_URL=http://127.0.0.1:8100 python scripts/smoke_substrate.py
 ```
 
 It needs `NOTION_TOKEN` (the page must be shared with that integration) and the
-brain running with `VOYAGE_API_KEY` + `PG_DSN`. See the script header for the
+brain running (with its `ollama` embedder) + `PG_DSN`. See the script header for the
 full env list and how to override the page.
 
 ## 4. Drop content in
@@ -77,11 +76,10 @@ brain over HTTP/MCP."
 
 ## Setup gotchas
 
-Two footguns bite local and VPS alike and are documented in the deployment
-runbook: **Voyage needs a payment method on file** (without it you're throttled
-to 3 RPM, which chokes ingest — [`deployment.md` §0](./deployment.md#0-prerequisites-off-the-box);
-swap the embedder via `BRAIN_EMBED_MODEL` + `EMBED_DIM` if you'd rather not use
-it, see [`embedder.md`](./embedder.md)), and **`.env` loads only from
+Two footguns bite local and VPS alike: **the first `up` downloads the embedding
+model** (a few hundred MB; the brain waits for the `ollama` service to turn
+healthy — and changing the model later needs a re-embed, see
+[`embedder.md`](./embedder.md)), and **`.env` loads only from
 `compose/.env` and won't reload on `docker compose restart`** — edit it, then
 `down && up` ([`deployment.md` §3](./deployment.md#3-get-the-code--configure-env)).
 

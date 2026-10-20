@@ -49,7 +49,7 @@ The reason to build instead of adopt is **what holds the truth**: Hermes-style m
 |---|---|
 | **Postgres + pgvector as the substrate** | One engine for relational (`sources`/`chunks` + a materialized `path`), vectors (HNSW), and full-text (`tsvector`). A document/vector RAG store — which is what the brain's reads actually are (chosen over a graph; [`learnings.md`](./learnings.md) Chapter 6). |
 | **Sources canonical, chunks derived** | A source (doc/capture/Notion page) owns its chunks; ingest/edit does wipe-replace (`DELETE` chunks → re-embed → re-`INSERT`). Currency is guaranteed by construction — no bi-temporal invalidation, no write-time entity resolution. |
-| **No write-time LLM** | Ingest is split + embed + insert. Embedding (Voyage) is the only external call and the embedder is pluggable. No extraction, no decomposition, no schema-tagging. |
+| **No write-time LLM** | Ingest is split + embed + insert. Embedding runs on the box (Ollama) and the embedder is pluggable. No extraction, no decomposition, no schema-tagging. |
 | **A smart `brain` service, thin consumers** | The brain (FastMCP + asyncpg in-process) owns the substrate: ingest, hybrid recall, and profile assembly. Consumers (the dashboard, Claude Code, your apps) stay dumb and read-only. |
 | **Narrow contract: recall / doc / map** | The brain exposes three consumer reads plus `ingest`, not a full DB-introspection toolset. The human edits the legible *source* (a doc/Notion page), never the machine-derived chunks. |
 | **Two front doors** | Plain HTTP/JSON for typed consumers (the default); MCP at `/mcp` for Claude Code and other LLM-tool-discovery harnesses. Same reads behind both. |
@@ -85,7 +85,6 @@ flowchart TB
   end
 
   NOTION["Notion API<br/>page fetch (ingest)"]
-  VOY["Voyage API<br/>embeddings"]
 
   DASH_UI -->|"HTTPS brain.{domain}"| CADDY
   CC -->|"HTTPS MCP brain.api.{domain}"| CADDY
@@ -96,7 +95,7 @@ flowchart TB
   DASH_BE -->|"read-only /api"| BRAIN
   BRAIN --> PG
   BRAIN -->|"/ingest"| NOTION
-  BRAIN --> VOY
+  BRAIN -->|embed| OLLAMA["ollama<br/>local embeddings"]
 ```
 
 ### Data flow — ingest + recall
@@ -105,7 +104,7 @@ flowchart TB
 1. Ingest a source:
    POST /ingest {url} → the brain fetches the Notion page (title + blocks
    flattened to markdown + the materialized path from the parent chain),
-   UPSERTs the source row, wipe-replaces its chunks, and embeds them (Voyage).
+   UPSERTs the source row, wipe-replaces its chunks, and embeds them (local Ollama).
    Re-posting the same URL is idempotent and always current.
 
 2. Later, any consumer asks a question:
@@ -146,7 +145,7 @@ diff-and-re-embed is a later optimization, not before it's needed.
 | **Dashboard frontend** | Vanilla TS + Vite (`dashboard/`) | Dashboard, search, map, discover, docs views. Capture send is disabled (the write path is source ingest). |
 | **Dashboard backend** | TypeScript, raw `node:http` | Static-asset server + read-only GET proxy to the brain. No brain logic. |
 | **Ingest** | Notion fetch (`brain/brain/notion.py`) | `fetch_page(url) → {title, text, path}`: blocks flattened to markdown + the materialized `path` from the parent chain. |
-| **Embedder** | Voyage (`voyage-3-lite`, `BRAIN_EMBED_MODEL`) | 512-dim vectors for hybrid recall. Pluggable; the column dim must match the model. See [`embedder.md`](./embedder.md). |
+| **Embedder** | Ollama (`embeddinggemma`, `BRAIN_EMBED_MODEL`) | 768-dim vectors for hybrid recall, computed on the box. Pluggable; the column dim must match the model. See [`embedder.md`](./embedder.md). |
 | **Write-time LLM** | none | Ingest is split + embed + insert. No extraction/decomposition/schema-tagging. |
 | **Auth** | Bearer token at Caddy for the brain API; Google sign-in + email whitelist (oauth2-proxy at the edge) for the dashboard | Per-identity access + easy revocation on phones; internal services (brain, postgres) never publish ports. |
 | **Deployment** | Single docker-compose on a small VPS | All services on one box. Iteration: `git pull && docker compose up -d --build`. |
@@ -166,5 +165,5 @@ Design history — what was believed, what broke, what changed, chapter by chapt
 ## References
 
 - [pgvector](https://github.com/pgvector/pgvector)
-- [Voyage AI embeddings](https://docs.voyageai.com/)
+- [Ollama embedding models](https://ollama.com/search?c=embedding)
 - [Hermes Agent (the turn-shaped alternative)](https://github.com/nousresearch/hermes-agent)

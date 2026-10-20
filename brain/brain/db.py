@@ -20,7 +20,7 @@ from .config import EMBED_DIM, Config
 
 
 # The full schema. Idempotent: CREATE EXTENSION/TABLE/INDEX ... IF NOT EXISTS.
-# The chunks.embedding column dim is `EMBED_DIM` (voyage-3-lite = 512) — the
+# The chunks.embedding column dim is `EMBED_DIM` (BRAIN_EMBED_DIM) — the
 # single source of truth lives in config.py and is interpolated below so the
 # column dim and the embedder can never drift apart. {dim} is the ONLY value
 # substituted (a trusted int constant), so this f-string carries no SQL-injection
@@ -152,6 +152,25 @@ async def close_pool() -> None:
 async def apply_schema(pool: asyncpg.Pool) -> None:
     """Run the full DDL idempotently — extension, the sources + chunks tables, and
     the four indexes (HNSW semantic, GIN lexical, path-prefix scope, source/position
-    for wipe-replace + ordered profile dumps). Safe to call on every startup."""
+    for wipe-replace + ordered profile dumps). Safe to call on every startup.
+
+    Fails loud when the stored chunks.embedding dim differs from EMBED_DIM (the
+    embedder model changed): otherwise every ingest and every semantic recall
+    would error at runtime. `python -m brain.reembed` migrates the column."""
     async with pool.acquire() as conn:
         await conn.execute(_SCHEMA)
+        stored = await stored_embed_dim(conn)
+    if stored != EMBED_DIM:
+        raise RuntimeError(
+            f"chunks.embedding is vector({stored}) but the embedder is {EMBED_DIM}-dim "
+            "— run `python -m brain.reembed` to re-embed the corpus"
+        )
+
+
+async def stored_embed_dim(conn: asyncpg.Connection) -> int:
+    """The dimension chunks.embedding is declared with (pgvector stores it as
+    the column's typmod)."""
+    return await conn.fetchval(
+        "SELECT atttypmod FROM pg_attribute "
+        "WHERE attrelid = 'chunks'::regclass AND attname = 'embedding'"
+    )

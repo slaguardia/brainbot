@@ -79,7 +79,9 @@ services:
       timeout: 5s
       retries: 30
       start_period: 10s
-    mem_limit: 2g
+    # The mmapped model file counts against this, and a 32-chunk ingest batch
+    # OOM-killed the runner at 2g (surfacing as a 400 to the brain). 4g holds it.
+    mem_limit: 4g
 
   dashboard:
     # One-screen dashboard. Free-text capture is currently DISABLED (the brain's write

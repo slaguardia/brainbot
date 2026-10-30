@@ -167,6 +167,28 @@ services:
       brain:
         condition: service_healthy
 
+  finance:
+    # finance — self-hosted personal finance (accounts, balances, bills, debt, and a
+    # document catalog). Node/TS backend serving the toolkit PWA + /api on :8789.
+    # Its SQLite database and stored documents are the record, so they live on the
+    # finance-data volume and are snapshotted nightly to ../../backups/finance on the
+    # host (last 30 kept). Deliberately NOT connected to the brain: it sits on its own
+    # financenet, shared only with Caddy, so it can't reach brain/postgres and they
+    # can't reach it. No public port. Auth lives at the edge.
+    build:
+      context: ../../finance
+      dockerfile: backend/Dockerfile
+    image: finance/finance:0.1
+    container_name: finance
+    restart: unless-stopped
+    networks:
+      - financenet
+    environment:
+      TZ: America/New_York
+    volumes:
+      - finance-data:/data
+      - ../../backups/finance:/backups
+
   oauth2-proxy:
     # Edge auth for EVERY app at the edge (brain dashboard + scout + future apps).
     # Caddy's forward_auth asks this for /oauth2/auth; only a valid, whitelisted
@@ -222,6 +244,7 @@ services:
     restart: unless-stopped
     networks:
       - brainnet
+      - financenet
     ports:
       - "80:80"
       - "443:443"
@@ -241,6 +264,9 @@ services:
 networks:
   brainnet:
     driver: bridge
+  # finance only: Caddy + finance, nothing else (keeps finance off the brain).
+  financenet:
+    driver: bridge
 
 volumes:
   postgres-data:
@@ -251,6 +277,9 @@ volumes:
   # scribe's local SQLite working set (runs/generations/drafts/queue/exemplars).
   # Disposable — rebuildable from the Notion substrate — and NOT in the brain.
   scribe-data:
+  # finance's SQLite database + stored documents. NOT disposable — this is the
+  # record; the app snapshots it nightly to the host's backups/finance.
+  finance-data:
   # Caddy's Let's Encrypt certs (caddy-data) + autosaved config (caddy-config).
   caddy-data:
   caddy-config:

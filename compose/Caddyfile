@@ -104,3 +104,27 @@ scribe.{$BRAIN_DOMAIN} {
         reverse_proxy scribe:8788
     }
 }
+
+# finance — finance.{$BRAIN_DOMAIN}, Google-auth'd at the edge via oauth2-proxy.
+# Same two-handle pattern as scout/scribe: /oauth2/* bypasses forward_auth (the
+# redirect-loop guard). finance holds no login code and only sees cleared requests.
+finance.{$BRAIN_DOMAIN} {
+    @oauth path /oauth2/*
+    handle @oauth {
+        reverse_proxy oauth2-proxy:4180
+    }
+
+    handle {
+        forward_auth oauth2-proxy:4180 {
+            uri /oauth2/auth
+            copy_headers X-Auth-Request-Email X-Auth-Request-User
+
+            @bad status 401
+            handle_response @bad {
+                redir * /oauth2/sign_in?rd={scheme}://{host}{uri}
+            }
+        }
+
+        reverse_proxy finance:8789
+    }
+}

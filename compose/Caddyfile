@@ -107,11 +107,21 @@ scribe.{$BRAIN_DOMAIN} {
 
 # finance — finance.{$BRAIN_DOMAIN}, Google-auth'd at the edge via oauth2-proxy.
 # Same two-handle pattern as scout/scribe: /oauth2/* bypasses forward_auth (the
-# redirect-loop guard). finance holds no login code and only sees cleared requests.
+# redirect-loop guard). finance holds no login code and only sees cleared requests,
+# except /mcp: the Claude connector, which Anthropic's servers call without a
+# Google session. finance checks its own revocable access key on every /mcp call.
 finance.{$BRAIN_DOMAIN} {
     @oauth path /oauth2/*
     handle @oauth {
         reverse_proxy oauth2-proxy:4180
+    }
+
+    @mcp path /mcp /mcp/*
+    handle @mcp {
+        reverse_proxy finance:8789 {
+            header_up -X-Auth-Request-Email
+            header_up -X-Auth-Request-User
+        }
     }
 
     handle {

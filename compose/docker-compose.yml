@@ -189,6 +189,29 @@ services:
       - finance-data:/data
       - ../../backups/finance:/backups
 
+  health:
+    # health — self-hosted personal health (a food log against daily targets, saved
+    # foods with where each value came from, lab results against each report's own
+    # range, and a document catalog). Node/TS backend serving the toolkit PWA + /api
+    # on :8790. Its SQLite database and stored photos/reports are the record, so they
+    # live on the health-data volume and are snapshotted nightly to ../../backups/health
+    # on the host (last 30 kept). Deliberately NOT connected to the brain, same as
+    # finance: its own healthnet, shared only with Caddy. No public port. Auth lives
+    # at the edge.
+    build:
+      context: ../../health
+      dockerfile: backend/Dockerfile
+    image: health/health:0.1
+    container_name: health
+    restart: unless-stopped
+    networks:
+      - healthnet
+    environment:
+      TZ: America/New_York
+    volumes:
+      - health-data:/data
+      - ../../backups/health:/backups
+
   oauth2-proxy:
     # Edge auth for EVERY app at the edge (brain dashboard + scout + future apps).
     # Caddy's forward_auth asks this for /oauth2/auth; only a valid, whitelisted
@@ -245,6 +268,7 @@ services:
     networks:
       - brainnet
       - financenet
+      - healthnet
     ports:
       - "80:80"
       - "443:443"
@@ -267,6 +291,9 @@ networks:
   # finance only: Caddy + finance, nothing else (keeps finance off the brain).
   financenet:
     driver: bridge
+  # health only: Caddy + health, nothing else (keeps health off the brain).
+  healthnet:
+    driver: bridge
 
 volumes:
   postgres-data:
@@ -280,6 +307,9 @@ volumes:
   # finance's SQLite database + stored documents. NOT disposable — this is the
   # record; the app snapshots it nightly to the host's backups/finance.
   finance-data:
+  # health's SQLite database + stored photos and reports. NOT disposable — this is
+  # the record; the app snapshots it nightly to the host's backups/health.
+  health-data:
   # Caddy's Let's Encrypt certs (caddy-data) + autosaved config (caddy-config).
   caddy-data:
   caddy-config:

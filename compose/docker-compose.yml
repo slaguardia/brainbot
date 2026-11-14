@@ -212,6 +212,26 @@ services:
       - health-data:/data
       - ../../backups/health:/backups
 
+  zachpesto:
+    # zachpesto — the Untraceable Society of Zach Pesto, a PWA clubhouse/ARG for
+    # Steven and friends. One Node process (API + WebSocket + built PWA) on :8791.
+    # Deliberately OUTSIDE the Google whitelist: friends sign in with the app's own
+    # codename + passphrase, gated by the ZP_INVITE phrase (.env). Its own
+    # zachpestonet, shared only with Caddy, so it can't reach the brain, finance or
+    # health. SQLite lives on the zachpesto-data volume. No public port.
+    build:
+      context: ../../zachpesto
+    image: zachpesto/zachpesto:2.0
+    container_name: zachpesto
+    restart: unless-stopped
+    networks:
+      - zachpestonet
+    environment:
+      TZ: America/New_York
+      ZP_INVITE: ${ZP_INVITE}
+    volumes:
+      - zachpesto-data:/data
+
   oauth2-proxy:
     # Edge auth for EVERY app at the edge (brain dashboard + scout + future apps).
     # Caddy's forward_auth asks this for /oauth2/auth; only a valid, whitelisted
@@ -269,6 +289,7 @@ services:
       - brainnet
       - financenet
       - healthnet
+      - zachpestonet
     ports:
       - "80:80"
       - "443:443"
@@ -294,6 +315,9 @@ networks:
   # health only: Caddy + health, nothing else (keeps health off the brain).
   healthnet:
     driver: bridge
+  # zachpesto only: Caddy + zachpesto, nothing else (public app, kept off the brain).
+  zachpestonet:
+    driver: bridge
 
 volumes:
   postgres-data:
@@ -310,6 +334,8 @@ volumes:
   # health's SQLite database + stored photos and reports. NOT disposable — this is
   # the record; the app snapshots it nightly to the host's backups/health.
   health-data:
+  # zachpesto's SQLite (members, inventory, progress). The record of the game.
+  zachpesto-data:
   # Caddy's Let's Encrypt certs (caddy-data) + autosaved config (caddy-config).
   caddy-data:
   caddy-config:

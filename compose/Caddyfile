@@ -170,3 +170,10 @@ health.{$BRAIN_DOMAIN} {
         reverse_proxy health:8790
     }
 }
+
+# zachpesto — zachpesto.{$BRAIN_DOMAIN}. Deliberately NO forward_auth: friends who
+# aren't on the Google whitelist sign in with the app's own codename + passphrase
+# (gated by ZP_INVITE). Nothing else is reachable from this host.
+zachpesto.{$BRAIN_DOMAIN} {
+    reverse_proxy zachpesto:8791
+}
